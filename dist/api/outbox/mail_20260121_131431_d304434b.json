@@ -1,0 +1,14 @@
+{
+    "id": "20260121_131431_d304434b",
+    "ts": "2026-01-21T13:14:31+00:00",
+    "from": "noreply@nedzink.nl",
+    "to": [
+        "jeroen.weber@nedzink.nl"
+    ],
+    "cc": [],
+    "bcc": [],
+    "subject": "Dev mail",
+    "html": "<b>hello<\/b>",
+    "text": "hello",
+    "note": "DEV SINK enabled: email not sent via SMTP"
+}

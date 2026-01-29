@@ -1,0 +1,605 @@
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useAuth0 } from '@auth0/auth0-react';
+import AuthContextNavigator from '../../components/navigation/AuthContextNavigator';
+import CaseHeader from './components/CaseHeader';
+import CaseDetailsPanel from './components/CaseDetailsPanel';
+import AttachmentsPanel from './components/AttachmentsPanel';
+import InvestigationNotesPanel from './components/InvestigationNotesPanel';
+import CommunicationPanel from './components/CommunicationPanel';
+import ActionHistoryPanel from './components/ActionHistoryPanel';
+import StatusUpdateModal from './components/StatusUpdateModal';
+import CaseManagementPanel from './components/CaseManagementPanel';
+import Icon from '../../components/AppIcon';
+import { ticketService } from '../../services/ticketService';
+
+const fmtNL = (value) => {
+  if (!value) return '-';
+  try {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
+    return d.toLocaleString('nl-NL');
+  } catch {
+    return String(value);
+  }
+};
+
+export default function CaseManagementDetail() {
+  const [caseData, setCaseData] = useState(null);
+  const [attachments, setAttachments] = useState([]);
+  const [investigationNotes, setInvestigationNotes] = useState([]);
+  const [communicationMessages, setCommunicationMessages] = useState([]);
+  const [actionHistory, setActionHistory] = useState([]);
+  const [availableHandlers, setAvailableHandlers] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [currentHandlerId, setCurrentHandlerId] = useState(null);
+
+  const navigate = useNavigate();
+  const isMountedRef = useRef(true);
+  const { t } = useTranslation();
+  const { user } = useAuth0();
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const showToast = useCallback((message) => {
+    setToastMessage(message);
+    setShowSuccessToast(true);
+    window.clearTimeout(showToast._t);
+    showToast._t = window.setTimeout(() => setShowSuccessToast(false), 3000);
+  }, []);
+
+  const getStoredTicketId = useCallback(() => {
+    const storedCase = sessionStorage.getItem('current_case');
+    if (!storedCase) return null;
+    try {
+      const parsed = JSON.parse(storedCase);
+      return parsed?.id ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const severityToPriorityLabel = useCallback((severityCode) => {
+    return severityCode === 'critical'
+      ? t('caseManagement.critical')
+      : severityCode === 'high'
+      ? t('caseManagement.high')
+      : severityCode === 'medium'
+      ? t('caseManagement.medium')
+      : t('caseManagement.low');
+  }, [t]);
+
+  const formatCase = useCallback((fullTicket) => {
+    if (!fullTicket) return null;
+    return {
+      id: fullTicket?.id,
+      ticketNumber: fullTicket?.ticketNumber,
+      accessCode: fullTicket?.accessCode,
+      status: fullTicket?.status,          // enum label if you store it
+      statusCode: fullTicket?.statusCode,  // workflow status code
+      currentStage: fullTicket?.currentStage,
+      workflowType: fullTicket?.workflowType,
+      metadata: fullTicket?.metadata || null,
+
+      priority: severityToPriorityLabel(fullTicket?.severityCode),
+      priorityCode: fullTicket?.severityCode || 'low',
+
+      submittedDate: fullTicket?.submittedAt ? fmtNL(fullTicket.submittedAt) : '-',
+      assignedTo: fullTicket?.handlers?.name || t('caseManagement.notAssigned'),
+      assignedToId: fullTicket?.handlerId,
+
+      description: fullTicket?.description,
+      location: fullTicket?.location,
+
+      reporterDetails: {
+        name: fullTicket?.reporterName || t('caseManagement.anonymous'),
+        email: fullTicket?.reporterEmail || '',
+        phone: fullTicket?.reporterPhone || null,
+        phoneVerified: fullTicket?.reporterPhoneVerified || false,
+      },
+    };
+  }, [severityToPriorityLabel, t]);
+
+  const pushAction = useCallback((action) => {
+    // action shape that ActionHistoryPanel accepts
+    setActionHistory((prev) => [
+      {
+        id: action?.id || `${Date.now()}_${Math.random()}`,
+        actionType: action?.actionType || 'action',
+        action: action?.action || 'Actie',
+        description: action?.description || '',
+        timestamp: action?.timestamp || new Date().toISOString(),
+        performedBy: action?.performedBy || t('caseManagement.system'),
+      },
+      ...(prev || []),
+    ]);
+  }, [t]);
+
+  // --- load handler profile ---
+  useEffect(() => {
+    (async () => {
+      if (!user?.email) return;
+      try {
+        const handlers = await ticketService.getAllHandlers();
+        const handler = handlers?.find(h => h?.email?.toLowerCase() === user?.email?.toLowerCase());
+        if (handler?.id) setCurrentHandlerId(handler.id);
+      } catch (err) {
+        console.error('Error loading handler profile:', err);
+      }
+    })();
+  }, [user?.email]);
+
+  const loadHandlers = useCallback(async () => {
+    try {
+      const handlers = await ticketService.getAllHandlers();
+      if (!isMountedRef.current) return;
+      setAvailableHandlers(
+        (handlers ?? []).map((h) => ({
+          id: h?.id,
+          name: h?.name,
+          role: h?.role || 'Handler',
+        }))
+      );
+    } catch (err) {
+      console.error('Error loading handlers:', err);
+    }
+  }, []);
+
+  const loadCaseData = useCallback(async () => {
+    setError('');
+    setIsLoading(true);
+
+    try {
+      const ticketId = getStoredTicketId();
+      if (!ticketId) {
+        navigate('/handler-dashboard');
+        return;
+      }
+
+      const fullTicket = await ticketService.getTicketById(ticketId);
+      if (!isMountedRef.current) return;
+
+      // core
+      setCaseData(formatCase(fullTicket));
+
+      // attachments
+      setAttachments(
+        (fullTicket?.attachments ?? []).map((att) => ({
+          id: att?.id,
+          name: att?.fileName,
+          type: att?.mimeType?.includes('pdf') ? 'pdf' : 'image',
+          size: att?.sizeBytes,
+          uploadedDate: att?.createdAt ? fmtNL(att.createdAt) : '-',
+          uploadedBy: t('caseManagement.reporter'),
+          url: att?.fileUrl,
+          alt: `Attachment ${att?.fileName}`,
+        }))
+      );
+
+      // notes
+      setInvestigationNotes(
+        (fullTicket?.ticketComments ?? []).map((comment) => ({
+          id: comment?.id,
+          author: comment?.authorName || t('caseManagement.handler'),
+          role: t('caseManagement.handler'),
+          timestamp: comment?.createdAt ? fmtNL(comment.createdAt) : '-',
+          content: comment?.comment,
+        }))
+      );
+
+      // messages
+      setCommunicationMessages(
+        (fullTicket?.messages ?? []).map((msg) => ({
+          id: msg?.id,
+          sender: msg?.sender,
+          senderName: msg?.sender === 'handler'
+            ? (msg?.handlerName || fullTicket?.handlers?.name || user?.name || t('caseManagement.handler'))
+            : t('caseManagement.reporter'),
+          timestamp: msg?.createdAt ? fmtNL(msg.createdAt) : '-',
+          content: msg?.body,
+          read: msg?.read ?? msg?.isRead ?? false,
+        }))
+      );
+
+      // actions
+      const base = [{
+        id: 'created',
+        actionType: 'created',
+        action: t('caseManagement.caseCreated'),
+        description: t('caseManagement.newReportReceived'),
+        timestamp: fullTicket?.submittedAt || new Date().toISOString(),
+        performedBy: t('caseManagement.system'),
+      }];
+
+      const dbActions = (fullTicket?.ticketActions ?? []).map((a) => ({
+        id: a?.id,
+        actionType: a?.actionType || 'action',
+        action: a?.action || 'Actie',
+        description: a?.description || '',
+        timestamp: a?.createdAt || new Date().toISOString(),
+        performedBy: a?.performedBy || t('caseManagement.system'),
+      }));
+
+      setActionHistory([...dbActions.reverse(), ...base]);
+    } catch (err) {
+      console.error('Error loading case:', err);
+      if (!isMountedRef.current) return;
+      setError(t('caseManagement.errorLoadingCase'));
+    } finally {
+      if (isMountedRef.current) setIsLoading(false);
+    }
+  }, [formatCase, getStoredTicketId, navigate, t]);
+
+  useEffect(() => {
+    loadCaseData();
+    loadHandlers();
+  }, [loadCaseData, loadHandlers]);
+
+  const handleBack = () => navigate('/handler-dashboard');
+  const handleStatusChange = () => setShowStatusModal(true);
+
+  // ✅ STATUS UPDATE (supports both modal + FlowBar payload)
+  const handleStatusUpdate = async (payload) => {
+    const ticketId = getStoredTicketId();
+    if (!ticketId) return navigate('/handler-dashboard');
+
+    try {
+      // IMPORTANT: ticketService.updateTicketStatus returns updated ticket (because updateTicketProgress does select().single())
+      const updatedTicket = await ticketService.updateTicketStatus(
+        ticketId,
+        payload?.statusLabel,                 // may be undefined (FlowBar)
+        payload?.statusCode,                  // FlowBar sends this ✅
+        payload?.currentStage ?? null,
+        payload?.note ?? null,
+        payload?.workflowType ?? caseData?.workflowType ?? null
+      );
+
+      // ✅ update caseData from returned ticket (FlowBar updates immediately)
+      setCaseData(formatCase(updatedTicket));
+
+      // ✅ add action in UI immediately
+      pushAction({
+        actionType: 'status_update',
+        action: 'Status gewijzigd',
+        description: payload?.note ? payload.note : `Status gewijzigd naar ${updatedTicket?.metadata?.statusLabel || updatedTicket?.status || updatedTicket?.statusCode}`,
+        timestamp: new Date().toISOString(),
+        performedBy: user?.name || user?.email || t('caseManagement.handler'),
+      });
+
+      showToast(t('caseManagement.statusUpdated'));
+    } catch (err) {
+      console.error('Error updating status:', err);
+      showToast(t('caseManagement.statusUpdateFailed'));
+    }
+  };
+
+  const handleAddNote = async (noteContent, authorName) => {
+    const ticketId = getStoredTicketId();
+    if (!ticketId) return navigate('/handler-dashboard');
+
+    try {
+      const created = await ticketService.addComment(ticketId, noteContent, authorName, { currentHandlerId });
+
+      // ✅ update notes list locally
+      setInvestigationNotes((prev) => [
+        {
+          id: created?.id || `${Date.now()}`,
+          author: created?.authorName || authorName || t('caseManagement.handler'),
+          role: t('caseManagement.handler'),
+          timestamp: created?.createdAt ? fmtNL(created.createdAt) : fmtNL(new Date().toISOString()),
+          content: created?.comment || noteContent,
+        },
+        ...(prev || []),
+      ]);
+
+      // ✅ action history
+      pushAction({
+        actionType: 'note_added',
+        action: 'Notitie toegevoegd',
+        description: String(noteContent).slice(0, 160),
+        performedBy: authorName || user?.name || user?.email || t('caseManagement.handler'),
+      });
+
+      showToast(t('caseManagement.noteSent'));
+    } catch (err) {
+      console.error('Error adding note:', err);
+      showToast(t('caseManagement.noteAddFailed'));
+    }
+  };
+
+  const handleSendMessage = async (messageContent) => {
+    const ticketId = getStoredTicketId();
+    if (!ticketId) return navigate('/handler-dashboard');
+
+    try {
+      const created = await ticketService.addMessage(ticketId, 'handler', messageContent, false, { currentHandlerId });
+
+      // Get handler name from availableHandlers or current user
+      const currentHandlerName = currentHandlerId
+        ? (availableHandlers.find(h => h.id === currentHandlerId)?.name || user?.name || user?.email)
+        : (user?.name || user?.email);
+
+      setCommunicationMessages((prev) => [
+        {
+          id: created?.id || `${Date.now()}`,
+          sender: 'handler',
+          senderName: currentHandlerName || t('caseManagement.handler'),
+          timestamp: created?.createdAt ? fmtNL(created.createdAt) : fmtNL(new Date().toISOString()),
+          content: created?.body || messageContent,
+          read: false, // New messages are unread until reporter reads them
+        },
+        ...(prev || []),
+      ]);
+
+      pushAction({
+        actionType: 'message_sent',
+        action: 'Bericht verstuurd',
+        description: String(messageContent).slice(0, 160),
+        performedBy: user?.name || user?.email || t('caseManagement.handler'),
+      });
+
+      showToast(t('caseManagement.messageSent'));
+    } catch (err) {
+      console.error('Error sending message:', err);
+      showToast(t('caseManagement.messageSendFailed'));
+    }
+  };
+
+  const handleAddAttachment = async () => {
+    const ticketId = getStoredTicketId();
+    if (!ticketId) return navigate('/handler-dashboard');
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,application/pdf,.doc,.docx,.xls,.xlsx';
+    input.multiple = true;
+
+    input.onchange = async (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+
+      try {
+        showToast(`${files.length} bestand(en) uploaden...`);
+
+        for (const file of files) {
+          const att = await ticketService.uploadAttachment(ticketId, file, { currentHandlerId });
+
+          // ✅ update attachments list locally
+          setAttachments((prev) => [
+            {
+              id: att?.id || `${Date.now()}`,
+              name: att?.fileName || file.name,
+              type: (att?.mimeType || file.type || '').includes('pdf') ? 'pdf' : 'image',
+              size: att?.sizeBytes || file.size,
+              uploadedDate: att?.createdAt ? fmtNL(att.createdAt) : fmtNL(new Date().toISOString()),
+              uploadedBy: t('caseManagement.handler'),
+              url: att?.fileUrl,
+              alt: `Attachment ${att?.fileName || file.name}`,
+            },
+            ...(prev || []),
+          ]);
+
+          pushAction({
+            actionType: 'attachment_added',
+            action: 'Bijlage toegevoegd',
+            description: `Uploaded file: ${file.name}`,
+            performedBy: user?.name || user?.email || t('caseManagement.handler'),
+          });
+        }
+
+        showToast('Bestanden succesvol geüpload');
+      } catch (err) {
+        console.error('Error uploading files:', err);
+        showToast('Fout bij uploaden van bestanden');
+      }
+    };
+
+    input.click();
+  };
+
+  const handleAssignmentChange = async (newHandlerId) => {
+    const ticketId = getStoredTicketId();
+    if (!ticketId) return navigate('/handler-dashboard');
+
+    try {
+      const updatedTicket = await ticketService.assignHandler(ticketId, newHandlerId, null, { currentHandlerId });
+
+      // ✅ update header/panel assignment immediately
+      setCaseData(formatCase(updatedTicket));
+
+      pushAction({
+        actionType: 'assignment',
+        action: 'Toewijzing gewijzigd',
+        description: newHandlerId ? `Handler toegewezen` : `Toewijzing verwijderd`,
+        performedBy: user?.name || user?.email || t('caseManagement.handler'),
+      });
+
+      showToast(t('caseManagement.assignmentChanged'));
+    } catch (err) {
+      console.error('Error assigning handler:', err);
+      showToast(t('caseManagement.assignmentChangeFailed'));
+    }
+  };
+
+  const handlePriorityChange = async (newPriority) => {
+    const priorityToSeverityCode = {
+      [t('caseManagement.critical')]: 'critical',
+      [t('caseManagement.high')]: 'high',
+      [t('caseManagement.medium')]: 'medium',
+      [t('caseManagement.low')]: 'low',
+      'Kritiek': 'critical',
+      'Hoog': 'high',
+      'Gemiddeld': 'medium',
+      'Laag': 'low',
+      critical: 'critical',
+      high: 'high',
+      medium: 'medium',
+      low: 'low',
+    };
+
+    const newSeverityCode = priorityToSeverityCode[newPriority];
+    if (!newSeverityCode) return;
+
+    const ticketId = getStoredTicketId();
+    if (!ticketId) return navigate('/handler-dashboard');
+
+    try {
+      const updatedTicket = await ticketService.updateTicket(ticketId, { severity_code: newSeverityCode });
+
+      // ✅ update priority immediately
+      setCaseData((prev) => ({
+        ...prev,
+        priorityCode: updatedTicket?.severityCode || newSeverityCode,
+        priority: severityToPriorityLabel(updatedTicket?.severityCode || newSeverityCode),
+      }));
+
+      pushAction({
+        actionType: 'priority_change',
+        action: 'Prioriteit gewijzigd',
+        description: `Prioriteit gewijzigd naar ${newPriority}`,
+        performedBy: user?.name || user?.email || t('caseManagement.handler'),
+      });
+
+      showToast(t('caseManagement.priorityChanged'));
+    } catch (err) {
+      console.error('Error updating priority:', err);
+      showToast(t('caseManagement.priorityChangeFailed'));
+    }
+  };
+
+  const handleDetailsUpdate = async (patch) => {
+    const ticketId = getStoredTicketId();
+    if (!ticketId) return navigate('/handler-dashboard');
+
+    try {
+      const backendPayload = {};
+
+      if (patch?.description !== undefined) backendPayload.description = patch.description;
+      if (patch?.location !== undefined) backendPayload.location = patch.location;
+
+      if (patch?.reporterDetails) {
+        if (patch.reporterDetails.name !== undefined) backendPayload.reporter_name = patch.reporterDetails.name;
+        if (patch.reporterDetails.email !== undefined) backendPayload.reporter_email = patch.reporterDetails.email;
+        if (patch.reporterDetails.phone !== undefined) backendPayload.reporter_phone = patch.reporterDetails.phone;
+      }
+
+      const updatedTicket = await ticketService.updateTicket(ticketId, backendPayload);
+
+      // ✅ update case data immediately
+      setCaseData(formatCase(updatedTicket));
+
+      pushAction({
+        actionType: 'details_updated',
+        action: 'Zaakdetails gewijzigd',
+        description: `Gewijzigd: ${Object.keys(backendPayload).join(', ')}`,
+        performedBy: user?.name || user?.email || t('caseManagement.handler'),
+      });
+
+      showToast(t('caseManagement.detailsUpdated'));
+    } catch (err) {
+      console.error('Error updating case details:', err);
+      showToast(t('caseManagement.detailsUpdateFailed'));
+      throw err;
+    }
+  };
+
+  const isWhistleblower = useMemo(() => {
+    const workflowType = caseData?.workflowType || '';
+    return workflowType.toLowerCase().includes('whistleblow') || workflowType.toLowerCase().includes('klokkenluider');
+  }, [caseData?.workflowType]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="skeleton h-12 w-48 rounded-lg mb-4"></div>
+          <p className="text-muted-foreground">{t('caseManagement.loadingCase')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !caseData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <p className="text-destructive">{error || t('caseManagement.noCaseData')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <AuthContextNavigator>
+      <div className="min-h-screen bg-background">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
+          <CaseHeader
+            caseData={caseData}
+            onBack={handleBack}
+            onStatusChange={() => setShowStatusModal(true)}
+            isWhistleblower={isWhistleblower}
+            onStatusUpdate={handleStatusUpdate} // FlowBar uses this ✅
+          />
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4 lg:gap-5 mt-3 md:mt-4 lg:mt-5">
+            <div className="lg:col-span-2 space-y-3 md:space-y-4 lg:space-y-5">
+              <CaseDetailsPanel caseData={caseData} onUpdate={handleDetailsUpdate} />
+
+              <AttachmentsPanel attachments={attachments} onAddAttachment={handleAddAttachment} />
+
+              <InvestigationNotesPanel notes={investigationNotes} onAddNote={handleAddNote} />
+
+              <CommunicationPanel
+                messages={communicationMessages}
+                canContact={Boolean(caseData?.reporterDetails?.email)}
+                onSendMessage={handleSendMessage}
+              />
+            </div>
+
+            <div className="space-y-3 md:space-y-4 lg:space-y-5">
+              <CaseManagementPanel
+                caseData={caseData}
+                onAssignmentChange={handleAssignmentChange}
+                onPriorityChange={handlePriorityChange}
+                onStatusChange={() => setShowStatusModal(true)}
+                handlers={availableHandlers}
+                isWhistleblower={isWhistleblower}
+              />
+
+              <ActionHistoryPanel history={actionHistory} />
+            </div>
+          </div>
+        </div>
+
+        {showStatusModal && (
+          <StatusUpdateModal
+            workflowType={caseData?.workflowType}
+            currentStatus={caseData?.status}
+            currentStage={caseData?.currentStage}
+            onClose={() => setShowStatusModal(false)}
+            onUpdate={handleStatusUpdate}
+          />
+        )}
+
+        {showSuccessToast && (
+          <div className="fixed bottom-4 md:bottom-6 right-4 md:right-6 z-50 animate-in slide-in-from-bottom-5">
+            <div className="bg-success text-success-foreground px-4 md:px-6 py-3 md:py-4 rounded-lg shadow-lg flex items-center gap-3">
+              <Icon name="CheckCircle" size={20} />
+              <span className="text-sm md:text-base font-medium">{toastMessage}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </AuthContextNavigator>
+  );
+}

@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>NedZink Melding</title>
+
+  <style>
+    /* Reset-ish (email safe) */
+    html, body { margin: 0; padding: 0; }
+    img { border: 0; outline: none; text-decoration: none; }
+    a { text-decoration: none; }
+    * { box-sizing: border-box; }
+
+    body {
+      background: #f1f5f9; /* slate-100-ish */
+      color: #1f2937;      /* slate-800-ish */
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      line-height: 1.6;
+    }
+
+    /* Layout */
+    .wrapper {
+      width: 100%;
+      background: #f1f5f9;
+      padding: 24px 0;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 0 12px;
+    }
+
+    .card {
+      background: #ffffff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+
+    /* Header */
+    .header {
+      padding: 32px 24px;
+      text-align: center;
+      color: #ffffff;
+      background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); /* sky-600 to sky-700 */
+    }
+
+    .logo {
+      height: 40px;
+      width: auto;
+      display: inline-block;
+      margin: 0 auto 16px auto;
+    }
+
+    .title {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+
+    .subtitle {
+      margin-top: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      opacity: 0.9;
+    }
+
+    .accent-bar {
+      width: 64px;
+      height: 4px;
+      border-radius: 999px;
+      background: #009ad8; /* NedZink blue */
+      margin: 20px auto 0 auto;
+    }
+
+    /* Body */
+    .body {
+      background: #ffffff;
+      padding: 28px 24px;
+    }
+
+    .body-text {
+      font-size: 15px;
+      line-height: 24px;
+      color: #1f2937;
+    }
+
+    /* Footer */
+    .footer {
+      background: #374151; /* slate-700 */
+      padding: 24px 24px;
+      text-align: center;
+      font-size: 12px;
+      line-height: 20px;
+      color: #e5e7eb; /* slate-200 */
+    }
+
+    .footer strong {
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    .footer p {
+      margin: 0;
+      opacity: 0.9;
+    }
+
+    .footer .spacer {
+      margin-top: 12px;
+    }
+
+    .footer a {
+      color: #bae6fd; /* sky-200-ish */
+      font-weight: 600;
+      text-decoration: underline;
+      text-underline-offset: 4px;
+    }
+
+    .footer a:hover {
+      color: #ffffff;
+    }
+
+    .footer-line {
+      height: 1px;
+      width: 96px;
+      background: rgba(0,154,216,0.8); /* #009ad8 with opacity */
+      margin: 20px auto 0 auto;
+    }
+
+    /* Mobile */
+    @media only screen and (max-width: 600px) {
+      .header { padding: 24px 16px; }
+      .body { padding: 22px 16px; }
+      .footer { padding: 20px 16px; }
+      .container { padding: 0 10px; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrapper">
+    <div class="container">
+      <div class="card">
+        <div class="header">
+          <img
+            src="https://www.nedzink.com/wp-content/uploads/2019/03/logo_header_goed-1.svg"
+            alt="NedZink"
+            class="logo"
+          />
+          <h1 class="title">NedZink</h1>
+          <div class="subtitle">Meldingenportaal</div>
+          <div class="accent-bar"></div>
+        </div>
+
+        <div class="body">
+          <div class="body-text">
+            #TEXT#
+          </div>
+        </div>
+
+        <div class="footer">
+          <p><strong>NedZink B.V.</strong></p>
+          <p>Hoofdstraat 1, 6024 AA Budel-Dorplein, Nederland</p>
+
+          <p class="spacer">
+            Dit is een automatisch gegenereerd bericht. Antwoorden op deze e-mail worden niet gelezen.
+          </p>
+
+          <p class="spacer">
+            <a href="https://www.nedzink.nl">www.nedzink.nl</a>
+          </p>
+
+          <div class="footer-line"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

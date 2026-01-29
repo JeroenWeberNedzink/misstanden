@@ -1,0 +1,14 @@
+{
+    "id": "20260121_131548_3fa7a416",
+    "ts": "2026-01-21T13:15:48+00:00",
+    "from": "noreply@nedzink.nl",
+    "to": [
+        "marcel.hagens@nedzink.nl"
+    ],
+    "cc": [],
+    "bcc": [],
+    "subject": "🚨 SLA OVERSCHREDEN: Ticket NZ-2026-902331",
+    "html": "\r\n              <h2>🚨 SLA Deadline Overschreden<\/h2>\r\n              <p>Hallo Marcel Hagens,<\/p>\r\n              <p><strong style=\"color:#dc2626\">De deadline is overschreden<\/strong> met 357.8 uur.<\/p>\r\n              <div style=\"background:#fee2e2;border-left:4px solid #dc2626;padding:14px;border-radius:8px\">\r\n                <p><strong>Ticket:<\/strong> NZ-2026-902331<\/p>\r\n                <p><strong>Ernst:<\/strong> MEDIUM<\/p>\r\n                <p><strong>Locatie:<\/strong> Budel Nedzink<\/p>\r\n                <p><strong>Omschrijving:<\/strong><br\/>TEST<\/p>\r\n              <\/div>\r\n              <p style=\"font-size:12px;color:#6b7280\">Open het portaal om direct te escaleren.<\/p>\r\n            ",
+    "text": "\r\n              🚨 SLA Deadline Overschreden\r\n              Hallo Marcel Hagens,\r\n              De deadline is overschreden met 357.8 uur.\r\n              \r\n                Ticket: NZ-2026-902331\r\n                Ernst: MEDIUM\r\n                Locatie: Budel Nedzink\r\n                Omschrijving:\nTEST\r\n              \r\n              Open het portaal om direct te escaleren.\r\n            ",
+    "note": "DEV SINK enabled: email not sent via SMTP"
+}

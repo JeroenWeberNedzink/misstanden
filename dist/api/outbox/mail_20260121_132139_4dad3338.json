@@ -1,0 +1,14 @@
+{
+    "id": "20260121_132139_4dad3338",
+    "ts": "2026-01-21T13:21:39+00:00",
+    "from": "Misstanden@nedzink.nl",
+    "to": [
+        "jeroen.weber@nedzink.nl"
+    ],
+    "cc": [],
+    "bcc": [],
+    "subject": "SMTP real send test",
+    "html": "<b>SMTP works<\/b> ✅",
+    "text": "SMTP works ✅",
+    "note": "DEV SINK enabled: email not sent via SMTP"
+}

@@ -1,0 +1,14 @@
+{
+    "id": "20260121_131818_60fb2fc2",
+    "ts": "2026-01-21T13:18:18+00:00",
+    "from": "noreply@nedzink.nl",
+    "to": [
+        "jeroen.weber@nedzink.nl"
+    ],
+    "cc": [],
+    "bcc": [],
+    "subject": "⚠️ SLA Waarschuwing: Ticket TEST-1",
+    "html": "\r\n              <h2>⚠️ SLA Waarschuwing<\/h2>\r\n              <p>Hallo Jeroen,<\/p>\r\n              <p>De SLA-deadline nadert. Nog <strong>5.5 uur<\/strong>.<\/p>\r\n              <div style=\"background:#fef3c7;border-left:4px solid #f59e0b;padding:14px;border-radius:8px\">\r\n                <p><strong>Ticket:<\/strong> TEST-1<\/p>\r\n                <p><strong>Ernst:<\/strong> HIGH<\/p>\r\n                <p><strong>Locatie:<\/strong> Test<\/p>\r\n                <p><strong>Omschrijving:<\/strong><br\/>Hello<\/p>\r\n              <\/div>\r\n              <p style=\"font-size:12px;color:#6b7280\">Log in op het portaal om actie te ondernemen.<\/p>\r\n            ",
+    "text": "\r\n              ⚠️ SLA Waarschuwing\r\n              Hallo Jeroen,\r\n              De SLA-deadline nadert. Nog 5.5 uur.\r\n              \r\n                Ticket: TEST-1\r\n                Ernst: HIGH\r\n                Locatie: Test\r\n                Omschrijving:\nHello\r\n              \r\n              Log in op het portaal om actie te ondernemen.\r\n            ",
+    "note": "DEV SINK enabled: email not sent via SMTP"
+}

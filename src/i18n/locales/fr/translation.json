@@ -1,0 +1,825 @@
+{
+    "common": {
+        "loading": "Chargement...",
+        "error": "Erreur",
+        "success": "Succès",
+        "save": "Enregistrer",
+        "cancel": "Annuler",
+        "delete": "Supprimer",
+        "edit": "Modifier",
+        "close": "Fermer",
+        "submit": "Soumettre",
+        "search": "Rechercher",
+        "filter": "Filtrer",
+        "export": "Exporter",
+        "refresh": "Actualiser",
+        "back": "Retour",
+        "next": "Suivant",
+        "previous": "Précédent",
+        "confirm": "Confirmer",
+        "yes": "Oui",
+        "no": "Non",
+        "all": "Tous",
+        "none": "Aucun",
+        "select": "Sélectionner",
+        "actions": "Actions",
+        "status": "Statut",
+        "date": "Date",
+        "time": "Heure",
+        "name": "Nom",
+        "email": "E-mail",
+        "phone": "Téléphone",
+        "description": "Description",
+        "details": "Détails",
+        "settings": "Paramètres",
+        "profile": "Profil",
+        "logout": "Déconnexion",
+        "login": "Connexion"
+    },
+    "ticketAccess": {
+        "title": "Accès Sécurisé au Ticket",
+        "subtitle": "Entrez vos identifiants pour voir le statut de votre rapport",
+        "ticketId": "ID du Ticket",
+        "accessCode": "Code d'Accès",
+        "viewStatus": "Voir le Statut",
+        "secureConnection": "Connexion Sécurisée",
+        "encryptedData": "Toutes les données sont cryptées",
+        "anonymousAccess": "Accès anonyme protégé",
+        "needHelp": "Besoin d'Aide?",
+        "contactSupport": "Contactez notre équipe de support",
+        "forgotCredentials": "Identifiants perdus? Vérifiez votre e-mail",
+        "forgotCredentialsDesc": "Vérifiez votre e-mail pour confirmation avec le numéro de ticket",
+        "lostAccessCode": "Code d'accès perdu?",
+        "lostAccessCodeDesc": "Le code à 6 chiffres a été affiché lors de la soumission. Conservez-le en sécurité pour un accès futur.",
+        "privacyGuaranteed": "Confidentialité garantie",
+        "privacyGuaranteedDesc": "Votre accès n'est pas enregistré. Aucune adresse IP ou données d'appareil stockées.",
+        "noReportYet": "Aucun rapport soumis pour l'instant?",
+        "submitNewReport": "Soumettre un Nouveau Rapport",
+        "invalidFormat": "Format invalide (ex. NZ-2025-778403)",
+        "mustBeSixDigits": "Doit être 6 chiffres",
+        "ticketIdPlaceholder": "NZ-123456",
+        "ticketIdDescription": "Format: PRÉFIXE-NUMÉRO (ex. NZ-123456)",
+        "accessCodeDescription": "Code à 6 chiffres reçu lors de la soumission",
+        "secureAccessTitle": "Accès Sécurisé",
+        "secureAccessSubtitle": "Votre vie privée est notre priorité absolue. Ce portail utilise des mesures de sécurité avancées.",
+        "securityEndToEnd": "Chiffrement de bout en bout",
+        "securityNoTracking": "Pas de suivi ni d'enregistrement",
+        "securityGDPR": "Conforme au RGPD",
+        "securityAutoTimeout": "Expiration automatique de session",
+        "reportIncident": "Signaler un Nouvel Incident",
+        "handlerLogin": "Connexion Gestionnaire",
+        "loginWithMicrosoft": "Se connecter avec Microsoft",
+        "securityNotice": "Votre vie privée est notre priorité. Toutes les communications sont cryptées et anonymes.",
+        "errorInvalidCredentials": "ID de ticket ou code d'accès invalide"
+    },
+    "handlerDashboard": {
+        "title": "Tableau de Bord Gestionnaire",
+        "metrics": {
+            "totalCases": "Total des Cas",
+            "activeCases": "Cas Actifs",
+            "resolvedToday": "Résolus Aujourd'hui",
+            "avgResolutionTime": "Temps Moy. de Résolution",
+            "hours": "heures"
+        },
+        "filters": {
+            "allStatuses": "Tous les Statuts",
+            "allSeverities": "Toutes les Gravités",
+            "allWorkflows": "Tous les Workflows"
+        },
+        "table": {
+            "ticketId": "ID Ticket",
+            "severity": "Gravité",
+            "workflow": "Workflow",
+            "status": "Statut",
+            "created": "Créé",
+            "lastUpdate": "Dernière Mise à Jour",
+            "actions": "Actions",
+            "viewDetails": "Voir les Détails",
+            "noTickets": "Aucun ticket trouvé"
+        },
+        "severity": {
+            "critical": "Critique",
+            "high": "Élevée",
+            "medium": "Moyenne",
+            "low": "Faible"
+        },
+        "status": {
+            "new": "Nouveau",
+            "investigating": "En Investigation",
+            "in_progress": "En Cours",
+            "resolved": "Résolu",
+            "closed": "Fermé"
+        },
+        "welcomeMessage": "Welcome, ",
+        "subtitle": "Overview of your assigned cases and performance metrics"
+    },
+    "priorityWorkflow": {
+        "title": "Workflow Prioritaire",
+        "subtitle": "Cas urgents et de haute gravité classés par échéance",
+        "filters": {
+            "severity": "Gravité",
+            "workflow": "Workflow",
+            "sortBy": "Trier Par",
+            "deadline": "Proximité de l'Échéance",
+            "assignmentTime": "Heure d'Attribution"
+        },
+        "table": {
+            "rank": "Rang",
+            "ticketId": "ID Ticket",
+            "severity": "Gravité",
+            "workflow": "Workflow",
+            "assigned": "Attribué",
+            "deadline": "Échéance",
+            "priority": "Score de Priorité",
+            "actions": "Actions",
+            "viewCase": "Voir le Cas",
+            "noCases": "Aucun cas prioritaire trouvé"
+        },
+        "deadlineStatus": {
+            "overdue": "En Retard",
+            "today": "Aujourd'hui",
+            "soon": "Bientôt"
+        }
+    },
+    "adminAnalytics": {
+        "title": "Tableau de Bord Analytique",
+        "dateRange": "Plage de Dates",
+        "summary": {
+            "totalReports": "Total des Rapports",
+            "avgResolutionTime": "Temps Moy. de Résolution",
+            "activeHandlers": "Gestionnaires Actifs",
+            "resolutionRate": "Taux de Résolution"
+        },
+        "charts": {
+            "volumeTrends": "Tendances de Volume",
+            "severityDistribution": "Distribution de Gravité",
+            "resolutionTime": "Temps de Résolution par Workflow",
+            "workflowPerformance": "Performance du Workflow"
+        },
+        "subtitle": "Comprehensive incident metrics and performance insights",
+        "loadingAnalytics": "Loading analytics...",
+        "errorLoadingAnalytics": "Error loading analytics data",
+        "exportPDF": "Export PDF",
+        "exportCSV": "Export CSV",
+        "pdfExportComing": "PDF export functionality coming soon"
+    },
+    "communicationStatus": {
+        "title": "Statut de Livraison des Communications",
+        "subtitle": "Surveiller la livraison SMS et e-mail pour tous les gestionnaires",
+        "tabs": {
+            "all": "Tous les Messages",
+            "sms": "SMS (Twilio)",
+            "email": "E-mail (Resend)"
+        },
+        "stats": {
+            "totalSent": "Total Envoyé",
+            "delivered": "Livré",
+            "failed": "Échoué",
+            "deliveryRate": "Taux de Livraison"
+        },
+        "filters": {
+            "status": "Statut",
+            "handler": "Gestionnaire",
+            "dateRange": "Plage de Dates"
+        },
+        "table": {
+            "timestamp": "Horodatage",
+            "type": "Type",
+            "handler": "Gestionnaire",
+            "recipient": "Destinataire",
+            "status": "Statut",
+            "message": "Aperçu du Message",
+            "noLogs": "Aucun journal de livraison trouvé"
+        },
+        "exportCsv": "Exporter en CSV",
+        "errorLoading": "Error loading",
+        "refresh": "Refresh",
+        "refreshing": "Refreshing...",
+        "close": "Close"
+    },
+    "handlerProfile": {
+        "title": "Gestion du Profil",
+        "contactInfo": {
+            "title": "Informations de Contact",
+            "email": "Adresse E-mail",
+            "phone": "Numéro de Téléphone",
+            "phoneHelp": "Pour les notifications SMS via Twilio"
+        },
+        "availability": {
+            "title": "Statut de Disponibilité",
+            "status": "Statut Actuel",
+            "available": "Disponible",
+            "busy": "Occupé",
+            "offline": "Hors Ligne",
+            "autoAssign": "Attribution automatique de nouveaux cas"
+        },
+        "notifications": {
+            "title": "Préférences de Notification",
+            "alertTypes": "Types d'Alerte",
+            "newAssignment": "Nouvelle Attribution de Cas",
+            "statusChange": "Changements de Statut",
+            "highPriority": "Mises à Jour Haute Priorité",
+            "deadlineReminder": "Rappels d'Échéance",
+            "severityThreshold": "Gravité Minimale pour les Alertes",
+            "channels": "Canaux de Communication",
+            "enableSms": "Activer SMS (Twilio)",
+            "enableEmail": "Activer E-mail (Resend)"
+        },
+        "saveChanges": "Enregistrer les Modifications",
+        "changesSaved": "Modifications enregistrées avec succès"
+    },
+    "reportForm": {
+        "title": "Rapport d'Incident Anonyme",
+        "subtitle": "Votre identité est protégée. Tous les rapports sont confidentiels.",
+        "pageTitle": "Signaler un Problème",
+        "pageSubtitle": "Votre voix compte. Signalez de manière anonyme et sécurisée en quelques étapes.",
+        "step": "Étape",
+        "of": "sur",
+        "stepName1": "Type",
+        "stepDesc1": "Sélectionner catégorie",
+        "stepName2": "Détails",
+        "stepDesc2": "Décrire l'incident",
+        "stepName3": "Lieu",
+        "stepDesc3": "Où c'est arrivé",
+        "stepName4": "Contact",
+        "stepDesc4": "Info optionnelle",
+        "stepName5": "Fichiers",
+        "stepDesc5": "Ajouter preuves",
+        "stepName6": "Révision",
+        "stepDesc6": "Soumettre rapport",
+        "country": "Pays",
+        "selectCountry": "Sélectionner pays",
+        "loadingCountries": "Chargement des pays...",
+        "countryRequired": "Le pays est requis",
+        "specificLocation": "Emplacement spécifique",
+        "specificLocationRequired": "L'emplacement spécifique est requis",
+        "savedAs": "Enregistré comme",
+        "privacyTitle": "Garanties de Confidentialité et Sécurité",
+        "privacyAnonymity": "Anonymat Complet",
+        "privacyAnonymityDesc": "Votre identité reste entièrement protégée. Nous n'enregistrons pas les adresses IP ou les informations sur les appareils.",
+        "privacySecure": "Traitement Sécurisé",
+        "privacySecureDesc": "Toutes les données sont cryptées et accessibles uniquement aux gestionnaires autorisés.",
+        "privacyGDPR": "Conforme au RGPD",
+        "privacyGDPRDesc": "Entièrement conforme à la législation sur la vie privée et aux règlements RGPD.",
+        "privacyNoRepercussions": "Aucune Répercussion",
+        "privacyNoRepercussionsDesc": "Les rapports sont traités de manière confidentielle sans conséquences pour le rapporteur.",
+        "privacyNote": "Votre rapport est complètement anonyme. Les coordonnées sont optionnelles et stockées en toute sécurité.",
+        "workflow": "Type d'Incident",
+        "workflowHelp": "Sélectionnez la catégorie qui décrit le mieux votre rapport",
+        "severity": "Niveau de Gravité",
+        "location": "Emplacement",
+        "locationPlaceholder": "Bâtiment, étage ou zone",
+        "description": "Description",
+        "descriptionPlaceholder": "Fournissez des informations détaillées sur l'incident",
+        "attachments": "Pièces Jointes",
+        "attachmentsHelp": "Téléchargez des documents ou images de support (optionnel)",
+        "contactOptional": "Informations de Contact Optionnelles",
+        "contactEmail": "E-mail pour les mises à jour",
+        "contactPhone": "Téléphone pour contact urgent",
+        "emailNotifications": "Recevoir des mises à jour par e-mail sur ce rapport",
+        "privacyAssurance": "Votre rapport est complètement anonyme. Les coordonnées sont optionnelles et stockées en toute sécurité.",
+        "submitReport": "Soumettre le Rapport",
+        "submitting": "Soumission...",
+        "workflowRequired": "Workflow is required"
+    },
+    "reportConfirmation": {
+        "title": "Rapport Soumis avec Succès",
+        "subtitle": "Votre rapport a été reçu et attribué à notre équipe",
+        "credentials": {
+            "title": "Vos Identifiants d'Accès",
+            "ticketId": "ID du Ticket",
+            "accessCode": "Code d'Accès",
+            "saveInstructions": "Enregistrez ces identifiants pour vérifier le statut de votre rapport"
+        },
+        "nextSteps": {
+            "title": "Prochaines Étapes",
+            "step1": "Votre rapport est examiné par notre équipe",
+            "step2": "L'enquête commence dans les 24 heures",
+            "step3": "Vous recevrez des mises à jour via votre canal préféré",
+            "step4": "Suivez les progrès avec vos identifiants"
+        },
+        "actions": {
+            "checkStatus": "Vérifier le Statut",
+            "submitAnother": "Soumettre un Autre Rapport",
+            "downloadCredentials": "Télécharger les Identifiants"
+        }
+    },
+    "ticketDetails": {
+        "title": "Détails du Ticket",
+        "reportDetails": "Détails du Rapport",
+        "workflow": "Workflow",
+        "severity": "Gravité",
+        "location": "Emplacement",
+        "description": "Description",
+        "submittedOn": "Soumis le",
+        "lastUpdated": "Dernière Mise à Jour",
+        "statusTimeline": "Chronologie du Statut",
+        "attachments": "Pièces Jointes",
+        "communication": "Journal de Communication",
+        "privacyReminder": "Ceci est un rapport anonyme. Toutes les communications sont confidentielles.",
+        "noAttachments": "Aucune pièce jointe",
+        "noMessages": "Aucun message pour le moment"
+    },
+    "caseManagement": {
+        "title": "Gestion des Cas",
+        "caseDetails": "Détails du Cas",
+        "investigation": "Notes d'Enquête",
+        "addNote": "Ajouter une Note",
+        "noteAdded": "Note ajoutée avec succès",
+        "updateStatus": "Mettre à Jour le Statut",
+        "assignTo": "Attribuer À",
+        "priority": "Priorité",
+        "actionHistory": "Historique des Actions",
+        "closeCase": "Fermer le Cas",
+        "reopenCase": "Rouvrir le Cas",
+        "escalate": "Escalader"
+    },
+    "workflowConfig": {
+        "title": "Configuration du Workflow",
+        "subtitle": "Gérer les workflows d'incident et les règles de routage",
+        "createWorkflow": "Créer un Workflow",
+        "editWorkflow": "Modifier le Workflow",
+        "workflowName": "Nom du Workflow",
+        "description": "Description",
+        "routingRules": "Règles de Routage",
+        "autoAssignment": "Attribution automatique activée",
+        "notificationSettings": "Paramètres de Notification",
+        "active": "Actif",
+        "inactive": "Inactif",
+        "deleteConfirm": "Êtes-vous sûr de vouloir supprimer ce workflow?"
+    },
+    "navigation": {
+        "dashboard": "Tableau de Bord",
+        "priorityWorkflow": "Workflow Prioritaire",
+        "workflows": "Workflows",
+        "analytics": "Analytique",
+        "communications": "Communications",
+        "legalGuidance": "Conseils Juridiques"
+    },
+    "language": {
+        "select": "Sélectionner la Langue",
+        "en": "ENG",
+        "nl": "NL",
+        "fr": "FR",
+        "de": "DE"
+    },
+    "settings": {
+        "title": "Paramètres Système",
+        "subtitle": "Configurer le comportement du portail, la sécurité, les notifications, SLA et l'audit logging",
+        "pageTitle": "Paramètres Système | Admin",
+        "refresh": "Actualiser",
+        "resetTab": "Réinitialiser l'onglet",
+        "saveChanges": "Enregistrer les modifications",
+        "saving": "Enregistrement...",
+        "close": "Fermer",
+        "overview": {
+            "title": "Aperçu",
+            "currentCategory": "Catégorie actuelle",
+            "settingsCount": "Nombre de paramètres",
+            "changedCount": "Modifié (total)",
+            "updater": "Mise à jour par",
+            "tip": "Astuce",
+            "sensitiveHint": "Marquez les valeurs sensibles avec is_sensitive. Elles seront masquées dans l'interface utilisateur mais resteront auditables."
+        },
+        "categories": {
+            "general": "Général",
+            "portal": "Portail",
+            "workflow": "Workflows",
+            "sla": "SLA & Chronologie",
+            "email_notifications": "Notifications Email",
+            "notifications": "Notifications (Ancien)",
+            "security": "Sécurité",
+            "audit": "Audit logging",
+            "retention": "Périodes de rétention",
+            "danger": "Zone dangereuse"
+        },
+        "fields": {
+            "value": "Valeur",
+            "currentValue": "Valeur actuelle",
+            "sensitive": "Sensible",
+            "onOff": "Activé / Désactivé",
+            "jsonAdvanced": "JSON (pour paramètres avancés)"
+        },
+        "twoFactor": {
+            "title": "Authentification à Deux Facteurs (2FA)",
+            "subtitle": "Ajoutez une couche de sécurité supplémentaire à votre compte",
+            "status": "Statut 2FA",
+            "enabled": "Activé",
+            "disabled": "Désactivé",
+            "notConfigured": "Non configuré",
+            "enableButton": "Activer 2FA",
+            "disableButton": "Désactiver 2FA",
+            "setup": "Configurer 2FA",
+            "setupInstructions": "Scannez le code QR ci-dessous avec votre application d'authentification",
+            "scanQR": "Scanner le code QR",
+            "enterCode": "Entrez le code à 6 chiffres de votre application d'authentification",
+            "verifyCode": "Vérifier le code",
+            "verifying": "Vérification...",
+            "backupCodes": "Codes de secours",
+            "backupCodesDescription": "Enregistrez ces codes de secours dans un endroit sûr. Chacun peut être utilisé une fois si vous perdez l'accès à votre authentificateur.",
+            "downloadCodes": "Télécharger les codes",
+            "copyCodes": "Copier les codes",
+            "codesCopied": "Codes copiés dans le presse-papiers",
+            "regenerateCodes": "Régénérer les codes de secours",
+            "appRecommendations": "Applications recommandées: Google Authenticator, Microsoft Authenticator, Authy",
+            "setupComplete": "Configuration 2FA terminée!",
+            "invalidCode": "Code de vérification invalide",
+            "errorEnabling": "Erreur lors de l'activation de 2FA",
+            "errorDisabling": "Erreur lors de la désactivation de 2FA",
+            "confirmDisable": "Êtes-vous sûr de vouloir désactiver 2FA? Cela rendra votre compte moins sécurisé.",
+            "accountKey": "Clé de compte",
+            "accountKeyDescription": "Si vous ne pouvez pas scanner le code QR, entrez cette clé manuellement:"
+        },
+        "messages": {
+            "loading": "Chargement des paramètres...",
+            "errorLoading": "Impossible de charger les paramètres.",
+            "noSettings": "Aucun paramètre trouvé dans system_settings.",
+            "noSettingsInCategory": "Aucun paramètre dans cette catégorie.",
+            "addSettings": "Ajoutez des lignes à system_settings.",
+            "changesPending": "modification(s) prête(s) à enregistrer.",
+            "noChanges": "Aucune modification.",
+            "saveSuccess": "Paramètres enregistrés avec succès",
+            "saveError": "Échec de l'enregistrement."
+        }
+    },
+    "legalGuidance": {
+        "title": "Conseils Juridiques pour Lanceurs d'Alerte",
+        "subtitle": "Cadres juridiques et procédures spécifiques par pays pour les Pays-Bas, la Belgique, l'Allemagne et la France",
+        "footer": "Signalement Sécurisé & Confidentiel",
+        "searchPlaceholder": "Rechercher des sujets juridiques, procédures ou contacts...",
+        "countries": {
+            "netherlands": "Pays-Bas",
+            "belgium": "Belgique",
+            "germany": "Allemagne",
+            "france": "France"
+        },
+        "legalFramework": {
+            "title": "Cadre Juridique",
+            "protectionRights": "Droits de Protection",
+            "keyFeatures": "Caractéristiques Clés",
+            "netherlands": {
+                "lawTitle": "Loi sur la protection des lanceurs d'alerte (2023)",
+                "lawDescription": "En vigueur depuis le 18 février 2023, met en œuvre la directive UE 2019/1937",
+                "protections": [
+                    "Protection contre les représailles et le licenciement",
+                    "Confidentialité de l'identité garantie",
+                    "Droit à l'assistance juridique",
+                    "Indemnisation pour représailles"
+                ],
+                "features": [
+                    "Signalement externe direct autorisé",
+                    "Accusé de réception sous 7 jours",
+                    "Enquête lancée sous 2 semaines",
+                    "Position sous 8-12 semaines"
+                ]
+            },
+            "belgium": {
+                "lawTitle": "Loi sur la protection des lanceurs d'alerte (2023)",
+                "lawDescription": "Met en œuvre la directive UE 2019/1937 pour la protection des lanceurs d'alerte",
+                "protections": [
+                    "Forte insistance sur la confidentialité",
+                    "Protection contre les représailles",
+                    "Anonymat autorisé",
+                    "Soutien juridique disponible"
+                ],
+                "features": [
+                    "Oméga fédéral comme canal externe",
+                    "Application sécurisée pour signalements anonymes",
+                    "SIOD comme superviseur compétent",
+                    "Aucune obligation de facilitation anonyme"
+                ]
+            },
+            "germany": {
+                "lawTitle": "Loi sur la protection des lanceurs d'alerte (HinSchG, 2023)",
+                "lawDescription": "En vigueur depuis juillet 2023, met en œuvre la directive UE pour la protection des lanceurs d'alerte",
+                "protections": [
+                    "Protection contre les représailles",
+                    "Règles strictes de stockage des données",
+                    "Minimisation des données requise",
+                    "Confidentialité garantie"
+                ],
+                "features": [
+                    "Office fédéral de la justice comme canal externe",
+                    "Signalements anonymes autorisés",
+                    "Formulaire en ligne disponible",
+                    "Aucun système anonyme obligatoire"
+                ]
+            },
+            "france": {
+                "lawTitle": "Loi Sapin II (modifiée 2022)",
+                "lawDescription": "Modifiée en 2022 pour mettre en œuvre la directive UE 2019/1937",
+                "protections": [
+                    "Protection pour stagiaires et freelances",
+                    "Droit à la liberté de la presse si aucun effet",
+                    "Traitement obligatoire des signalements anonymes",
+                    "Définition large des personnes protégées"
+                ],
+                "features": [
+                    "Plusieurs autorités compétentes (AFA, ANSSI, etc.)",
+                    "Les signalements anonymes doivent être traités",
+                    "Accès direct à la presse possible",
+                    "Fournisseurs explicitement protégés"
+                ]
+            }
+        },
+        "workflow": {
+            "title": "Procédure de Signalement",
+            "netherlands": {
+                "phases": [
+                    {
+                        "title": "Phase Consultative",
+                        "description": "Consulter un conseiller confidentiel ou la Maison des Lanceurs d'Alerte pour des conseils avant de signaler",
+                        "timeline": "Avant le signalement",
+                        "steps": [
+                            "Interne: Danny Das (danny.das@nedzink.nl, 0495-455762)",
+                            "Externe: Eugenie Kemperman (eugenie.kemperman@arbounie.nl, +31 652500073)",
+                            "Maison des Lanceurs d'Alerte (contact@huisvoorklokkenluiders.nl, 088-1331000)"
+                        ]
+                    },
+                    {
+                        "title": "Signalement Interne",
+                        "description": "Signalement au superviseur ou via conseiller confidentiel avec accusé de réception",
+                        "timeline": "Confirmation sous 7 jours",
+                        "steps": [
+                            "Soumettre le signalement au superviseur ou conseiller confidentiel",
+                            "Accusé de réception sous 7 jours",
+                            "Personne de contact contre les représailles désignée"
+                        ]
+                    },
+                    {
+                        "title": "Enquête par l'Employeur",
+                        "description": "L'employeur décide de l'enquête et informe le signalant dans les délais",
+                        "timeline": "Décision sous 2 semaines",
+                        "steps": [
+                            "Décision: lancer l'enquête ou non",
+                            "Informer le signalant sous 2 semaines",
+                            "Enquêteurs indépendants nommés",
+                            "Audition du signalant et des parties concernées"
+                        ]
+                    },
+                    {
+                        "title": "Position de l'Employeur",
+                        "description": "Rapport final et position avec possibilité de répondre",
+                        "timeline": "8-12 semaines",
+                        "steps": [
+                            "Projet et rapport final préparés",
+                            "Position sous 8 semaines (max. 12 semaines)",
+                            "Possibilité pour le signalant de répondre",
+                            "Enquête supplémentaire possible"
+                        ]
+                    },
+                    {
+                        "title": "Signalement Externe & Protection",
+                        "description": "Directement possible ou après procédure interne auprès de l'autorité compétente",
+                        "timeline": "En cours",
+                        "steps": [
+                            "Signalement à la Maison des Lanceurs d'Alerte ou autre autorité",
+                            "Personne de contact surveille la protection",
+                            "Mesures par la direction supérieure"
+                        ]
+                    }
+                ]
+            },
+            "belgium": {
+                "phases": [
+                    {
+                        "title": "Signalement Interne",
+                        "description": "Signalement via canal de signalement interne ou conseiller confidentiel",
+                        "timeline": "Première étape",
+                        "steps": [
+                            "Soumettre le signalement via système interne",
+                            "Confidentialité de l'identité garantie",
+                            "Recevoir un accusé de réception"
+                        ]
+                    },
+                    {
+                        "title": "Enquête",
+                        "description": "L'organisation mène une enquête sur le signalement",
+                        "timeline": "Dans un délai raisonnable",
+                        "steps": [
+                            "Enquête lancée par le département compétent",
+                            "Signalant entendu si nécessaire",
+                            "Mises à jour intermédiaires fournies"
+                        ]
+                    },
+                    {
+                        "title": "Signalement Externe",
+                        "description": "Signalement à l'Ombudsman fédéral ou superviseur compétent",
+                        "timeline": "Après procédure interne ou directement",
+                        "steps": [
+                            "Soumettre formulaire en ligne à l'Ombudsman fédéral",
+                            "Ou signalement via application sécurisée",
+                            "Ou signalement au SIOD (superviseur compétent)"
+                        ]
+                    },
+                    {
+                        "title": "Protection",
+                        "description": "Protection contre les représailles tout au long du processus",
+                        "timeline": "En cours",
+                        "steps": [
+                            "Surveillance des représailles",
+                            "Soutien juridique disponible",
+                            "Confidentialité maintenue"
+                        ]
+                    }
+                ]
+            },
+            "germany": {
+                "phases": [
+                    {
+                        "title": "Signalement Interne",
+                        "description": "Signalement via canal de signalement interne de l'organisation",
+                        "timeline": "Première étape (recommandée)",
+                        "steps": [
+                            "Soumettre le signalement via système interne",
+                            "Confirmation de réception sous 7 jours",
+                            "Confidentialité garantie"
+                        ]
+                    },
+                    {
+                        "title": "Enquête",
+                        "description": "Procédure d'enquête interne selon HinSchG",
+                        "timeline": "Dans les 3 mois",
+                        "steps": [
+                            "Enquête menée par le département compétent",
+                            "Retour au signalant dans les 3 mois",
+                            "Minimisation des données appliquée"
+                        ]
+                    },
+                    {
+                        "title": "Signalement Externe",
+                        "description": "Signalement à l'Office fédéral de la justice ou autre autorité compétente",
+                        "timeline": "Après procédure interne ou directement",
+                        "steps": [
+                            "Formulaire en ligne à l'Office fédéral de la justice",
+                            "Signalement anonyme possible",
+                            "Règles strictes de stockage des données"
+                        ]
+                    },
+                    {
+                        "title": "Protection",
+                        "description": "Protection contre les représailles selon HinSchG",
+                        "timeline": "En cours",
+                        "steps": [
+                            "Surveillance des représailles",
+                            "Soutien juridique",
+                            "Confidentialité maintenue"
+                        ]
+                    }
+                ]
+            },
+            "france": {
+                "phases": [
+                    {
+                        "title": "Signalement Interne",
+                        "description": "Signalement via canal de signalement interne selon la Loi Sapin II",
+                        "timeline": "Première étape (recommandée)",
+                        "steps": [
+                            "Soumettre le signalement via système interne",
+                            "Signalement anonyme doit être traité",
+                            "Accusé de réception"
+                        ]
+                    },
+                    {
+                        "title": "Enquête",
+                        "description": "Procédure d'enquête interne avec délais stricts",
+                        "timeline": "Dans un délai raisonnable",
+                        "steps": [
+                            "Enquête lancée par le département compétent",
+                            "Signalant informé de l'avancement",
+                            "Confidentialité garantie"
+                        ]
+                    },
+                    {
+                        "title": "Signalement Externe",
+                        "description": "Signalement à l'autorité compétente (AFA, ANSSI, ANSES, etc.)",
+                        "timeline": "Après procédure interne ou directement",
+                        "steps": [
+                            "Choix parmi plusieurs autorités compétentes",
+                            "Formulaire en ligne ou par courrier",
+                            "Signalement anonyme possible"
+                        ]
+                    },
+                    {
+                        "title": "Divulgation Publique",
+                        "description": "Signalement direct à la presse si aucun effet du signalement interne/externe",
+                        "timeline": "Comme dernière option",
+                        "steps": [
+                            "Droit à la liberté de la presse",
+                            "Protection reste en vigueur",
+                            "Soutien juridique disponible"
+                        ]
+                    },
+                    {
+                        "title": "Protection",
+                        "description": "Protection étendue incluant stagiaires et fournisseurs",
+                        "timeline": "En cours",
+                        "steps": [
+                            "Surveillance des représailles",
+                            "Protection pour un large groupe de personnes",
+                            "Confidentialité maintenue"
+                        ]
+                    }
+                ]
+            }
+        },
+        "contacts": {
+            "title": "Répertoire de Contacts",
+            "visitWebsite": "Visiter le Site Web",
+            "onlineForm": "Formulaire en Ligne",
+            "anonymityNote": "Anonymat & Confidentialité",
+            "netherlandsAnonymityInfo": "Signalement externe direct possible sans signalement interne préalable. L'identité est protégée.",
+            "belgiumAnonymityInfo": "Anonymat autorisé via application sécurisée. Forte insistance sur la confidentialité de l'identité.",
+            "germanyAnonymityInfo": "Signalements anonymes autorisés. Règles strictes pour le stockage des données et la minimisation des données.",
+            "franceAnonymityInfo": "Les signalements anonymes doivent être traités. Signalement direct à la presse possible comme dernière option.",
+            "netherlands": [
+                {
+                    "name": "Danny Das",
+                    "role": "Conseiller Confidentiel Interne",
+                    "type": "internal",
+                    "email": "danny.das@nedzink.nl",
+                    "phone": "0495-455762"
+                },
+                {
+                    "name": "Eugenie Kemperman",
+                    "role": "Conseiller Confidentiel Externe (Arbo Unie)",
+                    "type": "external",
+                    "email": "eugenie.kemperman@arbounie.nl",
+                    "phone": "+31 652500073"
+                },
+                {
+                    "name": "Maison des Lanceurs d'Alerte",
+                    "role": "Autorité Nationale pour les Lanceurs d'Alerte",
+                    "type": "authority",
+                    "email": "contact@huisvoorklokkenluiders.nl",
+                    "phone": "088-1331000",
+                    "website": "https://www.huisvoorklokkenluiders.nl",
+                    "onlineForm": "https://www.huisvoorklokkenluiders.nl/melden"
+                }
+            ],
+            "belgium": [
+                {
+                    "name": "Ombudsman Fédéral",
+                    "role": "Canal de Signalement Externe pour Lanceurs d'Alerte",
+                    "type": "authority",
+                    "email": "integriteit@federaalombudsman.be",
+                    "phone": "0800 999 61",
+                    "website": "https://www.federaalombudsman.be/nl/klokkenluiders",
+                    "onlineForm": "https://www.federaalombudsman.be/nl/meldingsformulier"
+                },
+                {
+                    "name": "SIOD",
+                    "role": "Inspection Sociale - Superviseur Compétent",
+                    "type": "authority",
+                    "website": "https://www.siod.belgie.be"
+                }
+            ],
+            "germany": [
+                {
+                    "name": "Office Fédéral de la Justice",
+                    "role": "Bureau Fédéral de Signalement pour Lanceurs d'Alerte",
+                    "type": "authority",
+                    "website": "https://www.bundesjustizamt.de",
+                    "onlineForm": "https://www.bundesjustizamt.de/DE/MeldestelledesBundes/MeldestelledesBundes_node"
+                }
+            ],
+            "france": [
+                {
+                    "name": "Agence Française Anticorruption (AFA)",
+                    "role": "Agence Française Anticorruption",
+                    "type": "authority",
+                    "website": "https://www.agence-francaise-anticorruption.gouv.fr",
+                    "onlineForm": "https://www.agence-francaise-anticorruption.gouv.fr/fr/procedure-recueil-et-traitement-des-signalements"
+                },
+                {
+                    "name": "ANSSI",
+                    "role": "Agence Nationale de la Sécurité des Systèmes d'Information",
+                    "type": "authority",
+                    "email": "lanceurdalerte@ssi.gouv.fr",
+                    "phone": "+33 171758468",
+                    "website": "https://cyber.gouv.fr/signalement-par-un-lanceur-dalerte-adresser-une-alerte-lanssi"
+                },
+                {
+                    "name": "ANSES",
+                    "role": "Agence Nationale de Sécurité Sanitaire de l'Alimentation, de l'Environnement et du Travail",
+                    "type": "authority",
+                    "email": "lanceurdalerte@anses.fr"
+                },
+                {
+                    "name": "Autorité de la Concurrence",
+                    "role": "Autorité Française de la Concurrence",
+                    "type": "authority",
+                    "phone": "+33 155040005",
+                    "website": "https://www.autoritedelaconcurrence.fr/fr/page-riche/le-dispositif-lanceur-dalerte",
+                    "onlineForm": "https://www.autoritedelaconcurrence.fr/fr/formulaire-lanceur-alerte"
+                },
+                {
+                    "name": "IGEDD",
+                    "role": "Inspection Générale de l'Environnement et du Développement Durable",
+                    "type": "authority",
+                    "website": "https://www.igedd.developpement-durable.gouv.fr/lanceur-d-alerte-signaler-une-atteinte-a-l-a3965.html"
+                }
+            ]
+        }
+    }
+}

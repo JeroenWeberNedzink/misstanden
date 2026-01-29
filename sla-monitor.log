@@ -1,0 +1,62 @@
+[SLA Monitor] Loaded environment from: /Users/jeroenweber/Projects/misstanden_portal/public/api/../../.env
+[SLA Monitor] No .env or .env.local file found!
+[SLA Monitor] Checking Supabase credentials...
+[SLA Monitor] URL: Found
+[SLA Monitor] Key: Found (length: 208)
+[2026-01-28 12:39:04] [INFO] === SLA Monitor Service Started ===
+[2026-01-28 12:39:04] [INFO] Supabase: https://glkudtfkmdrqzgahrfhf.supabase.co...
+[2026-01-28 12:39:04] [INFO] Mail API: http://127.0.0.1:8081/api/mail.api.php
+[2026-01-28 12:39:04] [INFO] Check interval: 300 seconds
+[2026-01-28 12:39:04] [INFO] Warning threshold: 80%
+[2026-01-28 12:39:04] [INFO] Ticket created field: submitted_at
+[2026-01-28 12:39:04] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 12:44:04] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 12:49:05] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 12:54:06] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 12:59:06] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 13:04:07] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 13:09:07] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 13:14:08] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 13:19:09] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 13:24:10] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 13:29:10] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 13:34:11] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 13:39:11] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 13:44:12] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 13:49:13] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 13:54:14] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 13:59:14] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 14:04:15] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 14:09:16] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 14:14:16] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 14:19:17] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 14:26:40] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 14:31:40] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 14:36:41] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 14:41:42] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 14:46:43] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 14:51:44] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 14:56:45] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 15:01:45] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 15:06:46] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 15:11:47] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 15:16:47] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 15:21:48] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 15:26:49] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 15:31:49] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 18:27:19] [ERROR] Supabase cURL error: Could not resolve host: glkudtfkmdrqzgahrfhf.supabase.co (endpoint: tickets?select=id,ticket_number,description,location,severity_code,handler_id,status_code,submitted_at,sla_deadline,sla_warning_sent,sla_breach_sent&status_code=not.in.(resolved,closed,rejected)&sla_deadline=not.is.null&order=sla_deadline.asc&limit=200)
+[2026-01-28 18:27:19] [ERROR] SLA monitoring skipped: tickets query failed (see errors above)
+[2026-01-28 20:25:48] [ERROR] Supabase cURL error: Could not resolve host: glkudtfkmdrqzgahrfhf.supabase.co (endpoint: tickets?select=id,ticket_number,description,location,severity_code,handler_id,status_code,submitted_at,sla_deadline,sla_warning_sent,sla_breach_sent&status_code=not.in.(resolved,closed,rejected)&sla_deadline=not.is.null&order=sla_deadline.asc&limit=200)
+[2026-01-28 20:25:48] [ERROR] SLA monitoring skipped: tickets query failed (see errors above)
+[2026-01-28 20:45:11] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 21:27:09] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 22:08:28] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-28 23:58:33] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-29 01:33:38] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-29 03:23:41] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-29 05:23:03] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-29 07:02:13] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-29 08:00:34] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches
+[2026-01-29 09:06:36] [ERROR] Supabase cURL error: Could not resolve host: glkudtfkmdrqzgahrfhf.supabase.co (endpoint: tickets?select=id,ticket_number,description,location,severity_code,handler_id,status_code,submitted_at,sla_deadline,sla_warning_sent,sla_breach_sent&status_code=not.in.(resolved,closed,rejected)&sla_deadline=not.is.null&order=sla_deadline.asc&limit=200)
+[2026-01-29 09:06:36] [ERROR] SLA monitoring skipped: tickets query failed (see errors above)
+[2026-01-29 09:32:08] [INFO] SLA monitoring cycle complete: 0 warnings, 0 breaches

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NedZink Melding</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.6;
+      color: #333333;
+      background-color: #f4f4f4;
+      margin: 0;
+      padding: 0;
+    }
+    .email-wrapper {
+      width: 100%;
+      background-color: #f4f4f4;
+      padding: 20px 0;
+    }
+    .email-container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    .email-header {
+      background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+      color: #ffffff;
+      padding: 30px 20px;
+      text-align: center;
+    }
+    .email-header h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+    }
+    .email-header .company-name {
+      font-size: 14px;
+      opacity: 0.9;
+      margin-top: 5px;
+    }
+    .email-body {
+      padding: 30px 20px;
+      background-color: #ffffff;
+    }
+    .email-footer {
+      background-color: #374151;
+      color: #9ca3af;
+      padding: 20px;
+      text-align: center;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .email-footer p {
+      margin: 5px 0;
+    }
+    .email-footer a {
+      color: #60a5fa;
+      text-decoration: none;
+    }
+    @media only screen and (max-width: 600px) {
+      .email-container {
+        border-radius: 0;
+      }
+      .email-header {
+        padding: 20px 15px;
+      }
+      .email-body {
+        padding: 20px 15px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-wrapper">
+    <div class="email-container">
+      <div class="email-header">
+        <h1>NedZink</h1>
+        <div class="company-name">Meldingsportaal</div>
+      </div>
+      <div class="email-body">
+        #TEXT#
+      </div>
+      <div class="email-footer">
+        <p><strong>NedZink B.V.</strong></p>
+        <p>België</p>
+        <p>Dit is een automatisch gegenereerd bericht. Antwoorden op deze e-mail worden niet gelezen.</p>
+        <p style="margin-top: 10px;">
+          <a href="https://www.nedzink.be">www.nedzink.be</a>
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
