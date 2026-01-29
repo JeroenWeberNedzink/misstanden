@@ -9,3 +9,4 @@ vite.config.*s.*
 
 .env
 .env.*
+sla-monitor.log
