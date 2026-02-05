@@ -1,6 +1,0 @@
-[Wed Jan 28 13:39:04 2026] PHP 8.4.8 Development Server (http://127.0.0.1:8081) started
-[Wed Jan 28 15:19:35 2026] 127.0.0.1:51936 Accepted
-[Wed Jan 28 15:19:35 2026] MAIL_DEV_SINK getenv='false'
-[Wed Jan 28 15:19:35 2026] MAIL_DEV_SINK _ENV='false'
-[Wed Jan 28 15:19:37 2026] 127.0.0.1:51936 [200]: POST /api/mail.api.php
-[Wed Jan 28 15:19:37 2026] 127.0.0.1:51936 Closing

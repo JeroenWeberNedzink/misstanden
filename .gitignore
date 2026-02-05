@@ -1,12 +1,13 @@
-.DS_Store
 node_modules
-.idea
-package-lock.json
-/build
-.vscode/
-.idea/
-vite.config.*s.*
-
+# Env / secrets
 .env
 .env.*
-sla-monitor.log
+
+# Logs
+*.log
+*.err.log
+*.log.*
+*.locked
+
+# PIDs
+*.pid

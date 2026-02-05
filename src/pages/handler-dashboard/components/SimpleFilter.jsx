@@ -2,12 +2,22 @@ import React from 'react';
 import Icon from '../../../components/AppIcon';
 import Input from '../../../components/ui/Input';
 
-const SimpleFilter = ({ search, onSearchChange, statusFilter, onStatusChange, severityFilter, onSeverityChange }) => {
+const SimpleFilter = ({
+  search,
+  onSearchChange,
+  statusFilter,
+  onStatusChange,
+  severityFilter,
+  onSeverityChange,
+  scopeFilter,
+  onScopeChange,
+}) => {
   const statusButtons = [
     { value: 'all', label: 'Alle', color: 'bg-gray-100 text-gray-700 hover:bg-gray-200' },
     { value: 'new', label: 'Nieuw', color: 'bg-sky-50 text-sky-700 hover:bg-sky-100' },
     { value: 'in_progress', label: 'Bezig', color: 'bg-amber-50 text-amber-700 hover:bg-amber-100' },
     { value: 'resolved', label: 'Opgelost', color: 'bg-green-50 text-green-700 hover:bg-green-100' },
+    { value: 'closed', label: 'Gesloten', color: 'bg-gray-50 text-gray-600 hover:bg-gray-100' },
   ];
 
   const severityButtons = [
@@ -16,12 +26,21 @@ const SimpleFilter = ({ search, onSearchChange, statusFilter, onStatusChange, se
     { value: 'high', label: 'Hoog', color: 'bg-orange-50 text-orange-700 hover:bg-orange-100' },
   ];
 
-  const hasFilters = search || statusFilter !== 'all' || severityFilter !== 'all';
+  const scopeButtons = [
+    { value: 'all', label: 'Alles', color: 'bg-gray-100 text-gray-700 hover:bg-gray-200' },
+    { value: 'mine', label: 'Mijn', color: 'bg-sky-50 text-sky-700 hover:bg-sky-100' },
+    { value: 'unassigned', label: 'Onbehandeld', color: 'bg-amber-50 text-amber-700 hover:bg-amber-100' },
+    { value: 'urgent', label: 'Urgent', color: 'bg-red-50 text-red-700 hover:bg-red-100' },
+    { value: 'today', label: 'Vandaag', color: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' },
+  ];
+
+  const hasFilters = search || statusFilter !== 'all' || severityFilter !== 'all' || scopeFilter !== 'all';
 
   const clearFilters = () => {
     onSearchChange('');
     onStatusChange('all');
     onSeverityChange('all');
+    onScopeChange('all');
   };
 
   return (
@@ -50,6 +69,25 @@ const SimpleFilter = ({ search, onSearchChange, statusFilter, onStatusChange, se
 
         {/* Filter buttons */}
         <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-muted-foreground">Scope:</span>
+            {scopeButtons.map(btn => (
+              <button
+                key={btn.value}
+                onClick={() => onScopeChange(btn.value)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  scopeFilter === btn.value
+                    ? 'ring-2 ring-primary ring-offset-1'
+                    : ''
+                } ${btn.color}`}
+              >
+                {btn.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="h-6 w-px bg-border"></div>
+
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-muted-foreground">Status:</span>
             {statusButtons.map(btn => (

@@ -37,7 +37,7 @@ const normalizeStatuses = (raw) => {
     .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
 };
 
-const TicketCardGrid = ({ tickets }) => {
+const TicketCardGrid = ({ tickets, currentHandlerId, onQuickStatusChange, onAssignToMe }) => {
   const [workflows, setWorkflows] = useState(null);
 
   useEffect(() => {
@@ -93,25 +93,28 @@ const TicketCardGrid = ({ tickets }) => {
           Er zijn momenteel geen tickets.
         </p>
       </div>
-    );
+    );  
   }
 
   return (
     <div className="space-y-4">
       {/* Simple header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between bg-white px-4 py-2 rounded-lg border border-border">
         <h2 className="text-xl font-semibold text-foreground">
           {tickets?.length} {tickets?.length === 1 ? 'Ticket' : 'Tickets'}
         </h2>
       </div>
 
       {/* Card Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 bg-white p-4 rounded-lg border border-border">
         {sortedTickets.map((ticket) => (
           <TicketCard
             key={ticket?.id}
             ticket={ticket}
             workflowStatusMap={workflowStatusMap}
+            currentHandlerId={currentHandlerId}
+            onQuickStatusChange={onQuickStatusChange}
+            onAssignToMe={onAssignToMe}
           />
         ))}
       </div>

@@ -15,7 +15,7 @@ export default defineConfig({
     // Proxy API requests to PHP development server
     proxy: {
       '/api': {
-        target: 'http://localhost:8081',
+        target: 'http://127.0.0.1:8081',
         changeOrigin: true,
         secure: false,
       },

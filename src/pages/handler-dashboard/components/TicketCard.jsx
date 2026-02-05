@@ -4,7 +4,7 @@ import Icon from '../../../components/AppIcon';
 import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
-const TicketCard = ({ ticket, workflowStatusMap }) => {
+const TicketCard = ({ ticket, workflowStatusMap, currentHandlerId, onQuickStatusChange, onAssignToMe }) => {
   const navigate = useNavigate();
 
   // Get status info with colors
@@ -48,14 +48,37 @@ const TicketCard = ({ ticket, workflowStatusMap }) => {
     ? format(new Date(ticket.submittedAt), 'HH:mm', { locale: nl })
     : '';
 
+  const handlerId =
+    ticket?.handlerId ||
+    ticket?.handler_id ||
+    ticket?.assignedTo ||
+    ticket?.assigned_to ||
+    ticket?.handlers?.id ||
+    null;
+
+  const isAssigned = Boolean(handlerId);
+  const isClosed = ticket?.statusCode === 'resolved' || ticket?.statusCode === 'closed';
+
   const handleViewDetails = () => {
     sessionStorage.setItem('current_case', JSON.stringify(ticket));
     navigate('/case-management-detail');
   };
 
+  const handleQuickStatus = (e, newStatus) => {
+    e.stopPropagation();
+    if (!onQuickStatusChange || !ticket?.id) return;
+    onQuickStatusChange(ticket.id, newStatus);
+  };
+
+  const handleAssign = (e) => {
+    e.stopPropagation();
+    if (!onAssignToMe || !ticket?.id) return;
+    onAssignToMe(ticket.id);
+  };
+
   return (
     <div
-      className="bg-white rounded-xl border border-border hover:border-primary/30 shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden cursor-pointer group"
+      className="bg-white rounded-md border border-border hover:border-primary/30 shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden cursor-pointer group"
       onClick={handleViewDetails}
     >
       {/* Header with colored background */}
@@ -76,7 +99,7 @@ const TicketCard = ({ ticket, workflowStatusMap }) => {
               <span>{submittedDate}</span>
               {submittedTime && (
                 <>
-                  <span>•</span>
+                  <span>-</span>
                   <Icon name="Clock" size={12} />
                   <span>{submittedTime}</span>
                 </>
@@ -118,12 +141,38 @@ const TicketCard = ({ ticket, workflowStatusMap }) => {
         )}
 
         {/* Footer - Severity badge */}
-        <div className="flex items-center justify-between pt-3 border-t border-border">
+        <div className="flex items-center justify-between pt-3 border-t border-border gap-3">
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${severityInfo.bg} ${severityInfo.border} border`}>
             <Icon name="AlertTriangle" size={14} className={severityInfo.icon} />
             <span className={`text-xs font-semibold ${severityInfo.text}`}>{severityInfo.label}</span>
           </div>
-          <span className="text-xs text-muted-foreground">Klik voor details</span>
+          <div className="flex items-center gap-2">
+            {!isAssigned && currentHandlerId && (
+              <button
+                onClick={handleAssign}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 transition-colors"
+              >
+                Pak op
+              </button>
+            )}
+            {!isClosed && ticket?.statusCode === 'new' && (
+              <button
+                onClick={(e) => handleQuickStatus(e, 'in_progress')}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
+              >
+                Start
+              </button>
+            )}
+            {!isClosed && ticket?.statusCode === 'in_progress' && (
+              <button
+                onClick={(e) => handleQuickStatus(e, 'resolved')}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
+              >
+                Oplossen
+              </button>
+            )}
+            <span className="text-xs text-muted-foreground hidden md:inline">Klik voor details</span>
+          </div>
         </div>
       </div>
     </div>

@@ -15,20 +15,40 @@ const StatCard = ({ icon, label, value, color, bgColor }) => (
   </div>
 );
 
-const QuickStats = ({ tickets }) => {
+const QuickStats = ({ tickets, currentHandlerId }) => {
   // Simple, accurate stats
+  const getTicketHandlerId = (ticket) =>
+    ticket?.handlerId ||
+    ticket?.handler_id ||
+    ticket?.assignedTo ||
+    ticket?.assigned_to ||
+    ticket?.handlers?.id ||
+    null;
+
+  const todayKey = new Date().toDateString();
+
   const stats = {
     total: tickets?.length || 0,
     // Open = not resolved and not closed
     open: tickets?.filter(t => t?.statusCode !== 'resolved' && t?.statusCode !== 'closed')?.length || 0,
     // Unassigned or new
-    unassigned: tickets?.filter(t => !t?.assignedTo && t?.statusCode !== 'resolved' && t?.statusCode !== 'closed')?.length || 0,
+    unassigned: tickets?.filter(t => !getTicketHandlerId(t) && t?.statusCode !== 'resolved' && t?.statusCode !== 'closed')?.length || 0,
     // High priority (critical or high severity)
     highPriority: tickets?.filter(t => t?.severityCode === 'critical' || t?.severityCode === 'high')?.length || 0,
+    // Mine (open)
+    mineOpen: tickets?.filter(t =>
+      t?.statusCode !== 'resolved' &&
+      t?.statusCode !== 'closed' &&
+      getTicketHandlerId(t) === currentHandlerId
+    )?.length || 0,
+    // Today
+    today: tickets?.filter(t =>
+      t?.submittedAt && new Date(t.submittedAt).toDateString() === todayKey
+    )?.length || 0,
   };
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
       <StatCard
         icon="Inbox"
         label="Totaal Tickets"
@@ -56,6 +76,20 @@ const QuickStats = ({ tickets }) => {
         value={stats.highPriority}
         color="text-red-600"
         bgColor="bg-red-50"
+      />
+      <StatCard
+        icon="UserCheck"
+        label="Mijn Open"
+        value={stats.mineOpen}
+        color="text-indigo-600"
+        bgColor="bg-indigo-50"
+      />
+      <StatCard
+        icon="Calendar"
+        label="Vandaag"
+        value={stats.today}
+        color="text-emerald-600"
+        bgColor="bg-emerald-50"
       />
     </div>
   );
