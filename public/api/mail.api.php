@@ -57,6 +57,8 @@ function loadEnvFile(string $file, bool $override = true): void {
 
 loadEnvFile(__DIR__ . '/../../.env.local', true);
 loadEnvFile(__DIR__ . '/../../.env', false); // optional: let .env.local win
+
+require_once __DIR__ . '/_crypto.php';
 error_log("MAIL_DEV_SINK getenv=" . var_export(getenv('MAIL_DEV_SINK'), true));
 error_log("MAIL_DEV_SINK _ENV=" . var_export($_ENV['MAIL_DEV_SINK'] ?? null, true));
 // ---------- Preflight ----------
@@ -215,6 +217,7 @@ try {
     // Gather fields (JSON has priority if present)
     $mailfrom = $isJson ? ($jsonInput['from'] ?? MailConfig::defaultFrom()) : (($_POST['mailfrom'] ?? MailConfig::defaultFrom()));
     $mailto   = $isJson ? ($jsonInput['to']   ?? '') : (($_POST['mailto'] ?? ''));
+    $toEncrypted = $isJson ? ($jsonInput['to_encrypted'] ?? '') : (($_POST['to_encrypted'] ?? ($_POST['mailto_encrypted'] ?? '')));
 
     $mailcc   = $isJson ? ($jsonInput['cc']   ?? '') : (($_POST['mailcc'] ?? ''));
     $mailbcc  = $isJson ? ($jsonInput['bcc']  ?? '') : (($_POST['mailbcc'] ?? ''));
@@ -225,6 +228,15 @@ try {
 
     $mailfrom = trim((string)$mailfrom);
     $mailto   = is_array($mailto) ? implode(';', $mailto) : (string)$mailto;
+
+    if ($toEncrypted) {
+        try {
+            $key = get_email_crypto_key();
+            $mailto = decrypt_email((string)$toEncrypted, $key);
+        } catch (Exception $e) {
+            ApiResponse::json(400, false, 'Invalid encrypted recipient', [], $logger->all());
+        }
+    }
 
     $subject  = MailUtil::sanitize((string)$subject);
 

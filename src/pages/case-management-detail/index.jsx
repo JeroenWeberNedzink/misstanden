@@ -11,6 +11,7 @@ import CommunicationPanel from './components/CommunicationPanel';
 import ActionHistoryPanel from './components/ActionHistoryPanel';
 import StatusUpdateModal from './components/StatusUpdateModal';
 import CaseManagementPanel from './components/CaseManagementPanel';
+import SLACompactCard from './components/SLACompactCard';
 import Icon from '../../components/AppIcon';
 import { ticketService } from '../../services/ticketService';
 
@@ -25,8 +26,46 @@ const fmtNL = (value) => {
   }
 };
 
+const toDateSafe = (value) => {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const addHours = (date, hours) => {
+  if (!date || !Number.isFinite(Number(hours))) return null;
+  const d = new Date(date);
+  d.setHours(d.getHours() + Number(hours));
+  return d;
+};
+
+const getFirstResponseAt = (ticket) => {
+  const actions = ticket?.ticketActions || ticket?.ticket_actions || [];
+  const actionDates = actions
+    .filter((a) => {
+      const t = a?.action_type || a?.actionType;
+      return t === 'status_update' || t === 'status_change';
+    })
+    .map((a) => toDateSafe(a?.created_at || a?.createdAt))
+    .filter(Boolean);
+
+  const messages = ticket?.messages || [];
+  const messageDates = messages
+    .filter((m) => {
+      const sender = String(m?.sender ?? '').toLowerCase();
+      return sender && sender !== 'reporter';
+    })
+    .map((m) => toDateSafe(m?.created_at || m?.createdAt))
+    .filter(Boolean);
+
+  const all = [...actionDates, ...messageDates].filter(Boolean);
+  if (!all.length) return null;
+  return new Date(Math.min(...all.map((d) => d.getTime())));
+};
+
 export default function CaseManagementDetail() {
   const [caseData, setCaseData] = useState(null);
+  const [workflowStatuses, setWorkflowStatuses] = useState([]);
   const [attachments, setAttachments] = useState([]);
   const [investigationNotes, setInvestigationNotes] = useState([]);
   const [communicationMessages, setCommunicationMessages] = useState([]);
@@ -79,14 +118,60 @@ export default function CaseManagementDetail() {
       : t('caseManagement.low');
   }, [t]);
 
-  const formatCase = useCallback((fullTicket) => {
+  const formatCase = useCallback((fullTicket, statusMeta = null) => {
     if (!fullTicket) return null;
+    const submissionDateValue =
+      fullTicket?.submittedAt ||
+      fullTicket?.submitted_at ||
+      fullTicket?.createdAt ||
+      fullTicket?.created_at ||
+      null;
+    const submittedAtDate = toDateSafe(submissionDateValue);
+    const statusCodeValue =
+      fullTicket?.statusCode ||
+      fullTicket?.status_code ||
+      fullTicket?.currentStage ||
+      fullTicket?.current_stage ||
+      fullTicket?.metadata?.workflow_status_code ||
+      null;
+    const slaResponseHours = fullTicket?.slaResponseHours || fullTicket?.sla_response_hours || 24;
+    const slaResolutionHours = fullTicket?.slaResolutionHours || fullTicket?.sla_resolution_hours || null;
+    const nextStepDueAt =
+      fullTicket?.nextStepDue ||
+      fullTicket?.next_step_due ||
+      fullTicket?.slaDeadline ||
+      fullTicket?.sla_deadline ||
+      null;
+    const expectedResolutionDate =
+      fullTicket?.expectedResolutionDate ||
+      fullTicket?.expected_resolution_date ||
+      null;
+    const firstResponseAt = getFirstResponseAt(fullTicket);
+    const firstResponseDueAt = submittedAtDate ? addHours(submittedAtDate, slaResponseHours) : null;
+    const resolutionDueAt = expectedResolutionDate
+      ? toDateSafe(expectedResolutionDate)
+      : (submittedAtDate && slaResolutionHours ? addHours(submittedAtDate, slaResolutionHours) : null);
+
+    const statusStartAt = toDateSafe(fullTicket?.lastUpdateAt || fullTicket?.last_update_at || submissionDateValue);
+    const computedNextStepDueAt =
+      statusStartAt && Number.isFinite(Number(statusMeta?.expectedDurationDays))
+        ? addHours(statusStartAt, Number(statusMeta.expectedDurationDays) * 24)
+        : null;
+
+    const statusLabel =
+      statusMeta?.label ||
+      fullTicket?.metadata?.status_label ||
+      statusCodeValue ||
+      fullTicket?.status ||
+      '-';
+
     return {
       id: fullTicket?.id,
       ticketNumber: fullTicket?.ticketNumber,
       accessCode: fullTicket?.accessCode,
-      status: fullTicket?.status,          // enum label if you store it
-      statusCode: fullTicket?.statusCode,  // workflow status code
+      status: statusLabel,          // display label
+      statusLabel,
+      statusCode: statusCodeValue,  // workflow status code
       currentStage: fullTicket?.currentStage,
       workflowType: fullTicket?.workflowType,
       metadata: fullTicket?.metadata || null,
@@ -94,12 +179,27 @@ export default function CaseManagementDetail() {
       priority: severityToPriorityLabel(fullTicket?.severityCode),
       priorityCode: fullTicket?.severityCode || 'low',
 
-      submittedDate: fullTicket?.submittedAt ? fmtNL(fullTicket.submittedAt) : '-',
+      submittedDate: submissionDateValue ? fmtNL(submissionDateValue) : '-',
       assignedTo: fullTicket?.handlers?.name || t('caseManagement.notAssigned'),
       assignedToId: fullTicket?.handlerId,
+      statusEmailNotify:
+        fullTicket?.statusEmailNotify ??
+        fullTicket?.status_email_notify ??
+        true,
 
       description: fullTicket?.description,
       location: fullTicket?.location,
+      sla: {
+        firstResponseAt,
+        firstResponseDueAt,
+        nextStepDueAt: nextStepDueAt || computedNextStepDueAt,
+        resolutionDueAt,
+        currentStatusDurationDays: statusMeta?.expectedDurationDays ?? null,
+        contactPersonName: statusMeta?.contactPersonName || null,
+        contactPersonEmail: statusMeta?.contactPersonEmail || null,
+        contactPersonPhone: statusMeta?.contactPersonPhone || null,
+        contactNotes: statusMeta?.contactNotes || null,
+      },
 
       reporterDetails: {
         name: fullTicket?.reporterName || t('caseManagement.anonymous'),
@@ -109,6 +209,19 @@ export default function CaseManagementDetail() {
       },
     };
   }, [severityToPriorityLabel, t]);
+
+  const resolveStatusMeta = useCallback((ticket, statuses = workflowStatuses) => {
+    const statusCode =
+      ticket?.statusCode ||
+      ticket?.status_code ||
+      ticket?.currentStage ||
+      ticket?.current_stage ||
+      ticket?.metadata?.workflow_status_code ||
+      null;
+    if (!statusCode || !Array.isArray(statuses)) return null;
+    const code = String(statusCode).trim().toLowerCase();
+    return statuses.find((s) => String(s?.code || '').trim().toLowerCase() === code) || null;
+  }, [workflowStatuses]);
 
   const pushAction = useCallback((action) => {
     // action shape that ActionHistoryPanel accepts
@@ -169,12 +282,34 @@ export default function CaseManagementDetail() {
       const fullTicket = await ticketService.getTicketById(ticketId);
       if (!isMountedRef.current) return;
 
-      // core
-      setCaseData(formatCase(fullTicket));
+      let statuses = [];
+      try {
+        const wfCode = fullTicket?.workflowType || fullTicket?.workflow_type;
+        if (wfCode) {
+          const res = await ticketService.getWorkflowStatuses(wfCode);
+          statuses = res?.statuses || [];
+          if (isMountedRef.current) setWorkflowStatuses(statuses);
+        }
+      } catch (err) {
+        console.warn('Error loading workflow statuses for SLA:', err);
+      }
 
-      // attachments
+      const statusMeta = resolveStatusMeta(fullTicket, statuses);
+
+      // core
+      setCaseData(formatCase(fullTicket, statusMeta));
+
+      const allAttachments = fullTicket?.attachments ?? [];
+      const publicAttachments = allAttachments.filter(
+        (att) => !att?.isInternal && !att?.noteId
+      );
+      const noteAttachments = allAttachments.filter(
+        (att) => att?.noteId || att?.isInternal
+      );
+
+      // attachments (public)
       setAttachments(
-        (fullTicket?.attachments ?? []).map((att) => ({
+        publicAttachments.map((att) => ({
           id: att?.id,
           name: att?.fileName,
           type: att?.mimeType?.includes('pdf') ? 'pdf' : 'image',
@@ -186,6 +321,21 @@ export default function CaseManagementDetail() {
         }))
       );
 
+      const attachmentsByNoteId = noteAttachments.reduce((acc, att) => {
+        const noteId = att?.noteId;
+        if (!noteId) return acc;
+        if (!acc[noteId]) acc[noteId] = [];
+        acc[noteId].push({
+          id: att?.id,
+          name: att?.fileName,
+          type: att?.mimeType?.includes('pdf') ? 'pdf' : 'image',
+          size: att?.sizeBytes,
+          uploadedDate: att?.createdAt ? fmtNL(att.createdAt) : '-',
+          url: att?.fileUrl,
+        });
+        return acc;
+      }, {});
+
       // notes
       setInvestigationNotes(
         (fullTicket?.ticketComments ?? []).map((comment) => ({
@@ -194,6 +344,7 @@ export default function CaseManagementDetail() {
           role: t('caseManagement.handler'),
           timestamp: comment?.createdAt ? fmtNL(comment.createdAt) : '-',
           content: comment?.comment,
+          attachments: attachmentsByNoteId[comment?.id] || [],
         }))
       );
 
@@ -265,7 +416,21 @@ export default function CaseManagementDetail() {
       );
 
       // ✅ update caseData from returned ticket (FlowBar updates immediately)
-      setCaseData(formatCase(updatedTicket));
+      let statusMeta = resolveStatusMeta(updatedTicket);
+      if (!statusMeta) {
+        try {
+          const wfCode = updatedTicket?.workflowType || updatedTicket?.workflow_type;
+          if (wfCode) {
+            const res = await ticketService.getWorkflowStatuses(wfCode);
+            const statuses = res?.statuses || [];
+            if (isMountedRef.current) setWorkflowStatuses(statuses);
+            statusMeta = resolveStatusMeta(updatedTicket, statuses);
+          }
+        } catch (err) {
+          console.warn('Error reloading workflow statuses after update:', err);
+        }
+      }
+      setCaseData(formatCase(updatedTicket, statusMeta));
 
       // ✅ add action in UI immediately
       pushAction({
@@ -283,12 +448,20 @@ export default function CaseManagementDetail() {
     }
   };
 
-  const handleAddNote = async (noteContent, authorName) => {
+  const handleAddNote = async (noteContent, authorName, attachments = []) => {
     const ticketId = getStoredTicketId();
     if (!ticketId) return navigate('/handler-dashboard');
 
     try {
-      const created = await ticketService.addComment(ticketId, noteContent, authorName, { currentHandlerId });
+      const result = await ticketService.addInvestigationNote(
+        ticketId,
+        noteContent,
+        authorName,
+        attachments,
+        { currentHandlerId }
+      );
+      const created = result?.comment;
+      const uploadedAttachments = result?.attachments || [];
 
       // ✅ update notes list locally
       setInvestigationNotes((prev) => [
@@ -298,6 +471,14 @@ export default function CaseManagementDetail() {
           role: t('caseManagement.handler'),
           timestamp: created?.createdAt ? fmtNL(created.createdAt) : fmtNL(new Date().toISOString()),
           content: created?.comment || noteContent,
+          attachments: uploadedAttachments.map((att) => ({
+            id: att?.id,
+            name: att?.fileName,
+            type: att?.mimeType?.includes('pdf') ? 'pdf' : 'image',
+            size: att?.sizeBytes,
+            uploadedDate: att?.createdAt ? fmtNL(att.createdAt) : fmtNL(new Date().toISOString()),
+            url: att?.fileUrl,
+          })),
         },
         ...(prev || []),
       ]);
@@ -310,7 +491,11 @@ export default function CaseManagementDetail() {
         performedBy: authorName || user?.name || user?.email || t('caseManagement.handler'),
       });
 
-      showToast(t('caseManagement.noteSent'));
+      if (uploadedAttachments.length > 0) {
+        showToast('Notitie en bijlagen opgeslagen');
+      } else {
+        showToast(t('caseManagement.noteSent'));
+      }
     } catch (err) {
       console.error('Error adding note:', err);
       showToast(t('caseManagement.noteAddFailed'));
@@ -372,7 +557,7 @@ export default function CaseManagementDetail() {
         showToast(`${files.length} bestand(en) uploaden...`);
 
         for (const file of files) {
-          const att = await ticketService.uploadAttachment(ticketId, file, { currentHandlerId });
+          const att = await ticketService.uploadAttachment(ticketId, file, { currentHandlerId, notifyReporter: true });
 
           // ✅ update attachments list locally
           setAttachments((prev) => [
@@ -513,6 +698,37 @@ export default function CaseManagementDetail() {
     }
   };
 
+  const handleStatusEmailNotifyChange = async (nextValue) => {
+    const ticketId = getStoredTicketId();
+    if (!ticketId) return navigate('/handler-dashboard');
+
+    try {
+      const updatedTicket = await ticketService.updateTicket(ticketId, {
+        status_email_notify: !!nextValue,
+      });
+
+      setCaseData((prev) => ({
+        ...prev,
+        statusEmailNotify:
+          updatedTicket?.statusEmailNotify ??
+          updatedTicket?.status_email_notify ??
+          !!nextValue,
+      }));
+
+      pushAction({
+        actionType: 'notification_setting',
+        action: 'Status e-mails',
+        description: `Status e-mails ${nextValue ? 'ingeschakeld' : 'uitgeschakeld'}`,
+        performedBy: user?.name || user?.email || t('caseManagement.handler'),
+      });
+
+      showToast('Status e-mail voorkeur bijgewerkt');
+    } catch (err) {
+      console.error('Error updating status email preference:', err);
+      showToast('Fout bij bijwerken status e-mail voorkeur');
+    }
+  };
+
   const isWhistleblower = useMemo(() => {
     const workflowType = caseData?.workflowType || '';
     return workflowType.toLowerCase().includes('whistleblow') || workflowType.toLowerCase().includes('klokkenluider');
@@ -567,11 +783,18 @@ export default function CaseManagementDetail() {
             </div>
 
             <div className="space-y-3 md:space-y-4 lg:space-y-5">
+              <SLACompactCard
+                sla={caseData?.sla}
+                statusLabel={caseData?.statusLabel || caseData?.status}
+                currentStatusDurationDays={caseData?.sla?.currentStatusDurationDays}
+              />
+
               <CaseManagementPanel
                 caseData={caseData}
                 onAssignmentChange={handleAssignmentChange}
                 onPriorityChange={handlePriorityChange}
                 onStatusChange={() => setShowStatusModal(true)}
+                onStatusEmailNotifyChange={handleStatusEmailNotifyChange}
                 handlers={availableHandlers}
                 isWhistleblower={isWhistleblower}
               />

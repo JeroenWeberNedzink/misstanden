@@ -97,6 +97,14 @@ const getEndOfDayISO = (dateStr) => {
   return d.toISOString();
 };
 
+const addDaysISO = (dateLike, days) => {
+  if (!dateLike || !Number.isFinite(Number(days))) return null;
+  const d = new Date(dateLike);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setDate(d.getDate() + Number(days));
+  return d.toISOString();
+};
+
 // -----------------------------
 // Workflow statuses (DB-driven)
 // -----------------------------
@@ -182,6 +190,13 @@ const getWorkflowWithStatuses = async (workflowCode) => {
     order: Number(s.sort_order ?? 0),
     isTerminal: Boolean(s.is_terminal),
     nextCodes: Array.isArray(s.next_codes) ? s.next_codes : [],
+    expectedDurationDays: Number.isFinite(Number(s.expected_duration_days))
+      ? Number(s.expected_duration_days)
+      : null,
+    contactPersonName: safeTrim(s.contact_person_name) || null,
+    contactPersonEmail: safeTrim(s.contact_person_email) || null,
+    contactPersonPhone: safeTrim(s.contact_person_phone) || null,
+    contactNotes: safeTrim(s.contact_notes) || null,
   }));
 
   workflowCache.set(code, { workflow, statuses, ts: now });
@@ -348,7 +363,8 @@ export const ticketService = {
         *,
         handlers:handler_id ( id, name, email, roles ),
         attachments (*),
-        messages (*)
+        messages (*),
+        ticket_actions (*)
       `)
       .eq('access_code', code);
 
@@ -364,6 +380,7 @@ export const ticketService = {
   async createTicket(ticketData) {
     if (!ticketData?.description) throw new Error('description is required');
     if (!ticketData?.severity) throw new Error('severity is required');
+    if (!ticketData?.reporterEmail) throw new Error('reporterEmail is required');
 
     const workflowType = safeTrim(ticketData?.workflowType);
     if (!workflowType) throw new Error('workflowType is required');
@@ -372,11 +389,16 @@ export const ticketService = {
     const def = pickDefaultStatus(statuses);
     if (!def) throw new Error(`No statuses configured for workflow: ${workflowType}`);
 
+    const nowIso = new Date().toISOString();
     const year = new Date().getFullYear();
     const randomNum = Math.floor(Math.random() * 900000) + 100000;
     const ticketNumber = `NZ-${year}-${String(randomNum).padStart(6, '0')}`;
 
     const accessCode = String(Math.floor(100000 + Math.random() * 900000)).padStart(6, '0');
+
+    const nextStepDueAt = def?.expectedDurationDays
+      ? addDaysISO(nowIso, def.expectedDurationDays)
+      : null;
 
     const payload = {
       ticket_number: ticketNumber,
@@ -389,10 +411,13 @@ export const ticketService = {
       reporter_name: ticketData.reporterName || null,
       reporter_phone: ticketData.reporterPhone || null,
       email_notify: !!ticketData.emailNotify,
+      status_email_notify:
+        ticketData.statusEmailNotify === undefined ? true : !!ticketData.statusEmailNotify,
 
       // DB-driven initial state
       status_code: def.code,
       current_stage: def.stage || def.code,
+      next_step_due: nextStepDueAt,
 
       // Optional: keep UI label stored in metadata (since there is NO status_label column)
       metadata: {
@@ -405,13 +430,23 @@ export const ticketService = {
       ...(def.enumLabel ? { status: def.enumLabel } : {}),
     };
 
-    const { data, error } = await supabase.from('tickets').insert(payload).select().single();
-    throwIfError(error, 'createTicket');
+    const resp = await fetch('/api/tickets.api.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...payload,
+        is_anonymous: !!ticketData?.isAnonymous
+      })
+    });
+    const json = await resp.json();
+    if (!resp.ok || !json?.success) {
+      throw new Error(json?.message || 'Failed to create ticket');
+    }
 
-    const createdTicket = toCamelCase(data);
+    const createdTicket = toCamelCase(json?.data);
 
     // Send confirmation email to reporter (async, don't wait)
-    if (createdTicket.emailNotify && createdTicket.reporterEmail) {
+    if (createdTicket.emailNotify && (createdTicket.reporterEmail || createdTicket.reporterEmailEncrypted)) {
       notificationService.notifyReporterTicketCreated(createdTicket)
         .catch(err => console.error('Failed to send ticket creation email:', err));
     }
@@ -449,10 +484,15 @@ export const ticketService = {
     const nowIso = new Date().toISOString();
 
     // The ONLY guaranteed-valid writes (your trigger validates status_code):
+    const nextStepDueAt = resolved?.expectedDurationDays
+      ? addDaysISO(nowIso, resolved.expectedDurationDays)
+      : null;
+
     const update = {
       last_update_at: nowIso,
       status_code: resolved.code,
       current_stage: resolved.stage || resolved.code,
+      next_step_due: nextStepDueAt,
       // Metadata merge handled below
     };
 
@@ -472,6 +512,10 @@ export const ticketService = {
       ...(cur?.metadata || {}),
       status_label: resolved.label,
       workflow_status_code: resolved.code,
+      status_contact_person_name: resolved?.contactPersonName || null,
+      status_contact_person_email: resolved?.contactPersonEmail || null,
+      status_contact_person_phone: resolved?.contactPersonPhone || null,
+      status_contact_notes: resolved?.contactNotes || null,
     };
 
     // Optional: only set enum if explicitly provided by DB config
@@ -1038,6 +1082,8 @@ async deleteHandler(handlerId, options = {}) {
         file_url: fileMeta.url || '#',
         mime_type: fileMeta.type || 'application/octet-stream',
         size_bytes: fileMeta.size || null,
+        is_internal: !!fileMeta.isInternal,
+        note_id: fileMeta.noteId || null,
       })
       .select()
       .single();
@@ -1047,7 +1093,15 @@ async deleteHandler(handlerId, options = {}) {
   },
 
   async uploadAttachment(ticketId, file, options = {}) {
-    const { bucket = 'attachments', makePublicUrl = true, upsert = false, currentHandlerId = null } = options;
+    const {
+      bucket = 'attachments',
+      makePublicUrl = true,
+      upsert = false,
+      currentHandlerId = null,
+      isInternal = false,
+      noteId = null,
+      notifyReporter = false,
+    } = options;
 
     if (!ticketId) throw new Error('ticketId is required');
     if (!file) throw new Error('file is required');
@@ -1086,7 +1140,14 @@ async deleteHandler(handlerId, options = {}) {
       if (pub?.publicUrl) fileUrl = pub.publicUrl;
     }
 
-    const attachment = await this.createAttachmentRecord(ticketId, { name: originalName, url: fileUrl, type: file.type, size: file.size });
+    const attachment = await this.createAttachmentRecord(ticketId, {
+      name: originalName,
+      url: fileUrl,
+      type: file.type,
+      size: file.size,
+      isInternal,
+      noteId,
+    });
 
     // Log action
     const { error: actionError } = await supabase.from('ticket_actions').insert({
@@ -1101,7 +1162,46 @@ async deleteHandler(handlerId, options = {}) {
     });
     if (actionError) console.error('Error logging action:', actionError);
 
+    if (notifyReporter && !isInternal) {
+      try {
+        const { data: ticket } = await supabase
+          .from('tickets')
+          .select('*')
+          .eq('id', ticketId)
+          .single();
+        if (ticket) {
+          notificationService.notifyAttachmentAdded(
+            toCamelCase(ticket),
+            attachment,
+            handlerInfo?.name || 'Handler'
+          ).catch(err => console.error('Failed to send attachment notification:', err));
+        }
+      } catch (err) {
+        console.error('Error loading ticket for attachment notification:', err);
+      }
+    }
+
     return attachment;
+  },
+
+  async addInvestigationNote(ticketId, comment, authorName, attachments = [], options = {}) {
+    if (!ticketId) throw new Error('ticketId is required');
+    if (!comment || !String(comment).trim()) throw new Error('comment is required');
+
+    const created = await this.addComment(ticketId, comment, authorName, options);
+
+    const uploaded = [];
+    const files = Array.isArray(attachments) ? attachments : [];
+    for (const file of files) {
+      const att = await this.uploadAttachment(ticketId, file, {
+        currentHandlerId: options?.currentHandlerId || null,
+        isInternal: true,
+        noteId: created?.id || null,
+      });
+      uploaded.push(att);
+    }
+
+    return { comment: created, attachments: uploaded };
   },
 
   // ----- Action Logging Utility -----

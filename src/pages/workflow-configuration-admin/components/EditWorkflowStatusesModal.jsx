@@ -182,6 +182,13 @@ export default function EditWorkflowStatusesModal({
     [activeRows, selectedId]
   );
 
+  const missingDurationLabels = useMemo(() => {
+    return activeRows
+      .filter((r) => !Number.isFinite(Number(r.expectedDurationDays)))
+      .map((r) => r.label || r.code)
+      .filter(Boolean);
+  }, [activeRows]);
+
   useEffect(() => {
     // If selected gets deleted, auto-select first
     if (selectedId && !selected && activeRows.length) {
@@ -424,6 +431,23 @@ export default function EditWorkflowStatusesModal({
               {error && (
                 <div className="mt-3 p-3 rounded-xl border border-destructive/30 bg-destructive/10 text-sm text-destructive">
                   {error}
+                </div>
+              )}
+
+              {/* SLA duration warning */}
+              {missingDurationLabels.length > 0 && (
+                <div className="mt-3 p-3 rounded-xl border border-amber-200/60 bg-amber-50/80 text-sm text-amber-900">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <Icon name="AlertTriangle" size={16} />
+                    SLA ontbreekt voor {missingDurationLabels.length} stap(pen)
+                  </div>
+                  <div className="text-xs text-amber-800/80 mt-1">
+                    Zet <span className="font-mono">Doel doorlooptijd (dagen)</span> in de tab “SLA” om “SLA: niet ingesteld” te voorkomen.
+                  </div>
+                  <div className="text-xs text-amber-900 mt-2">
+                    {missingDurationLabels.slice(0, 6).join(', ')}
+                    {missingDurationLabels.length > 6 ? '…' : ''}
+                  </div>
                 </div>
               )}
             </div>

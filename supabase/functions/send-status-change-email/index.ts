@@ -42,6 +42,9 @@ serve(async (req) => {
         reporter_email,
         reporter_name,
         email_notify,
+        status_email_notify,
+        status_code,
+        workflow_type,
         handler_id,
         handlers (name, email)
       `)
@@ -65,8 +68,43 @@ serve(async (req) => {
 
     const statusMessage = statusMessages[newStatus] || `De status is gewijzigd naar ${newStatus}`;
 
+    // Lookup status contact person (if configured)
+    let statusContact = {
+      name: null,
+      email: null,
+      phone: null,
+      notes: null
+    };
+
+    if (ticket.workflow_type && ticket.status_code) {
+      const { data: wf } = await supabase
+        .from("workflows")
+        .select("id")
+        .eq("code", ticket.workflow_type)
+        .single();
+
+      if (wf?.id) {
+        const { data: statusRow } = await supabase
+          .from("workflow_statuses")
+          .select("contact_person_name, contact_person_email, contact_person_phone, contact_notes")
+          .eq("workflow_id", wf.id)
+          .eq("code", ticket.status_code)
+          .single();
+
+        statusContact = {
+          name: statusRow?.contact_person_name || null,
+          email: statusRow?.contact_person_email || null,
+          phone: statusRow?.contact_person_phone || null,
+          notes: statusRow?.contact_notes || null
+        };
+      }
+    }
+
+    const hasContact =
+      Boolean(statusContact.name || statusContact.email || statusContact.phone || statusContact.notes);
+
     // Email to reporter (if they opted in)
-    if (ticket.email_notify && ticket.reporter_email) {
+    if (ticket.email_notify && ticket.status_email_notify !== false && ticket.reporter_email) {
       const reporterEmailHtml = `
 <!DOCTYPE html>
 <html>
@@ -100,6 +138,15 @@ serve(async (req) => {
         </p>
         <p style="margin:10px 0 0 0;color:#374151;">${statusMessage}</p>
       </div>
+      ${hasContact ? `
+      <div class="status-box">
+        <p style="margin:0 0 6px 0;font-weight:600;">Contactpersoon</p>
+        <p style="margin:6px 0;"><strong>Naam:</strong> ${statusContact.name || "-"}</p>
+        <p style="margin:6px 0;"><strong>E-mail:</strong> ${statusContact.email || "-"}</p>
+        <p style="margin:6px 0;"><strong>Telefoon:</strong> ${statusContact.phone || "-"}</p>
+        <p style="margin:6px 0;"><strong>Notitie:</strong> ${statusContact.notes || "-"}</p>
+      </div>
+      ` : ""}
       <p style="margin-top:20px;font-size:13px;color:#6b7280;">
         U kunt de voortgang van uw melding volgen met uw ticketnummer en toegangscode.
       </p>

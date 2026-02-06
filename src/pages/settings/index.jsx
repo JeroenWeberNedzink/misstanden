@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { useTranslation } from 'react-i18next';
 import AuthContextNavigator from '../../components/navigation/AuthContextNavigator';
@@ -127,6 +127,28 @@ const getCategoryMeta = (t) => ({
     iconBg: 'bg-amber-100',
     iconColor: 'text-amber-600'
   },
+  security_bundle: {
+    label: t('settings.categories.security'),
+    icon: 'ShieldCheck',
+    isBundle: true,
+    priority: 7,
+    description: `${t('settings.categories.securityDescription')} · ${t('settings.categories.slaDescription')} · ${t('settings.categories.dangerDescription')} · ${t('settings.categories.retentionDescription')}`,
+    color: 'from-red-500 to-orange-600',
+    bgColor: 'bg-gradient-to-br from-red-50 to-orange-50',
+    iconBg: 'bg-red-100',
+    iconColor: 'text-red-600'
+  },
+  notifications_bundle: {
+    label: t('settings.categories.notifications'),
+    icon: 'Bell',
+    isBundle: true,
+    priority: 6,
+    description: `${t('settings.categories.notificationsDescription')} · ${t('settings.categories.emailNotificationsDescription')}`,
+    color: 'from-yellow-500 to-cyan-600',
+    bgColor: 'bg-gradient-to-br from-yellow-50 to-cyan-50',
+    iconBg: 'bg-yellow-100',
+    iconColor: 'text-yellow-600'
+  },
   locations: {
     label: 'Locations',
     icon: 'MapPin',
@@ -145,6 +167,13 @@ export default function SystemSettingsAdmin() {
   const currentHandler = useCurrentHandler();
   const { reload: reloadGlobalSettings } = useSettings();
   const categoryMeta = useMemo(() => getCategoryMeta(t), [t]);
+  const categoryBundles = useMemo(
+  () => ([
+    { id: 'notifications_bundle', categories: ['email_notifications', 'notifications'] },
+    { id: 'security_bundle', categories: ['security', 'sla', 'danger', 'retention'] },
+  ]),
+  []
+);
 
   const [rows, setRows] = useState([]);
   const [draft, setDraft] = useState({});
@@ -176,6 +205,20 @@ export default function SystemSettingsAdmin() {
     return ordered;
   }, [byCategory, categoryMeta]);
 
+  const bundledCategoryIds = useMemo(() => {
+    const ids = new Set();
+    categoryBundles.forEach((b) => b.categories.forEach((c) => ids.add(c)));
+    return ids;
+  }, [categoryBundles]);
+
+  const bundleMetaMap = useMemo(() => {
+    const map = new Map();
+    categoryBundles.forEach((b) => {
+      map.set(b.id, { ...b, meta: categoryMeta[b.id] });
+    });
+    return map;
+  }, [categoryBundles, categoryMeta]);
+
   const filteredRows = useMemo(() => {
     if (!searchQuery.trim()) return rows;
 
@@ -197,6 +240,16 @@ export default function SystemSettingsAdmin() {
     const categoriesWithResults = new Set(filteredRows.map(r => r.category));
     return categories.filter(cat => categoriesWithResults.has(cat));
   }, [categories, searchQuery, filteredRows, viewMode]);
+
+  const displayCategories = useMemo(() => {
+    const base = filteredCategories.filter((c) => !bundledCategoryIds.has(c));
+    const categoriesWithResults = new Set(filteredRows.map((r) => r.category));
+    const bundlesToShow = categoryBundles.filter((b) => {
+      if (!searchQuery.trim()) return true;
+      return b.categories.some((c) => categoriesWithResults.has(c));
+    }).map((b) => b.id);
+    return [...bundlesToShow, ...base];
+  }, [filteredCategories, bundledCategoryIds, categoryBundles, filteredRows, searchQuery]);
 
   const dirtyKeys = useMemo(() => {
     const keys = Object.keys(draft);
@@ -479,6 +532,80 @@ export default function SystemSettingsAdmin() {
 
                 {/* Category Header */}
                 {(() => {
+                  const bundle = bundleMetaMap.get(selectedCategory);
+                  if (bundle) {
+                    const meta = bundle.meta || { label: selectedCategory, icon: 'Folder' };
+                    const allRows = bundle.categories.flatMap((c) => byCategory[c] || []);
+                    const changedInBundle = allRows.filter(row => {
+                      try {
+                        return JSON.stringify(draft[row.setting_key]) !== JSON.stringify(original[row.setting_key]);
+                      } catch {
+                        return draft[row.setting_key] !== original[row.setting_key];
+                      }
+                    }).length;
+
+                    return (
+                      <div className="space-y-4">
+                        <div className={`rounded-2xl border border-border ${meta.bgColor || 'bg-card'} p-6 shadow-sm`}>
+                          <div className="flex items-center gap-4">
+                            <div className={`w-16 h-16 rounded-2xl ${meta.iconBg} flex items-center justify-center shadow-md`}>
+                              <Icon name={meta.icon} size={32} className={meta.iconColor} />
+                            </div>
+                            <div>
+                              <h2 className="text-2xl font-bold text-foreground">{meta.label}</h2>
+                              <p className="text-sm text-muted-foreground mb-2">{meta.description}</p>
+                              <div className="flex items-center gap-3">
+                                <span className="text-sm text-muted-foreground">
+                                  {allRows.length} {allRows.length === 1 ? t('settings.navigation.setting') : t('settings.navigation.settings')}
+                                </span>
+                                {changedInBundle > 0 && (
+                                  <>
+                                    <span className="text-sm text-muted-foreground">â€¢</span>
+                                    <span className={`text-sm font-semibold ${meta.iconColor} bg-white/80 px-2 py-0.5 rounded-full`}>
+                                      {changedInBundle} {t('settings.navigation.modified')}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {bundle.categories.map((category) => {
+                          const categoryMetaItem = categoryMeta[category] || { label: category, icon: 'Folder' };
+                          const categoryRows = byCategory[category] || [];
+
+                          return (
+                            <div key={category} className={`rounded-2xl border border-border ${categoryMetaItem.bgColor || 'bg-card'} p-6 shadow-sm`}>
+                              <div className="flex items-center gap-3 mb-4">
+                                <div className={`w-12 h-12 rounded-xl ${categoryMetaItem.iconBg} flex items-center justify-center shadow-sm`}>
+                                  <Icon name={categoryMetaItem.icon} size={24} className={categoryMetaItem.iconColor} />
+                                </div>
+                                <h3 className="text-lg font-bold text-foreground">{categoryMetaItem.label}</h3>
+                              </div>
+
+                              {category === 'email_notifications' ? (
+                                <EmailNotificationSettings />
+                              ) : (
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                  {categoryRows.map((row) => (
+                                    <SettingCard
+                                      key={row.setting_key}
+                                      row={row}
+                                      draftValue={draft[row.setting_key]}
+                                      onChangeDraft={(nextVal) => setDraft((prev) => ({ ...prev, [row.setting_key]: nextVal }))}
+                                      isChanged={dirtyKeys.includes(row.setting_key)}
+                                    />
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  }
+
                   const meta = categoryMeta[selectedCategory] || { label: selectedCategory, icon: 'Folder' };
                   const categoryRows = byCategory[selectedCategory] || [];
                   const changedInCategory = categoryRows.filter(row => {
@@ -504,7 +631,7 @@ export default function SystemSettingsAdmin() {
                             </span>
                             {changedInCategory > 0 && (
                               <>
-                                <span className="text-sm text-muted-foreground">•</span>
+                                <span className="text-sm text-muted-foreground">â€¢</span>
                                 <span className={`text-sm font-semibold ${meta.iconColor} bg-white/80 px-2 py-0.5 rounded-full`}>
                                   {changedInCategory} {t('settings.navigation.modified')}
                                 </span>
@@ -549,9 +676,12 @@ export default function SystemSettingsAdmin() {
                 </div> */}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredCategories.map((category) => {
-                    const meta = categoryMeta[category] || { label: category, icon: 'Folder' };
-                    const categoryRows = byCategory[category] || [];
+                  {displayCategories.map((category) => {
+                    const bundle = bundleMetaMap.get(category);
+                    const meta = bundle?.meta || categoryMeta[category] || { label: category, icon: 'Folder' };
+                    const categoryRows = bundle
+                      ? bundle.categories.flatMap((c) => byCategory[c] || [])
+                      : (byCategory[category] || []);
 
                     // Count changed settings in this category
                     const changedInCategory = categoryRows.filter(row => {
@@ -563,7 +693,7 @@ export default function SystemSettingsAdmin() {
                     }).length;
 
                     // For special categories, show them even if no rows
-                    if (category === 'email_notifications' || category === 'locations' || categoryRows.length > 0) {
+                    if (bundle || category === 'email_notifications' || category === 'locations' || categoryRows.length > 0) {
                       return (
                         <button
                           key={category}
@@ -587,14 +717,14 @@ export default function SystemSettingsAdmin() {
                                 </p>
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-xs text-muted-foreground">
-                                    {(category === 'email_notifications' || category === 'locations')
+                                    {(bundle || category === 'email_notifications' || category === 'locations')
                                       ? t('settings.navigation.clickToConfigure')
                                       : `${categoryRows.length} ${categoryRows.length === 1 ? t('settings.navigation.setting') : t('settings.navigation.settings')}`
                                     }
                                   </span>
                                   {changedInCategory > 0 && (
                                     <>
-                                      <span className="text-xs text-muted-foreground">•</span>
+                                      <span className="text-xs text-muted-foreground">â€¢</span>
                                       <span className={`text-xs font-semibold ${meta.iconColor} bg-white/80 px-2 py-0.5 rounded-full`}>
                                         {changedInCategory} {t('settings.navigation.unsavedChanges')}
                                       </span>
@@ -629,3 +759,9 @@ export default function SystemSettingsAdmin() {
     </>
   );
 }
+
+
+
+
+
+

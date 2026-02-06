@@ -15,7 +15,10 @@ const StatCard = ({ icon, label, value, color, bgColor }) => (
   </div>
 );
 
-const QuickStats = ({ tickets, currentHandlerId }) => {
+const safeTrim = (v) => String(v ?? '').trim();
+const safeLower = (v) => String(v ?? '').toLowerCase();
+
+const QuickStats = ({ tickets, currentHandlerId, workflowStatusMap = new Map() }) => {
   // Simple, accurate stats
   const getTicketHandlerId = (ticket) =>
     ticket?.handlerId ||
@@ -27,18 +30,25 @@ const QuickStats = ({ tickets, currentHandlerId }) => {
 
   const todayKey = new Date().toDateString();
 
+  const isOpen = (t) => {
+    const wfCode = safeTrim(t?.workflowType || t?.workflow_type);
+    const statusCode = safeTrim(t?.statusCode || t?.status_code);
+    const wfMap = workflowStatusMap.get(wfCode);
+    const meta = wfMap?.get(safeLower(statusCode));
+    return meta ? !meta.isTerminal : true;
+  };
+
   const stats = {
     total: tickets?.length || 0,
-    // Open = not resolved and not closed
-    open: tickets?.filter(t => t?.statusCode !== 'resolved' && t?.statusCode !== 'closed')?.length || 0,
-    // Unassigned or new
-    unassigned: tickets?.filter(t => !getTicketHandlerId(t) && t?.statusCode !== 'resolved' && t?.statusCode !== 'closed')?.length || 0,
+    // Open = not terminal in workflow_statuses
+    open: tickets?.filter(isOpen)?.length || 0,
+    // Unassigned and open
+    unassigned: tickets?.filter(t => !getTicketHandlerId(t) && isOpen(t))?.length || 0,
     // High priority (critical or high severity)
     highPriority: tickets?.filter(t => t?.severityCode === 'critical' || t?.severityCode === 'high')?.length || 0,
     // Mine (open)
     mineOpen: tickets?.filter(t =>
-      t?.statusCode !== 'resolved' &&
-      t?.statusCode !== 'closed' &&
+      isOpen(t) &&
       getTicketHandlerId(t) === currentHandlerId
     )?.length || 0,
     // Today

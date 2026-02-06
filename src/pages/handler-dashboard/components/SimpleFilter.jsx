@@ -11,13 +11,15 @@ const SimpleFilter = ({
   onSeverityChange,
   scopeFilter,
   onScopeChange,
+  statusOptions = [],
 }) => {
   const statusButtons = [
     { value: 'all', label: 'Alle', color: 'bg-gray-100 text-gray-700 hover:bg-gray-200' },
-    { value: 'new', label: 'Nieuw', color: 'bg-sky-50 text-sky-700 hover:bg-sky-100' },
-    { value: 'in_progress', label: 'Bezig', color: 'bg-amber-50 text-amber-700 hover:bg-amber-100' },
-    { value: 'resolved', label: 'Opgelost', color: 'bg-green-50 text-green-700 hover:bg-green-100' },
-    { value: 'closed', label: 'Gesloten', color: 'bg-gray-50 text-gray-600 hover:bg-gray-100' },
+    ...statusOptions.map((o) => ({
+      value: o.value,
+      label: o.label || o.value,
+      color: 'bg-gray-100 text-gray-700 hover:bg-gray-200',
+    })),
   ];
 
   const severityButtons = [

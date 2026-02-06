@@ -76,6 +76,7 @@ const CaseHeader = ({ caseData, onBack, onStatusChange, isWhistleblower, onStatu
                 <span className="font-mono">{caseData?.accessCode}</span>
               </div>
             </div>
+
           </div>
         </div>
 

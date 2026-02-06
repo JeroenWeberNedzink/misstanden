@@ -120,7 +120,17 @@ const TicketTableRow = ({
   const isUnassigned = !ticket?.handlers?.name;
   const isCritical = safeLower(severityCode) === 'critical';
   const isHigh = safeLower(severityCode) === 'high';
-  const isNew = safeLower(statusCode) === 'new'; // attention rule based on general status_code
+  const isNew = useMemo(() => {
+    if (!workflowCode || !workflowStatusMap) return false;
+    const wfMap = workflowStatusMap.get(workflowCode);
+    if (!wfMap) return false;
+    const statusMeta = wfMap.get(safeLower(statusCode));
+    if (!statusMeta) return false;
+    const orders = Array.from(wfMap.values()).map((s) => Number(s.order ?? 999));
+    const minOrder = orders.length ? Math.min(...orders) : null;
+    if (minOrder === null) return false;
+    return Number(statusMeta.order ?? 999) === minOrder;
+  }, [workflowCode, workflowStatusMap, statusCode]);
 
   const wfUi = useMemo(() => workflowUI(workflowCode), [workflowCode]);
 

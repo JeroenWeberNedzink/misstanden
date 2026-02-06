@@ -140,48 +140,21 @@ const FilterControls = ({
           />
         </div>
 
-        {/* Quick status filters */}
+        {/* Quick status filters (DB-driven) */}
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => onFilterChange('status', 'all')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filters?.status === 'all'
-                ? 'bg-primary text-white shadow-sm'
-                : 'bg-muted text-foreground hover:bg-muted/70'
-            }`}
-          >
-            Alle
-          </button>
-          <button
-            onClick={() => onFilterChange('status', 'new')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filters?.status === 'new'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-            }`}
-          >
-            Nieuw
-          </button>
-          <button
-            onClick={() => onFilterChange('status', 'in_progress')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filters?.status === 'in_progress'
-                ? 'bg-purple-600 text-white shadow-sm'
-                : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
-            }`}
-          >
-            Bezig
-          </button>
-          <button
-            onClick={() => onFilterChange('status', 'resolved')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filters?.status === 'resolved'
-                ? 'bg-green-600 text-white shadow-sm'
-                : 'bg-green-50 text-green-700 hover:bg-green-100'
-            }`}
-          >
-            Opgelost
-          </button>
+          {statusOptions.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => onFilterChange('status', opt.value)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                filters?.status === opt.value
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'bg-muted text-foreground hover:bg-muted/70'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
 
           {hasActiveFilters && (
             <Button

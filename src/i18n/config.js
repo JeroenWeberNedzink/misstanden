@@ -6,18 +6,20 @@ import translationEN from './locales/en/translation.json';
 import translationNL from './locales/nl/translation.json';
 import translationFR from './locales/fr/translation.json';
 import translationDE from './locales/de/translation.json';
+import translationPT from './locales/pt/translation.json';
 
 const resources = {
   en: { translation: translationEN },
   nl: { translation: translationNL },
   fr: { translation: translationFR },
   de: { translation: translationDE },
+  pt: { translation: translationPT },
 };
 
 i18n?.use(LanguageDetector)?.use(initReactI18next)?.init({
     resources,
     fallbackLng: 'en',
-    supportedLngs: ['en', 'nl', 'fr', 'de'],
+    supportedLngs: ['en', 'nl', 'fr', 'de', 'pt'],
     detection: {
       order: ['localStorage', 'navigator'],
       caches: ['localStorage'],

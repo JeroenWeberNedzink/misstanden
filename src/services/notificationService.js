@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Notification Service
  * Handles all notification logic including checking user preferences,
  * quiet hours, severity thresholds, etc. before sending emails
@@ -7,6 +7,29 @@
 import * as emailService from './emailService';
 import { handlerProfileService } from './handlerProfileService';
 import { ticketService } from './ticketService';
+
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const nl2br = (value) => escapeHtml(value).replace(/\n/g, '<br/>');
+
+const commentStyles = `
+<style>
+  .section-title { margin: 0 0 8px 0; font-size: 16px; color: #0f172a; }
+  .lead { margin: 0 0 12px 0; font-size: 15px; color: #1f2937; }
+  .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 12px 0; }
+  .meta-table { width: 100%; border-collapse: collapse; }
+  .meta-table td { padding: 6px 0; font-size: 14px; vertical-align: top; }
+  .meta-label { width: 140px; color: #64748b; }
+  .meta-value { color: #0f172a; }
+  .muted { color: #64748b; font-size: 13px; }
+</style>
+`;
 
 /**
  * Check if current time is within quiet hours
@@ -136,7 +159,7 @@ export const notificationService = {
   async notifyReporterTicketCreated(ticket) {
     try {
       // Only send if reporter opted in
-      if (!ticket.emailNotify || !ticket.reporterEmail) {
+      if (!ticket.emailNotify || (!ticket.reporterEmail && !ticket.reporterEmailEncrypted)) {
         console.log('[Notification] Reporter did not opt-in for notifications');
         return { success: false, skipped: true, reason: 'No opt-in' };
       }
@@ -195,8 +218,14 @@ export const notificationService = {
     };
 
     try {
+      const reporterStatusNotify =
+        ticket?.statusEmailNotify ?? ticket?.status_email_notify ?? true;
       // Notify reporter if they opted in
-      if (ticket.emailNotify && ticket.reporterEmail) {
+      if (
+        ticket.emailNotify &&
+        reporterStatusNotify &&
+        (ticket.reporterEmail || ticket.reporterEmailEncrypted)
+      ) {
         try {
           results.reporter = await emailService.sendStatusChangeEmail(ticket, oldStatus, newStatus);
           console.log('[Notification] Reporter status change notification sent');
@@ -255,33 +284,54 @@ export const notificationService = {
       handler: null
     };
 
+    const statusLabel =
+      ticket?.metadata?.statusLabel ||
+      ticket?.statusLabel ||
+      ticket?.status ||
+      ticket?.statusCode ||
+      '-';
+
     try {
       // Notify reporter for public comments only
-      if (!isInternal && ticket.emailNotify && ticket.reporterEmail) {
+      if (!isInternal && ticket.emailNotify && (ticket.reporterEmail || ticket.reporterEmailEncrypted)) {
         try {
           const html = `
-<style>
-  .comment-box { background: #f9fafb; border-left: 4px solid #10b981; padding: 15px; margin: 15px 0; border-radius: 4px; }
-  h2 { color: #1f2937; margin: 0 0 10px 0; }
-</style>
-<h2>💬 Nieuwe Opmerking</h2>
-<p>Beste ${ticket.reporterName || 'melder'},</p>
-<p>Er is een nieuwe opmerking toegevoegd aan uw melding:</p>
-<div class="comment-box">
-  <h3 style="margin:0 0 10px 0;">Ticket #${ticket.ticketNumber}</h3>
-  <p><strong>Van:</strong> ${authorName}</p>
-  <p><strong>Opmerking:</strong></p>
-  <p>${comment}</p>
+${commentStyles}
+<h2 class="section-title">Nieuwe opmerking</h2>
+<p class="lead">Hallo ${escapeHtml(ticket.reporterName || 'melder')},</p>
+<p class="lead">Er is een nieuwe opmerking toegevoegd aan uw melding.</p>
+
+<div class="card">
+  <h3 class="section-title">Opmerking</h3>
+  <p><strong>Van:</strong> ${escapeHtml(authorName || 'Onbekend')}</p>
+  <div>${nl2br(comment || '-')}</div>
 </div>
-<p style="margin-top:20px;font-size:13px;color:#6b7280;">
-  U kunt uw melding bekijken met uw ticketnummer en toegangscode.
-</p>
+
+<div class="card">
+  <h3 class="section-title">Melding</h3>
+  <table class="meta-table" role="presentation">
+    <tr>
+      <td class="meta-label">Ticketnummer</td>
+      <td class="meta-value">${escapeHtml(ticket.ticketNumber || '-')}</td>
+    </tr>
+    <tr>
+      <td class="meta-label">Status</td>
+      <td class="meta-value">${escapeHtml(statusLabel)}</td>
+    </tr>
+    <tr>
+      <td class="meta-label">Locatie</td>
+      <td class="meta-value">${escapeHtml(ticket.location || 'Niet opgegeven')}</td>
+    </tr>
+  </table>
+</div>
+
+<p class="muted">Log in op het portaal om de melding te bekijken.</p>
 `;
 
           results.reporter = await emailService.sendEmail({
             from: 'noreply@nedzink.nl',
-            to: ticket.reporterEmail,
-            subject: `💬 Nieuwe opmerking: ${ticket.ticketNumber}`,
+            ...(ticket.reporterEmail ? { to: ticket.reporterEmail } : { toEncrypted: ticket.reporterEmailEncrypted }),
+            subject: `Nieuwe opmerking: ${ticket.ticketNumber || ''}`,
             html,
             useTemplate: true
           });
@@ -296,34 +346,46 @@ export const notificationService = {
       if (ticket.handlerId) {
         try {
           const handler = await ticketService.getHandlerById(ticket.handlerId);
-
           if (handler) {
             const settings = await handlerProfileService.getNotificationSettings(handler.id);
-
             if (shouldNotifyHandler(settings, 'comment', ticket.severityCode)) {
               const html = `
-<style>
-  .comment-box { background: #f9fafb; border-left: 4px solid #0ea5e9; padding: 15px; margin: 15px 0; border-radius: 4px; }
-  h2 { color: #1f2937; margin: 0 0 10px 0; }
-</style>
-<h2>💬 Nieuwe Opmerking</h2>
-<p>Hallo ${handler.name},</p>
-<p>Er is een nieuwe ${isInternal ? 'interne ' : ''}opmerking toegevoegd:</p>
-<div class="comment-box">
-  <h3 style="margin:0 0 10px 0;">Ticket #${ticket.ticketNumber}</h3>
-  <p><strong>Van:</strong> ${authorName}</p>
-  <p><strong>Opmerking:</strong></p>
-  <p>${comment}</p>
+${commentStyles}
+<h2 class="section-title">Nieuwe ${isInternal ? 'interne ' : ''}opmerking</h2>
+<p class="lead">Hallo ${escapeHtml(handler.name || 'collega')},</p>
+<p class="lead">Er is een nieuwe ${isInternal ? 'interne ' : ''}opmerking toegevoegd aan de melding.</p>
+
+<div class="card">
+  <h3 class="section-title">Opmerking</h3>
+  <p><strong>Van:</strong> ${escapeHtml(authorName || 'Onbekend')}</p>
+  <div>${nl2br(comment || '-')}</div>
 </div>
-<p style="margin-top:20px;font-size:13px;color:#6b7280;">
-  Log in op het portaal om deze melding te bekijken.
-</p>
+
+<div class="card">
+  <h3 class="section-title">Melding</h3>
+  <table class="meta-table" role="presentation">
+    <tr>
+      <td class="meta-label">Ticketnummer</td>
+      <td class="meta-value">${escapeHtml(ticket.ticketNumber || '-')}</td>
+    </tr>
+    <tr>
+      <td class="meta-label">Status</td>
+      <td class="meta-value">${escapeHtml(statusLabel)}</td>
+    </tr>
+    <tr>
+      <td class="meta-label">Locatie</td>
+      <td class="meta-value">${escapeHtml(ticket.location || 'Niet opgegeven')}</td>
+    </tr>
+  </table>
+</div>
+
+<p class="muted">Log in op het portaal om de melding te bekijken.</p>
 `;
 
               results.handler = await emailService.sendEmail({
                 from: 'noreply@nedzink.nl',
                 to: handler.email,
-                subject: `💬 Nieuwe opmerking: ${ticket.ticketNumber}`,
+                subject: `Nieuwe opmerking: ${ticket.ticketNumber || ''}`,
                 html,
                 useTemplate: true
               });
@@ -346,6 +408,28 @@ export const notificationService = {
   },
 
   /**
+   * Send attachment added notification (public attachments only)
+   * @param {Object} ticket - Ticket object
+   * @param {Object} attachment - Attachment object
+   * @param {string} uploaderName - Uploader name
+   * @returns {Promise<Object>}
+   */
+  async notifyAttachmentAdded(ticket, attachment, uploaderName) {
+    try {
+      if (!ticket?.emailNotify || (!ticket.reporterEmail && !ticket.reporterEmailEncrypted)) {
+        return { success: false, skipped: true, reason: 'No reporter email or opt-in' };
+      }
+
+      const result = await emailService.sendAttachmentAddedEmail(ticket, attachment, uploaderName);
+      console.log('[Notification] Reporter attachment notification sent:', result);
+      return { success: true, result };
+    } catch (error) {
+      console.error('[Notification] Error sending attachment notification:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  /**
    * Send message notification
    * @param {Object} ticket - Ticket object
    * @param {string} sender - Message sender
@@ -354,8 +438,61 @@ export const notificationService = {
    * @returns {Promise<Object>}
    */
   async notifyMessage(ticket, sender, body, isInternal = false) {
-    // For now, treat messages similar to comments
-    return this.notifyComment(ticket, body, sender, isInternal);
+    const results = {
+      reporter: null,
+      handler: null
+    };
+
+    if (isInternal) return results;
+
+    const senderKey = String(sender || '').toLowerCase();
+    const isFromReporter = senderKey === 'reporter';
+    const isFromHandler = senderKey === 'handler';
+
+    try {
+      // If handler sent message -> notify reporter
+      if (isFromHandler) {
+        if (ticket?.emailNotify && (ticket.reporterEmail || ticket.reporterEmailEncrypted)) {
+          let handlerName = 'Behandelaar';
+          try {
+            if (ticket?.handlerId) {
+              const handler = await ticketService.getHandlerById(ticket.handlerId);
+              handlerName = handler?.name || handlerName;
+            }
+          } catch (err) {
+            console.warn('[Notification] Could not resolve handler name for message email:', err);
+          }
+
+          results.reporter = await emailService.sendReporterMessageEmail(ticket, handlerName, body);
+          console.log('[Notification] Reporter message notification sent');
+        }
+        return results;
+      }
+
+      // If reporter (or unknown sender) -> notify handler
+      if (ticket?.handlerId) {
+        try {
+          const handler = await ticketService.getHandlerById(ticket.handlerId);
+          if (handler) {
+            const settings = await handlerProfileService.getNotificationSettings(handler.id);
+            if (shouldNotifyHandler(settings, 'message', ticket.severityCode)) {
+              const reporterName = ticket?.reporterName || 'Melder';
+              results.handler = await emailService.sendHandlerMessageEmail(ticket, handler, reporterName, body);
+              console.log('[Notification] Handler message notification sent');
+            } else {
+              results.handler = { success: false, skipped: true, reason: 'Handler preferences' };
+            }
+          }
+        } catch (error) {
+          console.error('[Notification] Error sending handler message notification:', error);
+          results.handler = { success: false, error: error.message };
+        }
+      }
+    } catch (error) {
+      console.error('[Notification] Error in notifyMessage:', error);
+    }
+
+    return results;
   },
 
   /**
@@ -377,3 +514,4 @@ export const notificationService = {
 };
 
 export default notificationService;
+

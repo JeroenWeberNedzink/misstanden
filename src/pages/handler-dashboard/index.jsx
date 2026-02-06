@@ -7,9 +7,14 @@ import TicketCardGrid from './components/TicketCardGrid';
 import QuickStats from './components/QuickStats';
 import SimpleFilter from './components/SimpleFilter';
 import { ticketService } from '../../services/ticketService';
+import { workflowService } from '../../services/workflowService';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import Icon from '../../components/AppIcon';
+import Select from '../../components/ui/Select';
+
+const safeTrim = (v) => String(v ?? '').trim();
+const safeLower = (v) => String(v ?? '').toLowerCase();
 
 export default function HandlerDashboard() {
   const [tickets, setTickets] = useState([]);
@@ -35,6 +40,62 @@ export default function HandlerDashboard() {
       loadData();
     }
   }, [currentHandlerId]);
+
+  const normalizeStatuses = (raw) => {
+    const arr = Array.isArray(raw) ? raw : [];
+    return arr
+      .filter((s) => s && safeTrim(s.code) && safeTrim(s.label))
+      .map((s) => ({
+        code: safeTrim(s.code),
+        label: safeTrim(s.label),
+        color: safeTrim(s.color) || null,
+        order: Number.isFinite(Number(s.sortOrder ?? s.sort_order ?? 0)) ? Number(s.sortOrder ?? s.sort_order ?? 0) : 0,
+        isTerminal: Boolean(s.isTerminal ?? s.is_terminal),
+        nextCodes: Array.isArray(s.nextCodes)
+          ? s.nextCodes
+          : Array.isArray(s.next_codes)
+          ? s.next_codes
+          : [],
+      }))
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  };
+
+  const workflowStatusMap = useMemo(() => {
+    const map = new Map(); // workflowCode -> Map(statusCodeLower -> meta)
+    (workflows || []).forEach((wf) => {
+      const code = safeTrim(wf?.code);
+      if (!code) return;
+
+      const statuses = normalizeStatuses(wf?.statuses);
+      const inner = new Map();
+      statuses.forEach((s) => inner.set(safeLower(s.code), s));
+      map.set(code, inner);
+    });
+    return map;
+  }, [workflows]);
+
+  const statusOptions = useMemo(() => {
+    const byCode = new Map();
+    (workflows || []).forEach((wf) => {
+      normalizeStatuses(wf?.statuses).forEach((s) => {
+        const key = safeLower(s.code);
+        const existing = byCode.get(key);
+        if (!existing || (s.order ?? 0) < (existing.order ?? 0)) {
+          byCode.set(key, s);
+        }
+      });
+    });
+    return Array.from(byCode.values())
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map((s) => ({ value: s.code, label: s.label, color: s.color }));
+  }, [workflows]);
+
+  const getStatusMetaForTicket = (ticket) => {
+    const wfCode = safeTrim(ticket?.workflowType || ticket?.workflow_type);
+    const statusCode = safeTrim(ticket?.statusCode || ticket?.status_code);
+    const wfMap = workflowStatusMap.get(wfCode);
+    return wfMap?.get(safeLower(statusCode)) || null;
+  };
 
   const loadHandlerProfile = async () => {
     if (!user?.email) return;
@@ -95,16 +156,26 @@ export default function HandlerDashboard() {
         workflowsData = ticketService.toCamelCase(workflows || []);
       }
 
+      // Attach DB-driven statuses to workflows (from workflow_statuses table)
+      const workflowsWithStatuses = await Promise.all(
+        (workflowsData || []).map(async (wf) => {
+          const statuses = await workflowService
+            .getWorkflowStatuses(wf.id)
+            .catch(() => []);
+          return { ...wf, statuses };
+        })
+      );
+
       const severitiesData = await ticketService?.getSeverities();
 
       setTickets(ticketsData);
-      setWorkflows(workflowsData);
+      setWorkflows(workflowsWithStatuses);
       setSeverities(severitiesData);
       setLastUpdated(new Date());
 
       console.log('[HandlerDashboard] Loaded data:', {
         tickets: ticketsData?.length || 0,
-        workflows: workflowsData?.length || 0,
+        workflows: workflowsWithStatuses?.length || 0,
         severities: severitiesData?.length || 0
       });
     } catch (err) {
@@ -114,16 +185,7 @@ export default function HandlerDashboard() {
 
   const handleStatusChange = async (ticketId, newStatusCode) => {
     try {
-      // Map status codes to display labels
-      const statusLabels = {
-        'new': 'Nieuw',
-        'in_progress': 'In Behandeling',
-        'resolved': 'Opgelost',
-        'closed': 'Gesloten'
-      };
-
-      const statusLabel = statusLabels[newStatusCode] || newStatusCode;
-      await ticketService?.updateTicketStatus(ticketId, statusLabel, newStatusCode);
+      await ticketService?.updateTicketStatus(ticketId, null, newStatusCode);
       await loadData();
     } catch (err) {
       console.error('Error updating status:', err);
@@ -156,7 +218,7 @@ export default function HandlerDashboard() {
 
   const stats = useMemo(() => {
     const list = tickets ?? [];
-    const isOpen = (t) => t?.statusCode !== 'resolved' && t?.statusCode !== 'closed';
+    const isOpen = (t) => !getStatusMetaForTicket(t)?.isTerminal;
     const isUnassigned = (t) => !getTicketHandlerId(t) && isOpen(t);
     const isHigh = (t) => t?.severityCode === 'critical' || t?.severityCode === 'high';
     const isMine = (t) => getTicketHandlerId(t) && getTicketHandlerId(t) === currentHandlerId;
@@ -206,18 +268,8 @@ export default function HandlerDashboard() {
       setSeverityFilter('all');
       return;
     }
-    if (key === 'new') {
-      setStatusFilter('new');
-      setScopeFilter('all');
-      return;
-    }
-    if (key === 'in_progress') {
-      setStatusFilter('in_progress');
-      setScopeFilter('all');
-      return;
-    }
-    if (key === 'resolved') {
-      setStatusFilter('resolved');
+    if (statusOptions.some((o) => o.value === key)) {
+      setStatusFilter(key);
       setScopeFilter('all');
       return;
     }
@@ -254,7 +306,6 @@ export default function HandlerDashboard() {
     { key: 'unassigned', label: 'Onbehandeld', count: stats.unassigned, icon: 'UserX', tone: 'bg-amber-50 text-amber-700' },
     { key: 'urgent', label: 'Urgent', count: stats.highPriority, icon: 'AlertTriangle', tone: 'bg-red-50 text-red-700' },
     { key: 'today', label: 'Vandaag', count: stats.today, icon: 'Calendar', tone: 'bg-emerald-50 text-emerald-700' },
-    { key: 'new', label: 'Nieuw', count: tickets.filter(t => t?.statusCode === 'new').length, icon: 'Sparkles', tone: 'bg-blue-50 text-blue-700' },
   ];
 
   const lastUpdatedLabel = lastUpdated
@@ -297,36 +348,43 @@ export default function HandlerDashboard() {
             </div>
 
             <div className="space-y-6">
-                <div className="bg-white rounded-2xl border border-border p-5 shadow-sm">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h2 className="text-lg font-semibold text-foreground">Queue Focus</h2>
-                      <p className="text-xs text-muted-foreground">Snel schakelen naar de juiste wachtrij</p>
-                    </div>
-                    <Icon name="Target" size={18} className="text-primary" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {quickViews.map((view) => (
-                      <button
-                        key={view.key}
-                        onClick={() => applyQuickView(view.key)}
-                        className={`flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 text-left text-sm transition-all hover:shadow-sm ${
-                          scopeFilter === view.key || statusFilter === view.key ? 'ring-2 ring-primary/30' : ''
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${view.tone}`}>
-                            <Icon name={view.icon} size={16} />
-                          </span>
-                          <div className="flex flex-col">
-                            <span className="font-medium text-foreground">{view.label}</span>
-                            <span className="text-xs text-muted-foreground">{view.count} tickets</span>
-                          </div>
+              <div className="bg-white rounded-2xl border border-border p-5 shadow-sm space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {quickViews.map((view) => (
+                    <button
+                      key={view.key}
+                      onClick={() => applyQuickView(view.key)}
+                      className={`flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 text-left text-sm transition-all hover:shadow-sm ${
+                        scopeFilter === view.key ? 'ring-2 ring-primary/30' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${view.tone}`}>
+                          <Icon name={view.icon} size={16} />
+                        </span>
+                        <div className="flex flex-col">
+                          <span className="font-medium text-foreground">{view.label}</span>
+                          <span className="text-xs text-muted-foreground">{view.count} tickets</span>
                         </div>
-                        <Icon name="ChevronRight" size={16} className="text-muted-foreground" />
-                      </button>
-                    ))}
-                  </div>
+                      </div>
+                      <Icon name="ChevronRight" size={16} className="text-muted-foreground" />
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Status
+                  </span>
+                  <Select
+                    value={statusFilter}
+                    onChange={(value) => setStatusFilter(value)}
+                    options={[
+                      { value: 'all', label: 'Alle statussen' },
+                      ...statusOptions.map((o) => ({ value: o.value, label: o.label || o.value })),
+                    ]}
+                  />
+                </div>
               </div>
 {/* 
               <SimpleFilter
@@ -342,6 +400,7 @@ export default function HandlerDashboard() {
 
               <TicketCardGrid
                 tickets={filteredTickets}
+                workflows={workflows}
                 currentHandlerId={currentHandlerId}
                 onQuickStatusChange={handleStatusChange}
                 onAssignToMe={handleAssignToMe}

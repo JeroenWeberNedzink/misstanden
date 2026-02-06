@@ -1,14 +1,24 @@
 import React from 'react';
 import Icon from '../../../components/AppIcon';
 
-const SLAStatus = ({ slaDeadline, slaResponseHours, slaResolutionHours, submittedAt, status }) => {
+const SLAStatus = ({
+  submittedAt,
+  status,
+  slaResponseHours,
+  slaResolutionHours,
+  firstResponseAt,
+  firstResponseDueAt,
+  nextStepDueAt,
+  resolutionDueAt
+}) => {
   const now = new Date();
-  const submitted = new Date(submittedAt);
-  const deadline = slaDeadline ? new Date(slaDeadline) : null;
+  const submitted = submittedAt ? new Date(submittedAt) : null;
 
   const calculateTimeRemaining = (targetDate) => {
     if (!targetDate) return null;
-    const diff = targetDate - now;
+    const target = new Date(targetDate);
+    if (Number.isNaN(target.getTime())) return null;
+    const diff = target - now;
     if (diff < 0) return { isOverdue: true, text: 'Overschreden' };
 
     const hours = Math.floor(diff / (1000 * 60 * 60));
@@ -35,15 +45,17 @@ const SLAStatus = ({ slaDeadline, slaResponseHours, slaResolutionHours, submitte
     });
   };
 
-  const timeRemaining = calculateTimeRemaining(deadline);
-  const hoursElapsed = (now - submitted) / (1000 * 60 * 60);
+  const responseRemaining = calculateTimeRemaining(firstResponseDueAt);
+  const nextStepRemaining = calculateTimeRemaining(nextStepDueAt);
+  const resolutionRemaining = calculateTimeRemaining(resolutionDueAt);
+  const hoursElapsed = submitted ? (now - submitted) / (1000 * 60 * 60) : 0;
   const totalResponseHours = slaResponseHours || 24;
   const responsePercentage = Math.min((hoursElapsed / totalResponseHours) * 100, 100);
 
   const getStatusColor = () => {
     if (status === 'Gesloten' || status === 'Opgelost') return 'success';
-    if (!timeRemaining) return 'muted';
-    if (timeRemaining.isOverdue) return 'error';
+    if (!responseRemaining) return 'muted';
+    if (responseRemaining.isOverdue) return 'error';
     if (responsePercentage > 80) return 'warning';
     return 'primary';
   };
@@ -82,22 +94,27 @@ const SLAStatus = ({ slaDeadline, slaResponseHours, slaResolutionHours, submitte
         </div>
       </div>
 
-      {/* Response Time */}
+      {/* First response */}
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-foreground">Reactietijd</span>
-          {timeRemaining && (
+          <span className="text-sm font-medium text-foreground">Eerste reactie</span>
+          {responseRemaining && !firstResponseAt && (
             <span className={`text-xs font-medium ${
-              timeRemaining.isOverdue ? 'text-error' : responsePercentage > 80 ? 'text-warning' : 'text-success'
+              responseRemaining.isOverdue ? 'text-error' : responsePercentage > 80 ? 'text-warning' : 'text-success'
             }`}>
-              {timeRemaining.text}
+              {responseRemaining.text}
+            </span>
+          )}
+          {firstResponseAt && (
+            <span className="text-xs font-medium text-success">
+              Reageerde
             </span>
           )}
         </div>
         <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
           <div
             className={`h-full transition-all duration-500 ${
-              timeRemaining?.isOverdue ? 'bg-error' :
+              responseRemaining?.isOverdue ? 'bg-error' :
               responsePercentage > 80 ? 'bg-warning' :
               'bg-success'
             }`}
@@ -108,49 +125,77 @@ const SLAStatus = ({ slaDeadline, slaResponseHours, slaResolutionHours, submitte
           <span className="text-xs text-muted-foreground">
             {slaResponseHours || 24} uur reactietijd
           </span>
-          {deadline && (
+          {firstResponseDueAt && !firstResponseAt && (
             <span className="text-xs text-muted-foreground">
-              {formatDate(deadline)}
+              {formatDate(firstResponseDueAt)}
+            </span>
+          )}
+          {firstResponseAt && (
+            <span className="text-xs text-muted-foreground">
+              {formatDate(firstResponseAt)}
             </span>
           )}
         </div>
       </div>
 
+      {/* Next step due */}
+      {nextStepDueAt && (
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-foreground">Volgende stap</span>
+            {nextStepRemaining && (
+              <span className={`text-xs font-medium ${
+                nextStepRemaining.isOverdue ? 'text-error' : 'text-foreground'
+              }`}>
+                {nextStepRemaining.text}
+              </span>
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Verwacht voor {formatDate(nextStepDueAt)}
+          </div>
+        </div>
+      )}
+
       {/* Resolution Time */}
-      {slaResolutionHours && (
+      {(slaResolutionHours || resolutionDueAt) && (
         <div>
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-foreground">Oplostijd</span>
-            <span className="text-xs text-muted-foreground">
-              {slaResolutionHours} uur
-            </span>
+            {slaResolutionHours && (
+              <span className="text-xs text-muted-foreground">
+                {slaResolutionHours} uur
+              </span>
+            )}
           </div>
-          <div className="text-xs text-muted-foreground">
-            Verwachte afronding binnen {Math.floor(slaResolutionHours / 24)} dagen
-          </div>
+          {resolutionDueAt && (
+            <div className="text-xs text-muted-foreground">
+              Verwachte afronding: {formatDate(resolutionDueAt)}
+            </div>
+          )}
         </div>
       )}
 
       {/* Status indicator */}
       <div className={`mt-4 p-3 rounded-lg border flex items-start gap-2 ${
-        timeRemaining?.isOverdue
+        responseRemaining?.isOverdue
           ? 'bg-error/10 border-error/20'
           : responsePercentage > 80
           ? 'bg-warning/10 border-warning/20'
           : 'bg-success/10 border-success/20'
       }`}>
         <Icon
-          name={timeRemaining?.isOverdue ? 'AlertCircle' : responsePercentage > 80 ? 'Clock' : 'CheckCircle'}
+          name={responseRemaining?.isOverdue ? 'AlertCircle' : responsePercentage > 80 ? 'Clock' : 'CheckCircle'}
           size={16}
           className={`${
-            timeRemaining?.isOverdue ? 'text-error' : responsePercentage > 80 ? 'text-warning' : 'text-success'
+            responseRemaining?.isOverdue ? 'text-error' : responsePercentage > 80 ? 'text-warning' : 'text-success'
           } mt-0.5`}
         />
         <div className="flex-1">
           <p className={`text-xs font-medium ${
-            timeRemaining?.isOverdue ? 'text-error' : responsePercentage > 80 ? 'text-warning' : 'text-success'
+            responseRemaining?.isOverdue ? 'text-error' : responsePercentage > 80 ? 'text-warning' : 'text-success'
           }`}>
-            {timeRemaining?.isOverdue
+            {responseRemaining?.isOverdue
               ? 'SLA Overschreden'
               : responsePercentage > 80
               ? 'SLA Deadline nadert'
@@ -158,7 +203,7 @@ const SLAStatus = ({ slaDeadline, slaResponseHours, slaResolutionHours, submitte
             }
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {timeRemaining?.isOverdue
+            {responseRemaining?.isOverdue
               ? 'We werken er hard aan om uw zaak zo snel mogelijk af te handelen'
               : 'Uw zaak wordt behandeld binnen de afgesproken tijd'
             }

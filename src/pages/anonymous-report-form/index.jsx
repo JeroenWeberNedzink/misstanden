@@ -43,7 +43,9 @@ export default function AnonymousReportForm() {
     reporterName: '',
     reporterEmail: '',
     reporterPhone: '',
-    emailNotify: false,
+    emailNotify: true,
+    statusEmailNotify: true,
+    isAnonymous: true,
     files: []
   });
 
@@ -96,6 +98,11 @@ export default function AnonymousReportForm() {
         validationErrors.location = 'Locatie is verplicht / Location is required';
       }
     }
+    if (step === 4) {
+      if (!formData?.reporterEmail || !String(formData?.reporterEmail).trim()) {
+        validationErrors.reporterEmail = t('reportForm.emailRequired');
+      }
+    }
 
     setErrors(validationErrors);
     return Object.keys(validationErrors).length === 0;
@@ -127,18 +134,18 @@ export default function AnonymousReportForm() {
       setCurrentStep(2);
       return;
     }
+    if (!validateStep(4)) {
+      setCurrentStep(4);
+      return;
+    }
 
     setIsSubmitting(true);
 
     try {
       const email = String(formData?.reporterEmail || '').trim();
-      const emailNotify = email ? !!formData?.emailNotify : false;
-
-      const isAnonymous =
-        !email &&
-        !String(formData?.reporterName || '').trim() &&
-        !String(formData?.reporterPhone || '').trim() &&
-        !emailNotify;
+      const emailNotify = !!formData?.emailNotify;
+      const statusEmailNotify = formData?.statusEmailNotify !== false;
+      const isAnonymous = !!formData?.isAnonymous;
 
       const newTicket = await ticketService?.createTicket({
         description: formData?.description,
@@ -149,6 +156,7 @@ export default function AnonymousReportForm() {
         reporterName: String(formData?.reporterName || '').trim() || null,
         reporterPhone: String(formData?.reporterPhone || '').trim() || null,
         emailNotify,
+        statusEmailNotify,
         isAnonymous,
       });
 
@@ -312,7 +320,7 @@ export default function AnonymousReportForm() {
 
               <div className="bg-accent/5 border border-accent/20 rounded-lg p-3 mb-6 flex items-start gap-2">
                 <Icon name="ShieldCheck" size={18} className="text-accent mt-0.5 flex-shrink-0" />
-                <p className="text-sm text-muted-foreground">{t('reportForm.step4Optional')}</p>
+                <p className="text-sm text-muted-foreground">{t('reportForm.contactRequiredHelp')}</p>
               </div>
 
               <div className="border-t border-border pt-6">
@@ -320,6 +328,9 @@ export default function AnonymousReportForm() {
                   name={formData?.reporterName}
                   email={formData?.reporterEmail}
                   phone={formData?.reporterPhone}
+                  isAnonymous={formData?.isAnonymous}
+                  onAnonymousChange={(value) => setFormData(prev => ({ ...prev, isAnonymous: value }))}
+                  emailError={errors?.reporterEmail}
                   onNameChange={(value) => setFormData(prev => ({ ...prev, reporterName: value }))}
                   onEmailChange={(value) => setFormData(prev => ({ ...prev, reporterEmail: value }))}
                   onPhoneChange={(value) => setFormData(prev => ({ ...prev, reporterPhone: value }))}
@@ -438,7 +449,7 @@ export default function AnonymousReportForm() {
 
       case 6:
         const selectedWorkflow = workflows?.find(w => w?.code === formData?.workflow);
-        const isAnonymous = !formData?.reporterEmail && !formData?.reporterName && !formData?.reporterPhone;
+        const isAnonymous = !!formData?.isAnonymous;
 
         return (
           <div className="max-w-6xl mx-auto">
@@ -473,31 +484,31 @@ export default function AnonymousReportForm() {
                       </div>
                     </div>
 
-                    {!isAnonymous && (
-                      <div className="bg-muted/30 rounded-lg p-4">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{t('reportForm.contactOptional')}</p>
-                        <div className="space-y-2">
-                          {formData?.reporterName && (
-                            <div className="flex items-center gap-2">
-                              <Icon name="User" size={14} className="text-muted-foreground" />
-                              <p className="text-sm text-foreground">{formData.reporterName}</p>
-                            </div>
-                          )}
-                          {formData?.reporterEmail && (
-                            <div className="flex items-center gap-2">
-                              <Icon name="Mail" size={14} className="text-muted-foreground" />
-                              <p className="text-sm text-foreground">{formData.reporterEmail}</p>
-                            </div>
-                          )}
-                          {formData?.reporterPhone && (
-                            <div className="flex items-center gap-2">
-                              <Icon name="Phone" size={14} className="text-muted-foreground" />
-                              <p className="text-sm text-foreground">{formData.reporterPhone}</p>
-                            </div>
-                          )}
-                        </div>
+                    <div className="bg-muted/30 rounded-lg p-4">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                        {t('reportForm.contactOptional')}
+                      </p>
+                      <div className="space-y-2">
+                        {formData?.reporterEmail && (
+                          <div className="flex items-center gap-2">
+                            <Icon name="Mail" size={14} className="text-muted-foreground" />
+                            <p className="text-sm text-foreground">{formData.reporterEmail}</p>
+                          </div>
+                        )}
+                        {!isAnonymous && formData?.reporterName && (
+                          <div className="flex items-center gap-2">
+                            <Icon name="User" size={14} className="text-muted-foreground" />
+                            <p className="text-sm text-foreground">{formData.reporterName}</p>
+                          </div>
+                        )}
+                        {!isAnonymous && formData?.reporterPhone && (
+                          <div className="flex items-center gap-2">
+                            <Icon name="Phone" size={14} className="text-muted-foreground" />
+                            <p className="text-sm text-foreground">{formData.reporterPhone}</p>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
 
                     {formData?.files?.length > 0 && (
                       <div className="bg-muted/30 rounded-lg p-4">
@@ -535,7 +546,10 @@ export default function AnonymousReportForm() {
                         <EmailNotificationToggle
                           checked={formData?.emailNotify}
                           onChange={(e) => setFormData(prev => ({ ...prev, emailNotify: e?.target?.checked }))}
+                          statusChecked={formData?.statusEmailNotify}
+                          onStatusChange={(e) => setFormData(prev => ({ ...prev, statusEmailNotify: e?.target?.checked }))}
                           disabled={!formData?.reporterEmail}
+                          statusDisabled={!formData?.reporterEmail || !formData?.emailNotify}
                         />
                       </div>
                     )}

@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import Button from '../../../components/ui/Button';
 import Select from '../../../components/ui/Select';
+import { Checkbox } from '../../../components/ui/Checkbox';
 import PermissionGuard from '../../../components/auth/PermissionGuard';
 import { PERMISSIONS } from '../../../utils/permissions';
 
@@ -10,11 +11,13 @@ const CaseManagementPanel = ({
   onPriorityChange,
   onStatusChange,
   onEscalate,
+  onStatusEmailNotifyChange,
   handlers,
   isWhistleblower,
 }) => {
   const [savingAssignment, setSavingAssignment] = useState(false);
   const [savingPriority, setSavingPriority] = useState(false);
+  const [savingStatusEmail, setSavingStatusEmail] = useState(false);
 
   const priorityOptions = useMemo(
     () => [
@@ -39,7 +42,8 @@ const CaseManagementPanel = ({
     ];
   }, [handlers]);
 
-  const isBusy = savingAssignment || savingPriority;
+  const isBusy = savingAssignment || savingPriority || savingStatusEmail;
+  const statusEmailChecked = caseData?.statusEmailNotify !== false;
 
   const handleAssignmentSelect = useCallback(
     async (value) => {
@@ -70,6 +74,18 @@ const CaseManagementPanel = ({
       }
     },
     [caseData?.priority, onPriorityChange]
+  );
+
+  const handleStatusEmailToggle = useCallback(
+    async (checked) => {
+      try {
+        setSavingStatusEmail(true);
+        await onStatusEmailNotifyChange?.(checked);
+      } finally {
+        setSavingStatusEmail(false);
+      }
+    },
+    [onStatusEmailNotifyChange]
   );
 
   /**
@@ -135,6 +151,18 @@ const CaseManagementPanel = ({
                 disabled={savingPriority}
                 // menuClassName="z-[9999]"
                 // portal
+              />
+            </div>
+          </PermissionGuard>
+
+          <PermissionGuard permission={PERMISSIONS.EDIT_TICKETS}>
+            <div className="rounded-lg border border-border bg-muted/20 p-3">
+              <Checkbox
+                label="Status e-mails naar melder"
+                description="Stuur een e-mail wanneer de status van de melding wijzigt."
+                checked={statusEmailChecked}
+                onChange={(e) => handleStatusEmailToggle(e?.target?.checked)}
+                disabled={savingStatusEmail}
               />
             </div>
           </PermissionGuard>

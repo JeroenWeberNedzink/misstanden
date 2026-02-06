@@ -1,7 +1,6 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import Icon from '../../../components/AppIcon';
 import TicketCard from './TicketCard';
-import { workflowService } from '../../../services/workflowService';
 
 const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
@@ -33,31 +32,17 @@ const normalizeStatuses = (raw) => {
       description: safeTrim(s.description) || '',
       color: safeTrim(s.color) || null,
       order: Number.isFinite(Number(s.order)) ? Number(s.order) : 999,
+      isTerminal: Boolean(s.isTerminal ?? s.is_terminal),
+      nextCodes: Array.isArray(s.nextCodes)
+        ? s.nextCodes
+        : Array.isArray(s.next_codes)
+        ? s.next_codes
+        : [],
     }))
     .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
 };
 
-const TicketCardGrid = ({ tickets, currentHandlerId, onQuickStatusChange, onAssignToMe }) => {
-  const [workflows, setWorkflows] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const data = await workflowService.getWorkflowsWithStats?.()
-          .catch(() => workflowService.getWorkflows?.());
-        if (!cancelled) setWorkflows(data || []);
-      } catch (e) {
-        console.warn('Failed to load workflows for status mapping:', e);
-        if (!cancelled) setWorkflows([]);
-      }
-    }
-
-    load();
-    return () => { cancelled = true; };
-  }, []);
-
+const TicketCardGrid = ({ tickets, workflows = [], currentHandlerId, onQuickStatusChange, onAssignToMe }) => {
   const workflowStatusMap = useMemo(() => {
     const map = new Map();
     (workflows || []).forEach((wf) => {
@@ -99,14 +84,14 @@ const TicketCardGrid = ({ tickets, currentHandlerId, onQuickStatusChange, onAssi
   return (
     <div className="space-y-4">
       {/* Simple header */}
-      <div className="flex items-center justify-between bg-white px-4 py-2 rounded-lg border border-border">
+      {/* <div className="flex items-center justify-between bg-white px-4 py-2 rounded-lg border border-border">
         <h2 className="text-xl font-semibold text-foreground">
           {tickets?.length} {tickets?.length === 1 ? 'Ticket' : 'Tickets'}
         </h2>
-      </div>
+      </div> */}
 
       {/* Card Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 bg-white p-4 rounded-lg border border-border">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
         {sortedTickets.map((ticket) => (
           <TicketCard
             key={ticket?.id}

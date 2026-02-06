@@ -1,24 +1,31 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 import Input from '../../../components/ui/Input';
 import Icon from '../../../components/AppIcon';
 
-const ReporterContactFields = ({ name, email, phone, onNameChange, onEmailChange, onPhoneChange }) => {
+const ReporterContactFields = ({
+  name,
+  email,
+  phone,
+  isAnonymous,
+  onAnonymousChange,
+  emailError,
+  onNameChange,
+  onEmailChange,
+  onPhoneChange
+}) => {
   const { t } = useTranslation();
-  const [isAnonymous, setIsAnonymous] = useState(!name && !email && !phone);
-
   const handleAnonymousToggle = (anonymous) => {
-    setIsAnonymous(anonymous);
+    onAnonymousChange?.(anonymous);
     if (anonymous) {
-      // Clear contact fields when switching to anonymous
+      // Keep email for communication, clear name/phone only
       onNameChange('');
-      onEmailChange('');
       onPhoneChange('');
     }
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Anonymous Toggle */}
       <div className="space-y-3">
         <div className="flex gap-4">
@@ -63,17 +70,25 @@ const ReporterContactFields = ({ name, email, phone, onNameChange, onEmailChange
         </div>
       </div>
 
-      {/* Show contact fields only when not anonymous */}
-      {!isAnonymous && (
-        <>
-          <div className="flex items-start gap-3 mb-4 mt-4">
-            <Icon name="Info" size={16} color="var(--color-primary)" className="mt-1 flex-shrink-0" />
-            <p className="text-sm text-muted-foreground">
-              {t('reportForm.contactDetailsHelp')}
-            </p>
-          </div>
-          <div className="p-4 md:p-5 lg:p-6 rounded-lg bg-muted/50 border border-border">
-            <div className="space-y-4">
+      <div className="flex items-start gap-2 mt-2">
+        <Icon name="Info" size={16} color="var(--color-primary)" className="mt-1 flex-shrink-0" />
+        <p className="text-sm text-muted-foreground">
+          {t('reportForm.contactDetailsHelp')}
+        </p>
+      </div>
+      <div className="p-4 rounded-lg bg-muted/50 border border-border">
+        <div className="space-y-4">
+          <Input
+            type="email"
+            label={t('reportForm.emailLabel')}
+            placeholder={t('reportForm.emailPlaceholder')}
+            value={email}
+            required
+            error={emailError}
+            onChange={(e) => onEmailChange(e?.target?.value)}
+          />
+          {!isAnonymous && (
+            <>
               <Input
                 type="text"
                 label={t('reportForm.nameLabel')}
@@ -82,36 +97,22 @@ const ReporterContactFields = ({ name, email, phone, onNameChange, onEmailChange
                 onChange={(e) => onNameChange(e?.target?.value)}
               />
               <Input
-                type="email"
-                label={t('reportForm.emailLabel')}
-                placeholder={t('reportForm.emailPlaceholder')}
-                value={email}
-                onChange={(e) => onEmailChange(e?.target?.value)}
-              />
-              <Input
                 type="tel"
                 label={t('reportForm.phoneLabel')}
                 placeholder={t('reportForm.phonePlaceholder')}
                 value={phone}
                 onChange={(e) => onPhoneChange(e?.target?.value)}
               />
-            </div>
-          </div>
-        </>
-      )}
+            </>
+          )}
+        </div>
+      </div>
 
       {/* Show privacy assurance when anonymous */}
       {isAnonymous && (
-        <div className="flex items-start gap-3 p-4 rounded-lg bg-success/10 border border-success/20">
-          <Icon name="ShieldCheck" size={20} color="var(--color-success)" className="mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="text-sm font-medium text-success mb-1">
-              {t('reportForm.anonymousReport')}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {t('reportForm.privacyAssurance')}
-            </p>
-          </div>
+        <div className="text-xs text-muted-foreground flex items-center gap-2">
+          <Icon name="ShieldCheck" size={14} className="text-success" />
+          <span>{t('reportForm.privacyAssurance')}</span>
         </div>
       )}
     </div>

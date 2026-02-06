@@ -284,11 +284,6 @@
         "contactEmail": "Email for updates",
         "contactPhone": "Phone for urgent contact",
         "emailNotifications": "Receive email updates about this report",
-        "emailNotificationsLabel": "Email updates",
-        "emailNotificationsDescription": "Receive important updates and confirmations by email.",
-        "emailNotificationsWarning": "Email address is required to receive updates.",
-        "statusEmailNotificationsLabel": "Status change emails",
-        "statusEmailNotificationsDescription": "Receive an email when your report status changes.",
         "privacyAssurance": "Anonymous: name and phone are hidden.",
         "submitReport": "Submit Report",
         "submitting": "Submitting...",
@@ -961,3 +956,7 @@
         }
     }
 }
+
+
+
+

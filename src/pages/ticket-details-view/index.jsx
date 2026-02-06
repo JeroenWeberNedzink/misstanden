@@ -10,6 +10,44 @@ import NextStepsPanel from './components/NextStepsPanel';
 import SLAStatus from './components/SLAStatus';
 import WorkflowProgress from './components/WorkflowProgress';
 import SubmissionMetadata from './components/SubmissionMetadata';
+import { ticketService } from '../../services/ticketService';
+
+const toDateSafe = (value) => {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const addHours = (date, hours) => {
+  if (!date || !Number.isFinite(Number(hours))) return null;
+  const d = new Date(date);
+  d.setHours(d.getHours() + Number(hours));
+  return d;
+};
+
+const getFirstResponseAt = (ticket) => {
+  const actions = ticket?.ticketActions || ticket?.ticket_actions || [];
+  const actionDates = actions
+    .filter((a) => {
+      const t = a?.action_type || a?.actionType;
+      return t === 'status_update' || t === 'status_change';
+    })
+    .map((a) => toDateSafe(a?.created_at || a?.createdAt))
+    .filter(Boolean);
+
+  const messages = ticket?.messages || [];
+  const messageDates = messages
+    .filter((m) => {
+      const sender = String(m?.sender ?? '').toLowerCase();
+      return sender && sender !== 'reporter';
+    })
+    .map((m) => toDateSafe(m?.created_at || m?.createdAt))
+    .filter(Boolean);
+
+  const all = [...actionDates, ...messageDates].filter(Boolean);
+  if (!all.length) return null;
+  return new Date(Math.min(...all.map((d) => d.getTime())));
+};
 
 
 export default function TicketDetailsView() {
@@ -37,9 +75,30 @@ export default function TicketDetailsView() {
       const ticket = JSON.parse(storedTicket);
       
       // Format data for display
+      const submissionDate = ticket?.submitted_at || ticket?.submittedAt || ticket?.created_at || ticket?.createdAt;
+      const submittedAtDate = toDateSafe(submissionDate);
+      const slaResponseHours = ticket?.sla_response_hours || ticket?.slaResponseHours || 24;
+      const slaResolutionHours = ticket?.sla_resolution_hours || ticket?.slaResolutionHours || null;
+      const nextStepDueAt =
+        ticket?.next_step_due ||
+        ticket?.nextStepDue ||
+        ticket?.sla_deadline ||
+        ticket?.slaDeadline ||
+        null;
+      const expectedResolutionDate =
+        ticket?.expected_resolution_date ||
+        ticket?.expectedResolutionDate ||
+        null;
+
+      const firstResponseAt = getFirstResponseAt(ticket);
+      const firstResponseDueAt = submittedAtDate ? addHours(submittedAtDate, slaResponseHours) : null;
+      const resolutionDueAt = expectedResolutionDate
+        ? toDateSafe(expectedResolutionDate)
+        : (submittedAtDate && slaResolutionHours ? addHours(submittedAtDate, slaResolutionHours) : null);
+
       const formattedTicket = {
         ticketNumber: ticket?.ticket_number || ticket?.ticketNumber,
-        submissionDate: ticket?.submitted_at || ticket?.submittedAt,
+        submissionDate,
         status: ticket?.status,
         statusCode: ticket?.status_code || ticket?.statusCode,
         currentStage: ticket?.current_stage || ticket?.currentStage,
@@ -47,11 +106,14 @@ export default function TicketDetailsView() {
         description: ticket?.description,
         location: ticket?.location,
         severity: ticket?.severity_code || ticket?.severityCode,
-        nextStepDue: ticket?.next_step_due || ticket?.nextStepDue,
+        nextStepDue: nextStepDueAt,
         slaDeadline: ticket?.sla_deadline || ticket?.slaDeadline,
-        slaResponseHours: ticket?.sla_response_hours || ticket?.slaResponseHours,
-        slaResolutionHours: ticket?.sla_resolution_hours || ticket?.slaResolutionHours,
-        expectedResolutionDate: ticket?.expected_resolution_date || ticket?.expectedResolutionDate,
+        slaResponseHours,
+        slaResolutionHours,
+        expectedResolutionDate,
+        firstResponseAt,
+        firstResponseDueAt,
+        resolutionDueAt,
         contactInfo: {
           name: ticket?.reporter_name || ticket?.reporterName || '',
           email: ticket?.reporter_email || ticket?.reporterEmail || '',
@@ -77,7 +139,14 @@ export default function TicketDetailsView() {
           colorDepth: ticket?.metadata?.reporter_meta_client?.viewport?.dpr,
           createdFrom: ticket?.metadata?.reporter_meta_client?.created_from
         },
-        attachments: (ticket?.attachments || []).map(att => ({
+        attachments: (ticket?.attachments || [])
+          .filter((att) =>
+            !att?.is_internal &&
+            !att?.note_id &&
+            !att?.isInternal &&
+            !att?.noteId
+          )
+          .map(att => ({
           name: att?.file_name || att?.fileName,
           type: att?.mime_type || att?.mimeType,
           size: att?.size_bytes || att?.sizeBytes,
@@ -127,20 +196,30 @@ export default function TicketDetailsView() {
 
   const handleSendMessage = async (messageContent) => {
     try {
-      // TODO: Implement actual message sending via API
-      console.log('Sending message:', messageContent);
+      const storedTicket = sessionStorage.getItem('current_ticket');
+      if (!storedTicket) throw new Error('No ticket in session');
 
-      // For now, just add to local state as a demo
+      const parsed = JSON.parse(storedTicket);
+      const ticketId = parsed?.id;
+      if (!ticketId) throw new Error('Ticket id ontbreekt');
+
+      const created = await ticketService.addMessage(ticketId, 'reporter', messageContent, false);
       const newMessage = {
         from: 'reporter',
-        timestamp: new Date().toISOString(),
-        message: messageContent,
+        timestamp: created?.createdAt || new Date().toISOString(),
+        message: created?.body || messageContent,
         isRead: false
       };
 
+      const updatedTicket = {
+        ...parsed,
+        messages: [...(parsed?.messages || []), created]
+      };
+      sessionStorage.setItem('current_ticket', JSON.stringify(updatedTicket));
+
       setTicketData(prev => ({
         ...prev,
-        communications: [...(prev.communications || []), newMessage]
+        communications: [...(prev?.communications || []), newMessage]
       }));
 
       return true;
@@ -223,6 +302,18 @@ Ernst: ${ticketData?.severity}
     );
   }
 
+  const formatBadgeDate = (value) => {
+    if (!value) return '-';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '-';
+    return d.toLocaleDateString('nl-NL', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   return (
     <>
       <AnonymousNavHeader />
@@ -265,6 +356,31 @@ Ernst: ${ticketData?.severity}
                     <Icon name="Workflow" size={18} />
                     <span className="text-sm font-medium">{ticketData?.workflowType}</span>
                   </div>
+
+                  {ticketData?.firstResponseDueAt && !ticketData?.firstResponseAt && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-sky-50 text-sky-700">
+                      <Icon name="Clock" size={16} />
+                      <span className="text-xs font-semibold">
+                        Reactie voor {formatBadgeDate(ticketData.firstResponseDueAt)}
+                      </span>
+                    </div>
+                  )}
+                  {ticketData?.nextStepDue && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 text-amber-700">
+                      <Icon name="Calendar" size={16} />
+                      <span className="text-xs font-semibold">
+                        Volgende stap: {formatBadgeDate(ticketData.nextStepDue)}
+                      </span>
+                    </div>
+                  )}
+                  {ticketData?.resolutionDueAt && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700">
+                      <Icon name="CheckCircle" size={16} />
+                      <span className="text-xs font-semibold">
+                        Oplossen voor {formatBadgeDate(ticketData.resolutionDueAt)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -305,6 +421,61 @@ Ernst: ${ticketData?.severity}
                   />
                 </div>
 
+                {/* SLA Timeline */}
+                <div className="bg-card rounded-xl border border-border p-6">
+                  <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                    <Icon name="Clock" size={20} className="text-primary" />
+                    SLA Tijdlijn
+                  </h2>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-foreground">Eerste reactie</p>
+                        <p className="text-xs text-muted-foreground">
+                          {ticketData?.firstResponseAt
+                            ? `Gereageerd op ${formatBadgeDate(ticketData.firstResponseAt)}`
+                            : `Uiterlijk ${formatBadgeDate(ticketData?.firstResponseDueAt)}`}
+                        </p>
+                      </div>
+                      <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                        ticketData?.firstResponseAt
+                          ? 'bg-success/10 text-success'
+                          : 'bg-warning/10 text-warning'
+                      }`}>
+                        {ticketData?.firstResponseAt ? 'Ontvangen' : 'In behandeling'}
+                      </span>
+                    </div>
+
+                    {ticketData?.nextStepDue && (
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-foreground">Volgende stap</p>
+                          <p className="text-xs text-muted-foreground">
+                            Verwacht voor {formatBadgeDate(ticketData.nextStepDue)}
+                          </p>
+                        </div>
+                        <span className="text-xs font-semibold px-2 py-1 rounded-full bg-amber-50 text-amber-700">
+                          Verwacht
+                        </span>
+                      </div>
+                    )}
+
+                    {ticketData?.resolutionDueAt && (
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-foreground">Oplossen</p>
+                          <p className="text-xs text-muted-foreground">
+                            Verwacht voor {formatBadgeDate(ticketData.resolutionDueAt)}
+                          </p>
+                        </div>
+                        <span className="text-xs font-semibold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">
+                          Oplossing
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* Attachments */}
                 {ticketData?.attachments?.length > 0 && (
                   <div className="bg-card rounded-xl border border-border p-6">
@@ -337,11 +508,14 @@ Ernst: ${ticketData?.severity}
               <div className="space-y-6">
                 {/* SLA Status */}
                 <SLAStatus
-                  slaDeadline={ticketData?.slaDeadline}
-                  slaResponseHours={ticketData?.slaResponseHours}
-                  slaResolutionHours={ticketData?.slaResolutionHours}
                   submittedAt={ticketData?.submissionDate}
                   status={ticketData?.status}
+                  slaResponseHours={ticketData?.slaResponseHours}
+                  slaResolutionHours={ticketData?.slaResolutionHours}
+                  firstResponseAt={ticketData?.firstResponseAt}
+                  firstResponseDueAt={ticketData?.firstResponseDueAt}
+                  nextStepDueAt={ticketData?.nextStepDue}
+                  resolutionDueAt={ticketData?.resolutionDueAt}
                 />
 
                 {/* Workflow Progress */}

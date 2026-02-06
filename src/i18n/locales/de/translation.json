@@ -1,27 +1,27 @@
-{
+﻿{
     "common": {
         "loading": "Laden...",
         "error": "Fehler",
         "success": "Erfolg",
         "save": "Speichern",
         "cancel": "Abbrechen",
-        "delete": "Löschen",
+        "delete": "LÃ¶schen",
         "edit": "Bearbeiten",
-        "close": "Schließen",
+        "close": "SchlieÃŸen",
         "submit": "Absenden",
         "search": "Suchen",
         "filter": "Filtern",
         "export": "Exportieren",
         "refresh": "Aktualisieren",
-        "back": "Zurück",
+        "back": "ZurÃ¼ck",
         "next": "Weiter",
-        "previous": "Zurück",
-        "confirm": "Bestätigen",
+        "previous": "ZurÃ¼ck",
+        "confirm": "BestÃ¤tigen",
         "yes": "Ja",
         "no": "Nein",
         "all": "Alle",
         "none": "Keine",
-        "select": "Auswählen",
+        "select": "AuswÃ¤hlen",
         "actions": "Aktionen",
         "status": "Status",
         "date": "Datum",
@@ -43,42 +43,42 @@
         "accessCode": "Zugangscode",
         "viewStatus": "Status Anzeigen",
         "secureConnection": "Sichere Verbindung",
-        "encryptedData": "Alle Daten sind verschlüsselt",
-        "anonymousAccess": "Anonymer Zugang geschützt",
-        "needHelp": "Hilfe benötigt?",
+        "encryptedData": "Alle Daten sind verschlÃ¼sselt",
+        "anonymousAccess": "Anonymer Zugang geschÃ¼tzt",
+        "needHelp": "Hilfe benÃ¶tigt?",
         "contactSupport": "Kontaktieren Sie unser Support-Team",
-        "forgotCredentials": "Zugangsdaten verloren? Überprüfen Sie Ihre E-Mail",
-        "forgotCredentialsDesc": "Überprüfen Sie Ihre E-Mail für Bestätigung mit Ticketnummer",
+        "forgotCredentials": "Zugangsdaten verloren? ÃœberprÃ¼fen Sie Ihre E-Mail",
+        "forgotCredentialsDesc": "ÃœberprÃ¼fen Sie Ihre E-Mail fÃ¼r BestÃ¤tigung mit Ticketnummer",
         "lostAccessCode": "Zugangscode verloren?",
-        "lostAccessCodeDesc": "Der 6-stellige Code wurde beim Einreichen angezeigt. Bewahren Sie ihn sicher für zukünftigen Zugang auf.",
+        "lostAccessCodeDesc": "Der 6-stellige Code wurde beim Einreichen angezeigt. Bewahren Sie ihn sicher fÃ¼r zukÃ¼nftigen Zugang auf.",
         "privacyGuaranteed": "Datenschutz garantiert",
-        "privacyGuaranteedDesc": "Ihr Zugang wird nicht protokolliert. Keine IP-Adressen oder Gerätedaten gespeichert.",
+        "privacyGuaranteedDesc": "Ihr Zugang wird nicht protokolliert. Keine IP-Adressen oder GerÃ¤tedaten gespeichert.",
         "noReportYet": "Noch keinen Bericht eingereicht?",
         "submitNewReport": "Neuen Bericht Einreichen",
-        "invalidFormat": "Ungültiges Format (z.B. NZ-2025-778403)",
+        "invalidFormat": "UngÃ¼ltiges Format (z.B. NZ-2025-778403)",
         "mustBeSixDigits": "Muss 6 Ziffern sein",
         "ticketIdPlaceholder": "NZ-123456",
-        "ticketIdDescription": "Format: PRÄFIX-NUMMER (z.B. NZ-123456)",
+        "ticketIdDescription": "Format: PRÃ„FIX-NUMMER (z.B. NZ-123456)",
         "accessCodeDescription": "6-stelliger Code beim Einreichen erhalten",
         "secureAccessTitle": "Sicherer Zugang",
-        "secureAccessSubtitle": "Ihre Privatsphäre ist unsere oberste Priorität. Dieses Portal verwendet fortschrittliche Sicherheitsmaßnahmen.",
-        "securityEndToEnd": "Ende-zu-Ende-Verschlüsselung",
+        "secureAccessSubtitle": "Ihre PrivatsphÃ¤re ist unsere oberste PrioritÃ¤t. Dieses Portal verwendet fortschrittliche SicherheitsmaÃŸnahmen.",
+        "securityEndToEnd": "Ende-zu-Ende-VerschlÃ¼sselung",
         "securityNoTracking": "Kein Tracking oder Logging",
         "securityGDPR": "DSGVO-konform",
-        "securityAutoTimeout": "Automatische Sitzungs-Zeitüberschreitung",
+        "securityAutoTimeout": "Automatische Sitzungs-ZeitÃ¼berschreitung",
         "reportIncident": "Neuen Vorfall Melden",
         "handlerLogin": "Handler-Anmeldung",
         "loginWithMicrosoft": "Mit Microsoft Anmelden",
-        "securityNotice": "Ihre Privatsphäre ist unsere Priorität. Alle Kommunikationen sind verschlüsselt und anonymous.",
-        "errorInvalidCredentials": "Ungültige Ticket-ID oder Zugangscode"
+        "securityNotice": "Ihre PrivatsphÃ¤re ist unsere PrioritÃ¤t. Alle Kommunikationen sind verschlÃ¼sselt und anonymous.",
+        "errorInvalidCredentials": "UngÃ¼ltige Ticket-ID oder Zugangscode"
     },
     "handlerDashboard": {
         "title": "Handler-Dashboard",
         "metrics": {
-            "totalCases": "Gesamte Fälle",
-            "activeCases": "Aktive Fälle",
-            "resolvedToday": "Heute Gelöst",
-            "avgResolutionTime": "Durchschn. Lösungszeit",
+            "totalCases": "Gesamte FÃ¤lle",
+            "activeCases": "Aktive FÃ¤lle",
+            "resolvedToday": "Heute GelÃ¶st",
+            "avgResolutionTime": "Durchschn. LÃ¶sungszeit",
             "hours": "Stunden"
         },
         "filters": {
@@ -107,20 +107,20 @@
             "new": "Neu",
             "investigating": "In Untersuchung",
             "in_progress": "In Bearbeitung",
-            "resolved": "Gelöst",
+            "resolved": "GelÃ¶st",
             "closed": "Geschlossen"
         },
         "welcomeMessage": "Welcome, ",
         "subtitle": "Overview of your assigned cases and performance metrics"
     },
     "priorityWorkflow": {
-        "title": "Prioritäts-Workflow",
-        "subtitle": "Dringende und schwerwiegende Fälle nach Frist geordnet",
+        "title": "PrioritÃ¤ts-Workflow",
+        "subtitle": "Dringende und schwerwiegende FÃ¤lle nach Frist geordnet",
         "filters": {
             "severity": "Schweregrad",
             "workflow": "Workflow",
             "sortBy": "Sortieren Nach",
-            "deadline": "Frist-Nähe",
+            "deadline": "Frist-NÃ¤he",
             "assignmentTime": "Zuweisungszeit"
         },
         "table": {
@@ -130,13 +130,13 @@
             "workflow": "Workflow",
             "assigned": "Zugewiesen",
             "deadline": "Frist",
-            "priority": "Prioritätswert",
+            "priority": "PrioritÃ¤tswert",
             "actions": "Aktionen",
             "viewCase": "Fall Anzeigen",
-            "noCases": "Keine Prioritätsfälle gefunden"
+            "noCases": "Keine PrioritÃ¤tsfÃ¤lle gefunden"
         },
         "deadlineStatus": {
-            "overdue": "Überfällig",
+            "overdue": "ÃœberfÃ¤llig",
             "today": "Heute",
             "soon": "Bald"
         }
@@ -146,14 +146,14 @@
         "dateRange": "Datumsbereich",
         "summary": {
             "totalReports": "Gesamte Berichte",
-            "avgResolutionTime": "Durchschn. Lösungszeit",
+            "avgResolutionTime": "Durchschn. LÃ¶sungszeit",
             "activeHandlers": "Aktive Handler",
-            "resolutionRate": "Lösungsrate"
+            "resolutionRate": "LÃ¶sungsrate"
         },
         "charts": {
             "volumeTrends": "Volumentrends",
             "severityDistribution": "Schweregrad-Verteilung",
-            "resolutionTime": "Lösungszeit nach Workflow",
+            "resolutionTime": "LÃ¶sungszeit nach Workflow",
             "workflowPerformance": "Workflow-Leistung"
         },
         "subtitle": "Comprehensive incident metrics and performance insights",
@@ -165,7 +165,7 @@
     },
     "communicationStatus": {
         "title": "Kommunikations-Zustellstatus",
-        "subtitle": "SMS- und E-Mail-Zustellung für alle Handler überwachen",
+        "subtitle": "SMS- und E-Mail-Zustellung fÃ¼r alle Handler Ã¼berwachen",
         "tabs": {
             "all": "Alle Nachrichten",
             "sms": "SMS (Twilio)",
@@ -186,7 +186,7 @@
             "timestamp": "Zeitstempel",
             "type": "Typ",
             "handler": "Handler",
-            "recipient": "Empfänger",
+            "recipient": "EmpfÃ¤nger",
             "status": "Status",
             "message": "Nachrichtenvorschau",
             "noLogs": "Keine Zustellprotokolle gefunden"
@@ -203,40 +203,40 @@
             "title": "Kontaktinformationen",
             "email": "E-Mail-Adresse",
             "phone": "Telefonnummer",
-            "phoneHelp": "Für SMS-Benachrichtigungen über Twilio"
+            "phoneHelp": "FÃ¼r SMS-Benachrichtigungen Ã¼ber Twilio"
         },
         "availability": {
-            "title": "Verfügbarkeitsstatus",
+            "title": "VerfÃ¼gbarkeitsstatus",
             "status": "Aktueller Status",
-            "available": "Verfügbar",
-            "busy": "Beschäftigt",
+            "available": "VerfÃ¼gbar",
+            "busy": "BeschÃ¤ftigt",
             "offline": "Offline",
-            "autoAssign": "Neue Fälle automatisch zuweisen"
+            "autoAssign": "Neue FÃ¤lle automatisch zuweisen"
         },
         "notifications": {
             "title": "Benachrichtigungseinstellungen",
             "alertTypes": "Alarmtypen",
             "newAssignment": "Neue Fallzuweisung",
-            "statusChange": "Statusänderungen",
-            "highPriority": "Hohe Prioritäts Updates",
+            "statusChange": "StatusÃ¤nderungen",
+            "highPriority": "Hohe PrioritÃ¤ts Updates",
             "deadlineReminder": "Fristerinnerungen",
-            "severityThreshold": "Minimaler Schweregrad für Alarme",
-            "channels": "Kommunikationskanäle",
+            "severityThreshold": "Minimaler Schweregrad fÃ¼r Alarme",
+            "channels": "KommunikationskanÃ¤le",
             "enableSms": "SMS Aktivieren (Twilio)",
             "enableEmail": "E-Mail Aktivieren (Resend)"
         },
-        "saveChanges": "Änderungen Speichern",
-        "changesSaved": "Änderungen erfolgreich gespeichert"
+        "saveChanges": "Ã„nderungen Speichern",
+        "changesSaved": "Ã„nderungen erfolgreich gespeichert"
     },
     "reportForm": {
         "title": "Anonyme Vorfallmeldung",
-        "subtitle": "Ihre Identität ist geschützt. Alle Meldungen sind vertraulich.",
+        "subtitle": "Ihre IdentitÃ¤t ist geschÃ¼tzt. Alle Meldungen sind vertraulich.",
         "pageTitle": "Einen Vorfall Melden",
-        "pageSubtitle": "Ihre Stimme zählt. Melden Sie anonym und sicher in wenigen Schritten.",
+        "pageSubtitle": "Ihre Stimme zÃ¤hlt. Melden Sie anonym und sicher in wenigen Schritten.",
         "step": "Schritt",
         "of": "von",
         "stepName1": "Typ",
-        "stepDesc1": "Kategorie wählen",
+        "stepDesc1": "Kategorie wÃ¤hlen",
         "stepName2": "Details",
         "stepDesc2": "Vorfall beschreiben",
         "stepName3": "Ort",
@@ -244,40 +244,45 @@
         "stepName4": "Kontakt",
         "stepDesc4": "Optionale Info",
         "stepName5": "Dateien",
-        "stepDesc5": "Beweise hinzufügen",
-        "stepName6": "Prüfung",
+        "stepDesc5": "Beweise hinzufÃ¼gen",
+        "stepName6": "PrÃ¼fung",
         "stepDesc6": "Meldung absenden",
         "country": "Land",
-        "selectCountry": "Land auswählen",
-        "loadingCountries": "Länder laden...",
+        "selectCountry": "Land auswÃ¤hlen",
+        "loadingCountries": "LÃ¤nder laden...",
         "countryRequired": "Land ist erforderlich",
         "specificLocation": "Spezifischer Standort",
         "specificLocationRequired": "Spezifischer Standort ist erforderlich",
         "savedAs": "Gespeichert als",
         "privacyTitle": "Datenschutz- und Sicherheitsgarantien",
-        "privacyAnonymity": "Vollständige Anonymität",
-        "privacyAnonymityDesc": "Ihre Identität bleibt vollständig geschützt. Wir speichern keine IP-Adressen oder Geräteinformationen.",
+        "privacyAnonymity": "VollstÃ¤ndige AnonymitÃ¤t",
+        "privacyAnonymityDesc": "Ihre IdentitÃ¤t bleibt vollstÃ¤ndig geschÃ¼tzt. Wir speichern keine IP-Adressen oder GerÃ¤teinformationen.",
         "privacySecure": "Sichere Verarbeitung",
-        "privacySecureDesc": "Alle Daten werden verschlüsselt gespeichert und sind nur für autorisierte Handler zugänglich.",
+        "privacySecureDesc": "Alle Daten werden verschlÃ¼sselt gespeichert und sind nur fÃ¼r autorisierte Handler zugÃ¤nglich.",
         "privacyGDPR": "DSGVO-konform",
-        "privacyGDPRDesc": "Vollständig konform mit Datenschutzgesetzen und DSGVO-Vorschriften.",
+        "privacyGDPRDesc": "VollstÃ¤ndig konform mit Datenschutzgesetzen und DSGVO-Vorschriften.",
         "privacyNoRepercussions": "Keine Repressalien",
-        "privacyNoRepercussionsDesc": "Meldungen werden vertraulich behandelt ohne Konsequenzen für den Meldenden.",
-        "privacyNote": "Ihre Meldung ist vollständig anonym. Kontaktdaten sind optional und werden sicher gespeichert.",
+        "privacyNoRepercussionsDesc": "Meldungen werden vertraulich behandelt ohne Konsequenzen fÃ¼r den Meldenden.",
+        "privacyNote": "Ihre Meldung ist vollstÃ¤ndig anonym. Kontaktdaten sind optional und werden sicher gespeichert.",
         "workflow": "Vorfalltyp",
-        "workflowHelp": "Wählen Sie die Kategorie, die Ihre Meldung am besten beschreibt",
+        "workflowHelp": "WÃ¤hlen Sie die Kategorie, die Ihre Meldung am besten beschreibt",
         "severity": "Schweregrad",
         "location": "Standort",
-        "locationPlaceholder": "Gebäude, Etage oder Bereich",
+        "locationPlaceholder": "GebÃ¤ude, Etage oder Bereich",
         "description": "Beschreibung",
         "descriptionPlaceholder": "Geben Sie detaillierte Informationen zum Vorfall an",
-        "attachments": "Anhänge",
-        "attachmentsHelp": "Unterstützende Dokumente oder Bilder hochladen (optional)",
-        "contactOptional": "Optionale Kontaktinformationen",
-        "contactEmail": "E-Mail für Updates",
-        "contactPhone": "Telefon für dringenden Kontakt",
+        "attachments": "AnhÃ¤nge",
+        "attachmentsHelp": "UnterstÃ¼tzende Dokumente oder Bilder hochladen (optional)",
+        "contactOptional": "Contact information",
+        "contactRequiredHelp": "Email is required. Anonymous reports store it encrypted.",
+        "emailRequired": "Email is required",
+        "contactDetailsHelp": "We use your email only to send updates.",
+        "yesAnonymous": "Anonymous",
+        "noProvideContact": "Name/phone",
+        "contactEmail": "E-Mail fÃ¼r Updates",
+        "contactPhone": "Telefon fÃ¼r dringenden Kontakt",
         "emailNotifications": "E-Mail-Updates zu dieser Meldung erhalten",
-        "privacyAssurance": "Ihre Meldung ist vollständig anonym. Kontaktdaten sind optional und werden sicher gespeichert.",
+        "privacyAssurance": "Anonymous: name and phone are hidden.",
         "submitReport": "Meldung Absenden",
         "submitting": "Wird Gesendet...",
         "workflowRequired": "Workflow is required"
@@ -289,17 +294,17 @@
             "title": "Ihre Zugangsdaten",
             "ticketId": "Ticket-ID",
             "accessCode": "Zugangscode",
-            "saveInstructions": "Speichern Sie diese Zugangsdaten, um Ihren Meldungsstatus zu überprüfen"
+            "saveInstructions": "Speichern Sie diese Zugangsdaten, um Ihren Meldungsstatus zu Ã¼berprÃ¼fen"
         },
         "nextSteps": {
-            "title": "Nächste Schritte",
-            "step1": "Ihre Meldung wird von unserem Team überprüft",
+            "title": "NÃ¤chste Schritte",
+            "step1": "Ihre Meldung wird von unserem Team Ã¼berprÃ¼ft",
             "step2": "Untersuchung beginnt innerhalb von 24 Stunden",
-            "step3": "Sie erhalten Updates über Ihren bevorzugten Kanal",
+            "step3": "Sie erhalten Updates Ã¼ber Ihren bevorzugten Kanal",
             "step4": "Verfolgen Sie den Fortschritt mit Ihren Zugangsdaten"
         },
         "actions": {
-            "checkStatus": "Status Überprüfen",
+            "checkStatus": "Status ÃœberprÃ¼fen",
             "submitAnother": "Weitere Meldung Einreichen",
             "downloadCredentials": "Zugangsdaten Herunterladen"
         }
@@ -314,24 +319,24 @@
         "submittedOn": "Eingereicht Am",
         "lastUpdated": "Zuletzt Aktualisiert",
         "statusTimeline": "Status-Zeitlinie",
-        "attachments": "Anhänge",
+        "attachments": "AnhÃ¤nge",
         "communication": "Kommunikationsprotokoll",
         "privacyReminder": "Dies ist eine anonyme Meldung. Alle Kommunikationen sind vertraulich.",
-        "noAttachments": "Keine Anhänge",
+        "noAttachments": "Keine AnhÃ¤nge",
         "noMessages": "Noch keine Nachrichten"
     },
     "caseManagement": {
         "title": "Fallverwaltung",
         "caseDetails": "Falldetails",
         "investigation": "Untersuchungsnotizen",
-        "addNote": "Notiz Hinzufügen",
-        "noteAdded": "Notiz erfolgreich hinzugefügt",
+        "addNote": "Notiz HinzufÃ¼gen",
+        "noteAdded": "Notiz erfolgreich hinzugefÃ¼gt",
         "updateStatus": "Status Aktualisieren",
         "assignTo": "Zuweisen An",
-        "priority": "Priorität",
+        "priority": "PrioritÃ¤t",
         "actionHistory": "Aktionsverlauf",
-        "closeCase": "Fall Schließen",
-        "reopenCase": "Fall Wiederöffnen",
+        "closeCase": "Fall SchlieÃŸen",
+        "reopenCase": "Fall WiederÃ¶ffnen",
         "escalate": "Eskalieren"
     },
     "workflowConfig": {
@@ -346,21 +351,21 @@
         "notificationSettings": "Benachrichtigungseinstellungen",
         "active": "Aktiv",
         "inactive": "Inaktiv",
-        "deleteConfirm": "Sind Sie sicher, dass Sie diesen Workflow löschen möchten?"
+        "deleteConfirm": "Sind Sie sicher, dass Sie diesen Workflow lÃ¶schen mÃ¶chten?"
     },
     "navigation": {
         "dashboard": "Dashboard",
-        "priorityWorkflow": "Prioritäts-Workflow",
+        "priorityWorkflow": "PrioritÃ¤ts-Workflow",
         "workflows": "Workflows",
         "analytics": "Analytics",
         "communications": "Kommunikation",
         "legalGuidance": "Rechtliche Beratung"
     },
     "language": {
-        "select": "Sprache Auswählen",
+        "select": "Sprache AuswÃ¤hlen",
         "en": "English",
         "nl": "Nederlands",
-        "fr": "Français",
+        "fr": "FranÃ§ais",
         "de": "Deutsch"
     },
     "settings": {
@@ -368,18 +373,18 @@
         "subtitle": "Portal-Verhalten, Sicherheit, Benachrichtigungen, SLA und Audit-Protokollierung konfigurieren",
         "pageTitle": "Systemeinstellungen | Admin",
         "refresh": "Aktualisieren",
-        "resetTab": "Tab zurücksetzen",
-        "saveChanges": "Änderungen speichern",
+        "resetTab": "Tab zurÃ¼cksetzen",
+        "saveChanges": "Ã„nderungen speichern",
         "saving": "Speichern...",
-        "close": "Schließen",
+        "close": "SchlieÃŸen",
         "overview": {
-            "title": "Übersicht",
+            "title": "Ãœbersicht",
             "currentCategory": "Aktuelle Kategorie",
             "settingsCount": "Anzahl der Einstellungen",
-            "changedCount": "Geändert (gesamt)",
+            "changedCount": "GeÃ¤ndert (gesamt)",
             "updater": "Aktualisiert von",
             "tip": "Tipp",
-            "sensitiveHint": "Kennzeichnen Sie sensible Werte mit is_sensitive. Sie werden in der Benutzeroberfläche maskiert, bleiben aber audit-protokollierbar."
+            "sensitiveHint": "Kennzeichnen Sie sensible Werte mit is_sensitive. Sie werden in der BenutzeroberflÃ¤che maskiert, bleiben aber audit-protokollierbar."
         },
         "categories": {
             "general": "Allgemein",
@@ -398,11 +403,11 @@
             "currentValue": "Aktueller Wert",
             "sensitive": "Sensibel",
             "onOff": "Ein / Aus",
-            "jsonAdvanced": "JSON (für erweiterte Einstellungen)"
+            "jsonAdvanced": "JSON (fÃ¼r erweiterte Einstellungen)"
         },
         "twoFactor": {
             "title": "Zwei-Faktor-Authentifizierung (2FA)",
-            "subtitle": "Fügen Sie Ihrem Konto eine zusätzliche Sicherheitsebene hinzu",
+            "subtitle": "FÃ¼gen Sie Ihrem Konto eine zusÃ¤tzliche Sicherheitsebene hinzu",
             "status": "2FA-Status",
             "enabled": "Aktiviert",
             "disabled": "Deaktiviert",
@@ -413,8 +418,8 @@
             "setupInstructions": "Scannen Sie den QR-Code unten mit Ihrer Authenticator-App",
             "scanQR": "QR-Code scannen",
             "enterCode": "Geben Sie den 6-stelligen Code aus Ihrer Authenticator-App ein",
-            "verifyCode": "Code überprüfen",
-            "verifying": "Überprüfung...",
+            "verifyCode": "Code Ã¼berprÃ¼fen",
+            "verifying": "ÃœberprÃ¼fung...",
             "backupCodes": "Backup-Codes",
             "backupCodesDescription": "Speichern Sie diese Backup-Codes an einem sicheren Ort. Jeder kann einmal verwendet werden, wenn Sie den Zugriff auf Ihren Authenticator verlieren.",
             "downloadCodes": "Codes herunterladen",
@@ -423,28 +428,28 @@
             "regenerateCodes": "Backup-Codes regenerieren",
             "appRecommendations": "Empfohlene Apps: Google Authenticator, Microsoft Authenticator, Authy",
             "setupComplete": "2FA-Einrichtung abgeschlossen!",
-            "invalidCode": "Ungültiger Verifizierungscode",
+            "invalidCode": "UngÃ¼ltiger Verifizierungscode",
             "errorEnabling": "Fehler beim Aktivieren von 2FA",
             "errorDisabling": "Fehler beim Deaktivieren von 2FA",
-            "confirmDisable": "Sind Sie sicher, dass Sie 2FA deaktivieren möchten? Dies macht Ihr Konto weniger sicher.",
-            "accountKey": "Kontoschlüssel",
-            "accountKeyDescription": "Wenn Sie den QR-Code nicht scannen können, geben Sie diesen Schlüssel manuell ein:"
+            "confirmDisable": "Sind Sie sicher, dass Sie 2FA deaktivieren mÃ¶chten? Dies macht Ihr Konto weniger sicher.",
+            "accountKey": "KontoschlÃ¼ssel",
+            "accountKeyDescription": "Wenn Sie den QR-Code nicht scannen kÃ¶nnen, geben Sie diesen SchlÃ¼ssel manuell ein:"
         },
         "messages": {
             "loading": "Einstellungen laden...",
             "errorLoading": "Einstellungen konnten nicht geladen werden.",
             "noSettings": "Keine Einstellungen in system_settings gefunden.",
             "noSettingsInCategory": "Keine Einstellungen in dieser Kategorie.",
-            "addSettings": "Fügen Sie Zeilen zu system_settings hinzu.",
-            "changesPending": "Änderung(en) bereit zum Speichern.",
-            "noChanges": "Keine Änderungen.",
+            "addSettings": "FÃ¼gen Sie Zeilen zu system_settings hinzu.",
+            "changesPending": "Ã„nderung(en) bereit zum Speichern.",
+            "noChanges": "Keine Ã„nderungen.",
             "saveSuccess": "Einstellungen erfolgreich gespeichert",
             "saveError": "Speichern fehlgeschlagen."
         }
     },
     "legalGuidance": {
-        "title": "Rechtliche Beratung für Whistleblower",
-        "subtitle": "Umfassende länderspezifische rechtliche Rahmenbedingungen und Verfahren für Niederlande, Belgien, Deutschland und Frankreich",
+        "title": "Rechtliche Beratung fÃ¼r Whistleblower",
+        "subtitle": "Umfassende lÃ¤nderspezifische rechtliche Rahmenbedingungen und Verfahren fÃ¼r Niederlande, Belgien, Deutschland und Frankreich",
         "footer": "Sichere & Vertrauliche Meldung",
         "searchPlaceholder": "Rechtliche Themen, Verfahren oder Kontakte suchen...",
         "countries": {
@@ -461,14 +466,14 @@
                 "lawTitle": "Hinweisgeberschutzgesetz (2023)",
                 "lawDescription": "In Kraft seit 18. Februar 2023, setzt EU-Richtlinie 2019/1937 um",
                 "protections": [
-                    "Schutz vor Vergeltungsmaßnahmen und Kündigung",
-                    "Vertraulichkeit der Identität garantiert",
-                    "Recht auf rechtliche Unterstützung",
-                    "Entschädigung bei Repressalien"
+                    "Schutz vor VergeltungsmaÃŸnahmen und KÃ¼ndigung",
+                    "Vertraulichkeit der IdentitÃ¤t garantiert",
+                    "Recht auf rechtliche UnterstÃ¼tzung",
+                    "EntschÃ¤digung bei Repressalien"
                 ],
                 "features": [
                     "Direkte externe Meldung erlaubt",
-                    "Bestätigung innerhalb von 7 Tagen",
+                    "BestÃ¤tigung innerhalb von 7 Tagen",
                     "Untersuchung innerhalb von 2 Wochen gestartet",
                     "Stellungnahme innerhalb von 8-12 Wochen"
                 ]
@@ -479,13 +484,13 @@
                 "protections": [
                     "Starke Betonung der Vertraulichkeit",
                     "Schutz vor Repressalien",
-                    "Anonymität erlaubt",
-                    "Rechtliche Unterstützung verfügbar"
+                    "AnonymitÃ¤t erlaubt",
+                    "Rechtliche UnterstÃ¼tzung verfÃ¼gbar"
                 ],
                 "features": [
-                    "Föderaler Ombudsmann als externer Kanal",
-                    "Sichere App für anonyme Meldungen",
-                    "SIOD als zuständige Aufsichtsbehörde",
+                    "FÃ¶deraler Ombudsmann als externer Kanal",
+                    "Sichere App fÃ¼r anonyme Meldungen",
+                    "SIOD als zustÃ¤ndige AufsichtsbehÃ¶rde",
                     "Keine Verpflichtung zur anonymen Erleichterung"
                 ]
             },
@@ -499,26 +504,26 @@
                     "Vertraulichkeit garantiert"
                 ],
                 "features": [
-                    "Bundesamt für Justiz als externer Kanal",
+                    "Bundesamt fÃ¼r Justiz als externer Kanal",
                     "Anonyme Meldungen erlaubt",
-                    "Online-Formular verfügbar",
+                    "Online-Formular verfÃ¼gbar",
                     "Kein verpflichtendes anonymes System"
                 ]
             },
             "france": {
-                "lawTitle": "Sapin-II-Gesetz (geändert 2022)",
-                "lawDescription": "2022 geändert zur Umsetzung der EU-Richtlinie 2019/1937",
+                "lawTitle": "Sapin-II-Gesetz (geÃ¤ndert 2022)",
+                "lawDescription": "2022 geÃ¤ndert zur Umsetzung der EU-Richtlinie 2019/1937",
                 "protections": [
-                    "Schutz für Praktikanten und Freiberufler",
+                    "Schutz fÃ¼r Praktikanten und Freiberufler",
                     "Recht auf Pressefreiheit bei fehlender Wirkung",
                     "Verpflichtende Bearbeitung anonymer Meldungen",
-                    "Breite Definition geschützter Personen"
+                    "Breite Definition geschÃ¼tzter Personen"
                 ],
                 "features": [
-                    "Mehrere zuständige Behörden (AFA, ANSSI, etc.)",
-                    "Anonyme Meldungen müssen bearbeitet werden",
-                    "Direkter Pressezugang möglich",
-                    "Lieferanten explizit geschützt"
+                    "Mehrere zustÃ¤ndige BehÃ¶rden (AFA, ANSSI, etc.)",
+                    "Anonyme Meldungen mÃ¼ssen bearbeitet werden",
+                    "Direkter Pressezugang mÃ¶glich",
+                    "Lieferanten explizit geschÃ¼tzt"
                 ]
             }
         },
@@ -528,54 +533,54 @@
                 "phases": [
                     {
                         "title": "Beratungsphase",
-                        "description": "Konsultieren Sie einen Vertrauensberater oder das Haus für Hinweisgeber für Beratung vor der Meldung",
+                        "description": "Konsultieren Sie einen Vertrauensberater oder das Haus fÃ¼r Hinweisgeber fÃ¼r Beratung vor der Meldung",
                         "timeline": "Vor der Meldung",
                         "steps": [
                             "Intern: Danny Das (danny.das@nedzink.nl, 0495-455762)",
                             "Extern: Eugenie Kemperman (eugenie.kemperman@arbounie.nl, +31 652500073)",
-                            "Haus für Hinweisgeber (contact@huisvoorklokkenluiders.nl, 088-1331000)"
+                            "Haus fÃ¼r Hinweisgeber (contact@huisvoorklokkenluiders.nl, 088-1331000)"
                         ]
                     },
                     {
                         "title": "Interne Meldung",
-                        "description": "Meldung an Vorgesetzten oder über Vertrauensberater mit Bestätigung",
-                        "timeline": "Bestätigung innerhalb von 7 Tagen",
+                        "description": "Meldung an Vorgesetzten oder Ã¼ber Vertrauensberater mit BestÃ¤tigung",
+                        "timeline": "BestÃ¤tigung innerhalb von 7 Tagen",
                         "steps": [
                             "Meldung an Vorgesetzten oder Vertrauensberater einreichen",
-                            "Bestätigung innerhalb von 7 Tagen",
+                            "BestÃ¤tigung innerhalb von 7 Tagen",
                             "Kontaktperson gegen Repressalien ernannt"
                         ]
                     },
                     {
                         "title": "Untersuchung durch Arbeitgeber",
-                        "description": "Arbeitgeber entscheidet über Untersuchung und informiert Melder innerhalb der Frist",
+                        "description": "Arbeitgeber entscheidet Ã¼ber Untersuchung und informiert Melder innerhalb der Frist",
                         "timeline": "Entscheidung innerhalb von 2 Wochen",
                         "steps": [
                             "Entscheidung: Untersuchung starten oder nicht",
                             "Melder innerhalb von 2 Wochen informieren",
-                            "Unabhängige Ermittler ernannt",
-                            "Anhörung von Melder und Beteiligten"
+                            "UnabhÃ¤ngige Ermittler ernannt",
+                            "AnhÃ¶rung von Melder und Beteiligten"
                         ]
                     },
                     {
                         "title": "Stellungnahme des Arbeitgebers",
-                        "description": "Abschlussbericht und Stellungnahme mit Möglichkeit zur Antwort",
+                        "description": "Abschlussbericht und Stellungnahme mit MÃ¶glichkeit zur Antwort",
                         "timeline": "8-12 Wochen",
                         "steps": [
                             "Entwurf und Abschlussbericht erstellt",
                             "Stellungnahme innerhalb von 8 Wochen (max. 12 Wochen)",
-                            "Möglichkeit für Melder zu antworten",
-                            "Mögliche zusätzliche Untersuchung"
+                            "MÃ¶glichkeit fÃ¼r Melder zu antworten",
+                            "MÃ¶gliche zusÃ¤tzliche Untersuchung"
                         ]
                     },
                     {
                         "title": "Externe Meldung & Schutz",
-                        "description": "Direkt möglich oder nach internem Verfahren bei zuständiger Behörde",
+                        "description": "Direkt mÃ¶glich oder nach internem Verfahren bei zustÃ¤ndiger BehÃ¶rde",
                         "timeline": "Laufend",
                         "steps": [
-                            "Meldung an Haus für Hinweisgeber oder andere Behörde",
-                            "Kontaktperson überwacht Schutz",
-                            "Maßnahmen durch höchste Führungsebene"
+                            "Meldung an Haus fÃ¼r Hinweisgeber oder andere BehÃ¶rde",
+                            "Kontaktperson Ã¼berwacht Schutz",
+                            "MaÃŸnahmen durch hÃ¶chste FÃ¼hrungsebene"
                         ]
                     }
                 ]
@@ -584,41 +589,41 @@
                 "phases": [
                     {
                         "title": "Interne Meldung",
-                        "description": "Meldung über internen Meldekanal oder Vertrauensberater",
+                        "description": "Meldung Ã¼ber internen Meldekanal oder Vertrauensberater",
                         "timeline": "Erster Schritt",
                         "steps": [
-                            "Meldung über internes System einreichen",
-                            "Vertraulichkeit der Identität garantiert",
-                            "Bestätigung erhalten"
+                            "Meldung Ã¼ber internes System einreichen",
+                            "Vertraulichkeit der IdentitÃ¤t garantiert",
+                            "BestÃ¤tigung erhalten"
                         ]
                     },
                     {
                         "title": "Untersuchung",
-                        "description": "Organisation führt Untersuchung der Meldung durch",
+                        "description": "Organisation fÃ¼hrt Untersuchung der Meldung durch",
                         "timeline": "Innerhalb angemessener Frist",
                         "steps": [
-                            "Untersuchung durch zuständige Abteilung gestartet",
-                            "Melder bei Bedarf angehört",
+                            "Untersuchung durch zustÃ¤ndige Abteilung gestartet",
+                            "Melder bei Bedarf angehÃ¶rt",
                             "Zwischenaktualisierungen bereitgestellt"
                         ]
                     },
                     {
                         "title": "Externe Meldung",
-                        "description": "Meldung an Föderalen Ombudsmann oder zuständige Aufsichtsbehörde",
+                        "description": "Meldung an FÃ¶deralen Ombudsmann oder zustÃ¤ndige AufsichtsbehÃ¶rde",
                         "timeline": "Nach internem Verfahren oder direkt",
                         "steps": [
-                            "Online-Formular an Föderalen Ombudsmann einreichen",
-                            "Oder Meldung über sichere App",
-                            "Oder Meldung an SIOD (zuständige Aufsichtsbehörde)"
+                            "Online-Formular an FÃ¶deralen Ombudsmann einreichen",
+                            "Oder Meldung Ã¼ber sichere App",
+                            "Oder Meldung an SIOD (zustÃ¤ndige AufsichtsbehÃ¶rde)"
                         ]
                     },
                     {
                         "title": "Schutz",
-                        "description": "Schutz vor Repressalien während des gesamten Prozesses",
+                        "description": "Schutz vor Repressalien wÃ¤hrend des gesamten Prozesses",
                         "timeline": "Laufend",
                         "steps": [
-                            "Überwachung auf Repressalien",
-                            "Rechtliche Unterstützung verfügbar",
+                            "Ãœberwachung auf Repressalien",
+                            "Rechtliche UnterstÃ¼tzung verfÃ¼gbar",
                             "Vertraulichkeit aufrechterhalten"
                         ]
                     }
@@ -628,41 +633,41 @@
                 "phases": [
                     {
                         "title": "Interne Meldung",
-                        "description": "Meldung über internen Meldekanal der Organisation",
+                        "description": "Meldung Ã¼ber internen Meldekanal der Organisation",
                         "timeline": "Erster Schritt (empfohlen)",
                         "steps": [
-                            "Meldung über internes System einreichen",
-                            "Bestätigung des Eingangs innerhalb von 7 Tagen",
+                            "Meldung Ã¼ber internes System einreichen",
+                            "BestÃ¤tigung des Eingangs innerhalb von 7 Tagen",
                             "Vertraulichkeit garantiert"
                         ]
                     },
                     {
                         "title": "Untersuchung",
-                        "description": "Internes Untersuchungsverfahren gemäß HinSchG",
+                        "description": "Internes Untersuchungsverfahren gemÃ¤ÃŸ HinSchG",
                         "timeline": "Innerhalb von 3 Monaten",
                         "steps": [
-                            "Untersuchung durch zuständige Abteilung durchgeführt",
-                            "Rückmeldung an Melder innerhalb von 3 Monaten",
+                            "Untersuchung durch zustÃ¤ndige Abteilung durchgefÃ¼hrt",
+                            "RÃ¼ckmeldung an Melder innerhalb von 3 Monaten",
                             "Datenminimierung angewendet"
                         ]
                     },
                     {
                         "title": "Externe Meldung",
-                        "description": "Meldung an Bundesamt für Justiz oder andere zuständige Behörde",
+                        "description": "Meldung an Bundesamt fÃ¼r Justiz oder andere zustÃ¤ndige BehÃ¶rde",
                         "timeline": "Nach internem Verfahren oder direkt",
                         "steps": [
-                            "Online-Formular beim Bundesamt für Justiz",
-                            "Anonyme Meldung möglich",
+                            "Online-Formular beim Bundesamt fÃ¼r Justiz",
+                            "Anonyme Meldung mÃ¶glich",
                             "Strikte Datenspeicherungsregeln"
                         ]
                     },
                     {
                         "title": "Schutz",
-                        "description": "Schutz vor Benachteiligung gemäß HinSchG",
+                        "description": "Schutz vor Benachteiligung gemÃ¤ÃŸ HinSchG",
                         "timeline": "Laufend",
                         "steps": [
-                            "Überwachung auf Repressalien",
-                            "Rechtliche Unterstützung",
+                            "Ãœberwachung auf Repressalien",
+                            "Rechtliche UnterstÃ¼tzung",
                             "Vertraulichkeit aufrechterhalten"
                         ]
                     }
@@ -672,12 +677,12 @@
                 "phases": [
                     {
                         "title": "Interne Meldung",
-                        "description": "Meldung über internen Meldekanal gemäß Sapin-II-Gesetz",
+                        "description": "Meldung Ã¼ber internen Meldekanal gemÃ¤ÃŸ Sapin-II-Gesetz",
                         "timeline": "Erster Schritt (empfohlen)",
                         "steps": [
-                            "Meldung über internes System einreichen",
+                            "Meldung Ã¼ber internes System einreichen",
                             "Anonyme Meldung muss bearbeitet werden",
-                            "Bestätigung des Eingangs"
+                            "BestÃ¤tigung des Eingangs"
                         ]
                     },
                     {
@@ -685,38 +690,38 @@
                         "description": "Internes Untersuchungsverfahren mit strikten Fristen",
                         "timeline": "Innerhalb angemessener Frist",
                         "steps": [
-                            "Untersuchung durch zuständige Abteilung gestartet",
-                            "Melder über Fortschritt informiert",
+                            "Untersuchung durch zustÃ¤ndige Abteilung gestartet",
+                            "Melder Ã¼ber Fortschritt informiert",
                             "Vertraulichkeit garantiert"
                         ]
                     },
                     {
                         "title": "Externe Meldung",
-                        "description": "Meldung an zuständige Behörde (AFA, ANSSI, ANSES, etc.)",
+                        "description": "Meldung an zustÃ¤ndige BehÃ¶rde (AFA, ANSSI, ANSES, etc.)",
                         "timeline": "Nach internem Verfahren oder direkt",
                         "steps": [
-                            "Auswahl aus mehreren zuständigen Behörden",
+                            "Auswahl aus mehreren zustÃ¤ndigen BehÃ¶rden",
                             "Online-Formular oder per Post",
-                            "Anonyme Meldung möglich"
+                            "Anonyme Meldung mÃ¶glich"
                         ]
                     },
                     {
-                        "title": "Öffentliche Offenlegung",
+                        "title": "Ã–ffentliche Offenlegung",
                         "description": "Direkte Meldung an Presse bei fehlender Wirkung interner/externer Meldung",
                         "timeline": "Als letzte Option",
                         "steps": [
                             "Recht auf Pressefreiheit",
                             "Schutz bleibt bestehen",
-                            "Rechtliche Unterstützung verfügbar"
+                            "Rechtliche UnterstÃ¼tzung verfÃ¼gbar"
                         ]
                     },
                     {
                         "title": "Schutz",
-                        "description": "Umfassender Schutz einschließlich Praktikanten und Lieferanten",
+                        "description": "Umfassender Schutz einschlieÃŸlich Praktikanten und Lieferanten",
                         "timeline": "Laufend",
                         "steps": [
-                            "Überwachung auf Repressalien",
-                            "Schutz für breite Personengruppe",
+                            "Ãœberwachung auf Repressalien",
+                            "Schutz fÃ¼r breite Personengruppe",
                             "Vertraulichkeit aufrechterhalten"
                         ]
                     }
@@ -727,11 +732,11 @@
             "title": "Kontaktverzeichnis",
             "visitWebsite": "Website Besuchen",
             "onlineForm": "Online-Formular",
-            "anonymityNote": "Anonymität & Vertraulichkeit",
-            "netherlandsAnonymityInfo": "Direkte externe Meldung möglich ohne vorherige interne Meldung. Identität ist geschützt.",
-            "belgiumAnonymityInfo": "Anonymität über sichere App erlaubt. Starke Betonung der Vertraulichkeit der Identität.",
-            "germanyAnonymityInfo": "Anonyme Meldungen erlaubt. Strikte Regeln für Datenspeicherung und Datenminimierung.",
-            "franceAnonymityInfo": "Anonyme Meldungen müssen bearbeitet werden. Direkte Meldung an Presse als letzte Option möglich.",
+            "anonymityNote": "AnonymitÃ¤t & Vertraulichkeit",
+            "netherlandsAnonymityInfo": "Direkte externe Meldung mÃ¶glich ohne vorherige interne Meldung. IdentitÃ¤t ist geschÃ¼tzt.",
+            "belgiumAnonymityInfo": "AnonymitÃ¤t Ã¼ber sichere App erlaubt. Starke Betonung der Vertraulichkeit der IdentitÃ¤t.",
+            "germanyAnonymityInfo": "Anonyme Meldungen erlaubt. Strikte Regeln fÃ¼r Datenspeicherung und Datenminimierung.",
+            "franceAnonymityInfo": "Anonyme Meldungen mÃ¼ssen bearbeitet werden. Direkte Meldung an Presse als letzte Option mÃ¶glich.",
             "netherlands": [
                 {
                     "name": "Danny Das",
@@ -748,8 +753,8 @@
                     "phone": "+31 652500073"
                 },
                 {
-                    "name": "Haus für Hinweisgeber",
-                    "role": "Nationale Behörde für Hinweisgeber",
+                    "name": "Haus fÃ¼r Hinweisgeber",
+                    "role": "Nationale BehÃ¶rde fÃ¼r Hinweisgeber",
                     "type": "authority",
                     "email": "contact@huisvoorklokkenluiders.nl",
                     "phone": "088-1331000",
@@ -759,8 +764,8 @@
             ],
             "belgium": [
                 {
-                    "name": "Föderaler Ombudsmann",
-                    "role": "Externer Meldekanal für Hinweisgeber",
+                    "name": "FÃ¶deraler Ombudsmann",
+                    "role": "Externer Meldekanal fÃ¼r Hinweisgeber",
                     "type": "authority",
                     "email": "integriteit@federaalombudsman.be",
                     "phone": "0800 999 61",
@@ -769,15 +774,15 @@
                 },
                 {
                     "name": "SIOD",
-                    "role": "Sozialinspektion - Zuständige Aufsichtsbehörde",
+                    "role": "Sozialinspektion - ZustÃ¤ndige AufsichtsbehÃ¶rde",
                     "type": "authority",
                     "website": "https://www.siod.belgie.be"
                 }
             ],
             "germany": [
                 {
-                    "name": "Bundesamt für Justiz",
-                    "role": "Bundesweite Meldestelle für Hinweisgeber",
+                    "name": "Bundesamt fÃ¼r Justiz",
+                    "role": "Bundesweite Meldestelle fÃ¼r Hinweisgeber",
                     "type": "authority",
                     "website": "https://www.bundesjustizamt.de",
                     "onlineForm": "https://www.bundesjustizamt.de/DE/MeldestelledesBundes/MeldestelledesBundes_node"
@@ -785,15 +790,15 @@
             ],
             "france": [
                 {
-                    "name": "Französische Antikorruptionsbehörde (AFA)",
-                    "role": "Französische Antikorruptionsbehörde",
+                    "name": "FranzÃ¶sische AntikorruptionsbehÃ¶rde (AFA)",
+                    "role": "FranzÃ¶sische AntikorruptionsbehÃ¶rde",
                     "type": "authority",
                     "website": "https://www.agence-francaise-anticorruption.gouv.fr",
                     "onlineForm": "https://www.agence-francaise-anticorruption.gouv.fr/fr/procedure-recueil-et-traitement-des-signalements"
                 },
                 {
                     "name": "ANSSI",
-                    "role": "Nationale Agentur für die Sicherheit von Informationssystemen",
+                    "role": "Nationale Agentur fÃ¼r die Sicherheit von Informationssystemen",
                     "type": "authority",
                     "email": "lanceurdalerte@ssi.gouv.fr",
                     "phone": "+33 171758468",
@@ -801,13 +806,13 @@
                 },
                 {
                     "name": "ANSES",
-                    "role": "Nationale Agentur für Lebensmittel-, Umwelt- und Arbeitsschutzsicherheit",
+                    "role": "Nationale Agentur fÃ¼r Lebensmittel-, Umwelt- und Arbeitsschutzsicherheit",
                     "type": "authority",
                     "email": "lanceurdalerte@anses.fr"
                 },
                 {
-                    "name": "Französische Wettbewerbsbehörde",
-                    "role": "Französische Wettbewerbsbehörde",
+                    "name": "FranzÃ¶sische WettbewerbsbehÃ¶rde",
+                    "role": "FranzÃ¶sische WettbewerbsbehÃ¶rde",
                     "type": "authority",
                     "phone": "+33 155040005",
                     "website": "https://www.autoritedelaconcurrence.fr/fr/page-riche/le-dispositif-lanceur-dalerte",
@@ -815,7 +820,7 @@
                 },
                 {
                     "name": "IGEDD",
-                    "role": "Generalinspektion für Umwelt und nachhaltige Entwicklung",
+                    "role": "Generalinspektion fÃ¼r Umwelt und nachhaltige Entwicklung",
                     "type": "authority",
                     "website": "https://www.igedd.developpement-durable.gouv.fr/lanceur-d-alerte-signaler-une-atteinte-a-l-a3965.html"
                 }
@@ -823,3 +828,7 @@
         }
     }
 }
+
+
+
+

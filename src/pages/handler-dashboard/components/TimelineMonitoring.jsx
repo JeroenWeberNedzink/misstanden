@@ -4,6 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import Icon from '../../../components/AppIcon';
 import { ticketService } from '../../../services/ticketService';
 import { workflowTimelineService } from '../../../services/workflowTimelineService';
+import { workflowService } from '../../../services/workflowService';
+
+const safeTrim = (v) => String(v ?? '').trim();
+const safeLower = (v) => String(v ?? '').toLowerCase();
 
 const TimelineMonitoring = () => {
   console.log('[TimelineMonitoring] Component rendering...');
@@ -29,7 +33,7 @@ const TimelineMonitoring = () => {
 
       console.log('[TimelineMonitoring] Fetching tickets and workflows...');
       const tickets = await ticketService.getAllTickets();
-      const workflows = await ticketService.getWorkflows();
+      const workflows = await workflowService.getWorkflows();
 
       console.log('[TimelineMonitoring] Tickets fetched:', tickets?.length || 0);
       console.log('[TimelineMonitoring] Workflows fetched:', workflows?.length || 0);
@@ -41,21 +45,42 @@ const TimelineMonitoring = () => {
         return;
       }
 
+      const workflowStatusMap = new Map(); // workflowCode -> Map(statusCodeLower -> meta)
+      await Promise.all(
+        (workflows || []).map(async (wf) => {
+          const statuses = await workflowService.getWorkflowStatuses(wf.id).catch(() => []);
+          const inner = new Map();
+          (statuses || []).forEach((s) => {
+            const code = safeTrim(s?.code);
+            if (!code) return;
+            inner.set(safeLower(code), {
+              code,
+              label: safeTrim(s?.label),
+              isTerminal: Boolean(s?.isTerminal ?? s?.is_terminal),
+            });
+          });
+          workflowStatusMap.set(safeTrim(wf?.code), inner);
+        })
+      );
+
       const overdue = [];
       const approaching = [];
       let onTrack = 0;
 
       console.log('[TimelineMonitoring] Processing tickets...');
       for (const ticket of tickets) {
-        if (ticket.status_code === 'closed' || ticket.status_code === 'resolved') {
-          console.log('[TimelineMonitoring] Skipping closed/resolved ticket:', ticket.id);
-          continue;
-        }
-
         const workflowType = ticket.workflowType || ticket.workflow_type;
 
         if (!workflowType) {
           console.log('[TimelineMonitoring] Ticket has no workflow_type:', ticket.id, 'Full ticket:', ticket);
+          continue;
+        }
+
+        const statusCode = safeTrim(ticket?.statusCode || ticket?.status_code);
+        const wfMap = workflowStatusMap.get(safeTrim(workflowType));
+        const statusMeta = wfMap?.get(safeLower(statusCode));
+        if (statusMeta?.isTerminal) {
+          console.log('[TimelineMonitoring] Skipping terminal status ticket:', ticket.id);
           continue;
         }
 

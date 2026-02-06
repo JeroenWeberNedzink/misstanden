@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+﻿import React, { useMemo, useRef, useState } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
@@ -15,6 +15,8 @@ const initialsFromName = (name) => {
 const InvestigationNotesPanel = ({ notes, onAddNote }) => {
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [newNote, setNewNote] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const fileInputRef = useRef(null);
   const listRef = useRef(null);
 
   const safeNotes = useMemo(() => (Array.isArray(notes) ? notes : []), [notes]);
@@ -22,15 +24,39 @@ const InvestigationNotesPanel = ({ notes, onAddNote }) => {
 
   const handleSaveNote = () => {
     if (newNote?.trim()) {
-      onAddNote(newNote);
+      onAddNote(newNote, null, selectedFiles);
       setNewNote('');
+      setSelectedFiles([]);
       setIsAddingNote(false);
     }
   };
 
   const handleCancel = () => {
     setNewNote('');
+    setSelectedFiles([]);
     setIsAddingNote(false);
+  };
+
+  const handleAddFiles = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFilesSelected = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setSelectedFiles((prev) => [...prev, ...files]);
+    e.target.value = '';
+  };
+
+  const handleRemoveFile = (index) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const formatFileSize = (bytes) => {
+    const n = Number(bytes || 0);
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
   return (
@@ -90,6 +116,24 @@ const InvestigationNotesPanel = ({ notes, onAddNote }) => {
               />
 
               <div className="flex items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={handleFilesSelected}
+                />
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  iconName="Paperclip"
+                  iconPosition="left"
+                  onClick={handleAddFiles}
+                >
+                  Bijlage
+                </Button>
+
                 <Button
                   variant="default"
                   size="sm"
@@ -110,11 +154,41 @@ const InvestigationNotesPanel = ({ notes, onAddNote }) => {
                   <span>Audit-ready</span>
                 </div>
               </div>
+
+              {selectedFiles.length > 0 && (
+                <div className="mt-3 rounded-md border border-border bg-background/60">
+                  <div className="px-3 py-2 text-[11px] text-muted-foreground border-b border-border">
+                    Interne bijlagen
+                  </div>
+                  <div className="divide-y divide-border">
+                    {selectedFiles.map((file, index) => (
+                      <div key={`${file?.name}-${index}`} className="px-3 py-2 flex items-center gap-2">
+                        <Icon name="Paperclip" size={14} className="text-muted-foreground" />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm text-foreground truncate">{file?.name}</div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {formatFileSize(file?.size)}
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="opacity-70 hover:opacity-100"
+                          onClick={() => handleRemoveFile(index)}
+                          title="Verwijderen"
+                        >
+                          <Icon name="X" size={14} />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* Notes list (compact “log” style) */}
+        {/* Notes list (compact log style) */}
         <div ref={listRef} className="rounded-lg border border-border bg-background/40 overflow-hidden">
           {notesCount === 0 ? (
             <div className="text-center py-8 px-6">
@@ -169,8 +243,50 @@ const InvestigationNotesPanel = ({ notes, onAddNote }) => {
                         {note?.content}
                       </div>
 
+                      {Array.isArray(note?.attachments) && note.attachments.length > 0 && (
+                        <div className="mt-2 rounded-md border border-border bg-background/70 overflow-hidden">
+                          <div className="px-2.5 py-1.5 text-[11px] text-muted-foreground border-b border-border">
+                            Interne bijlagen
+                          </div>
+                          <div className="divide-y divide-border">
+                            {note.attachments.map((file) => (
+                              <div key={file?.id || file?.name} className="px-2.5 py-2 flex items-center gap-2">
+                                <Icon name="Paperclip" size={14} className="text-muted-foreground" />
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-sm text-foreground truncate">
+                                    {file?.name}
+                                  </div>
+                                  <div className="text-[11px] text-muted-foreground">
+                                    {file?.uploadedDate ? file.uploadedDate : null}
+                                    {file?.uploadedDate ? ' - ' : null}
+                                    {formatFileSize(file?.size)}
+                                  </div>
+                                </div>
+                                {file?.url ? (
+                                  <a
+                                    href={file.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex"
+                                    title="Download"
+                                  >
+                                    <Button variant="ghost" size="icon" className="opacity-80 hover:opacity-100">
+                                      <Icon name="Download" size={14} />
+                                    </Button>
+                                  </a>
+                                ) : (
+                                  <Button variant="ghost" size="icon" disabled className="opacity-50" title="Geen download URL">
+                                    <Icon name="Download" size={14} />
+                                  </Button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Optional: tiny contact hint if you ever need it */}
-                      {/* <div className="mt-1 text-[11px] text-muted-foreground">…</div> */}
+                      {/* <div className="mt-1 text-[11px] text-muted-foreground">...</div> */}
                     </div>
                   </div>
                 </div>
@@ -184,3 +300,6 @@ const InvestigationNotesPanel = ({ notes, onAddNote }) => {
 };
 
 export default InvestigationNotesPanel;
+
+
+

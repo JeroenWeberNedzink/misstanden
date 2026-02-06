@@ -10,6 +10,7 @@ import PermissionsManagementPanel from './components/PermissionsManagementPanel'
 import WorkflowManagementPanel from './components/WorkflowManagementPanel';
 import TranslationManagementPanel from './components/TranslationManagementPanel';
 import LoggingPanel from './components/LoggingPanel';
+import SlaBackfillPanel from './components/SlaBackfillPanel';
 
 // Services
 import { ticketService } from '../../services/ticketService';
@@ -91,6 +92,17 @@ const getModuleMeta = (usersCount, rolesCount, workflowsCount) => ({
     bgColor: 'bg-gradient-to-br from-orange-50 to-red-50',
     iconBg: 'bg-orange-100',
     iconColor: 'text-orange-600'
+  },
+  slaTools: {
+    label: 'SLA Tools',
+    icon: 'Clock',
+    priority: 6,
+    description: 'Eenmalige SLA acties en onderhoud',
+    meta: 'Backfill next_step_due',
+    color: 'from-sky-500 to-cyan-600',
+    bgColor: 'bg-gradient-to-br from-sky-50 to-cyan-50',
+    iconBg: 'bg-sky-100',
+    iconColor: 'text-sky-600'
   },
 });
 
@@ -390,6 +402,12 @@ const AdminDashboard = () => {
 
                     {activeModule === 'logging' && (
                       <LoggingPanel
+                        onShowToast={showToast}
+                      />
+                    )}
+
+                    {activeModule === 'slaTools' && (
+                      <SlaBackfillPanel
                         onShowToast={showToast}
                       />
                     )}

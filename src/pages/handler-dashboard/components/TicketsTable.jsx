@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import TicketTableRow from './TicketTableRow';
-import { workflowService } from '../../../services/workflowService';
 
 // ---- helpers (local) ----
 const safeTrim = (v) => String(v ?? '').trim();
@@ -35,11 +34,17 @@ const normalizeStatuses = (raw) => {
       description: safeTrim(s.description) || '',
       color: safeTrim(s.color) || null,
       order: Number.isFinite(Number(s.order)) ? Number(s.order) : 999,
+      isTerminal: Boolean(s.isTerminal ?? s.is_terminal),
+      nextCodes: Array.isArray(s.nextCodes)
+        ? s.nextCodes
+        : Array.isArray(s.next_codes)
+        ? s.next_codes
+        : [],
     }))
     .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
 };
 
-const TicketsTable = ({ tickets, onStatusChange, onAssignHandler, handlerOptions, userRole }) => {
+const TicketsTable = ({ tickets, workflows = [], onStatusChange, onAssignHandler, handlerOptions, userRole }) => {
   const [sortConfig, setSortConfig] = useState({ key: 'submitted_at', direction: 'desc' });
 
   const handleSort = (key) => {
@@ -49,29 +54,7 @@ const TicketsTable = ({ tickets, onStatusChange, onAssignHandler, handlerOptions
     }));
   };
 
-  // ✅ Build a workflow -> statusCode -> statusMeta map, based on DB workflow.statuses JSON
-  // Expectation: parent already fetched workflows somewhere OR you can fetch them here.
-  // If you already have workflows in parent, pass them in instead.
-  const [workflows, setWorkflows] = useState(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const data = await workflowService.getWorkflowsWithStats?.() // if available
-          .catch(() => workflowService.getWorkflows?.());            // fallback if you have it
-        if (!cancelled) setWorkflows(data || []);
-      } catch (e) {
-        console.warn('Failed to load workflows for status mapping:', e);
-        if (!cancelled) setWorkflows([]);
-      }
-    }
-
-    load();
-    return () => { cancelled = true; };
-  }, []);
-
+  // ✅ Build a workflow -> statusCode -> statusMeta map, based on DB-driven workflow statuses
   const workflowStatusMap = useMemo(() => {
     const map = new Map(); // workflowCode -> Map(statusCodeLower -> meta)
     (workflows || []).forEach((wf) => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth0 } from '@auth0/auth0-react';
 import Icon from '../../../components/AppIcon';
@@ -8,7 +8,7 @@ import * as mfaService from '../../../services/mfaService';
 
 const TwoFactorAuthPanel = () => {
   const { t } = useTranslation();
-  const { user, getAccessTokenSilently } = useAuth0();
+  const { user, getAccessTokenSilently, loginWithRedirect } = useAuth0();
 
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [isSetupMode, setIsSetupMode] = useState(false);
@@ -19,24 +19,57 @@ const TwoFactorAuthPanel = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [showBackupCodes, setShowBackupCodes] = useState(false);
+  const [mfaUnavailable, setMfaUnavailable] = useState(false);
 
   useEffect(() => {
     checkMFAStatus();
   }, []);
 
+  const getMfaToken = async (scope) => {
+    try {
+      return await getAccessTokenSilently({
+        authorizationParams: {
+          audience: `https://${import.meta.env.VITE_AUTH0_DOMAIN}/mfa/`,
+          scope
+        },
+        cacheMode: 'off'
+      });
+    } catch (err) {
+      const message = err?.error || err?.message || '';
+      const needsReauth =
+        message.includes('invalid_grant') ||
+        message.includes('refresh token') ||
+        message.includes('login_required') ||
+        message.includes('consent_required');
+
+      if (needsReauth) {
+        await loginWithRedirect({
+          authorizationParams: {
+            audience: `https://${import.meta.env.VITE_AUTH0_DOMAIN}/mfa/`,
+            scope,
+            prompt: 'login'
+          }
+        });
+        return null;
+      }
+
+      throw err;
+    }
+  };
+
   const checkMFAStatus = async () => {
     try {
       setIsLoading(true);
-      const token = await getAccessTokenSilently({
-        authorizationParams: {
-          audience: `https://${import.meta.env.VITE_AUTH0_DOMAIN}/mfa/`,
-          scope: 'read:authenticators',
-        },
-      });
+      const token = await getMfaToken('read:authenticators');
+      if (!token) return;
       const status = await mfaService.checkMFAStatus(token);
       setIs2FAEnabled(status);
     } catch (err) {
       console.error('Error checking MFA status:', err);
+      const msg = err?.message || '';
+      if (msg.includes('404')) {
+        setMfaUnavailable(true);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -46,19 +79,19 @@ const TwoFactorAuthPanel = () => {
     try {
       setIsLoading(true);
       setError('');
-      const token = await getAccessTokenSilently({
-        authorizationParams: {
-          audience: `https://${import.meta.env.VITE_AUTH0_DOMAIN}/mfa/`,
-          scope: 'enroll',
-        },
-      });
+      const token = await getMfaToken('enroll');
+      if (!token) return;
       const data = await mfaService.startMFAEnrollment(token);
       setQrCodeUrl(data.qrCodeUrl);
       setSecret(data.secret);
       setIsSetupMode(true);
     } catch (err) {
       console.error('Error starting 2FA setup:', err);
-      setError(err.message || t('settings.twoFactor.errorEnabling'));
+      const msg = err?.message || t('settings.twoFactor.errorEnabling');
+      setError(msg);
+      if (msg.includes('404')) {
+        setMfaUnavailable(true);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -68,12 +101,8 @@ const TwoFactorAuthPanel = () => {
     try {
       setIsLoading(true);
       setError('');
-      const token = await getAccessTokenSilently({
-        authorizationParams: {
-          audience: `https://${import.meta.env.VITE_AUTH0_DOMAIN}/mfa/`,
-          scope: 'enroll',
-        },
-      });
+      const token = await getMfaToken('enroll');
+      if (!token) return;
       const success = await mfaService.verifyMFAEnrollment(verificationCode, token);
 
       if (success) {
@@ -88,7 +117,8 @@ const TwoFactorAuthPanel = () => {
       }
     } catch (err) {
       console.error('Error verifying 2FA code:', err);
-      setError(t('settings.twoFactor.errorEnabling'));
+      const msg = t('settings.twoFactor.errorEnabling');
+      setError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -102,12 +132,8 @@ const TwoFactorAuthPanel = () => {
     try {
       setIsLoading(true);
       setError('');
-      const token = await getAccessTokenSilently({
-        authorizationParams: {
-          audience: `https://${import.meta.env.VITE_AUTH0_DOMAIN}/mfa/`,
-          scope: 'remove:authenticators',
-        },
-      });
+      const token = await getMfaToken('remove:authenticators');
+      if (!token) return;
       const success = await mfaService.deleteAllMFAAuthenticators(token);
 
       if (success) {
@@ -174,15 +200,24 @@ const TwoFactorAuthPanel = () => {
         </div>
       )}
 
+      {mfaUnavailable && (
+        <div className="mb-4 p-4 rounded-lg border border-warning/30 bg-warning/10 text-warning flex items-start gap-3">
+          <Icon name="AlertTriangle" size={18} className="mt-0.5" />
+          <div className="flex-1 text-sm">
+            Upgrade required: Auth0 TOTP MFA vereist een betaald plan (Essentials of hoger). Zonder upgrade is 2FA niet beschikbaar.
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       {!is2FAEnabled && !isSetupMode && (
         <div className="space-y-4">
           <div className="p-4 rounded-lg bg-muted/30 border border-border">
-            <h3 className="text-sm font-semibold text-foreground mb-2">Why enable 2FA?</h3>
-            <ul className="text-xs text-muted-foreground space-y-1">
-              <li>• Bescherm uw account tegen ongeautoriseerde toegang</li>
-              <li>• Verplicht een tweede verificatiestap bij inloggen</li>
-              <li>• Gebruik een authenticator app zoals Google Authenticator of Authy</li>
+            <h3 className="text-sm font-semibold text-foreground mb-2">Waarom 2FA?</h3>
+            <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
+              <li>Bescherm uw account tegen ongeautoriseerde toegang</li>
+              <li>Verplicht een tweede verificatiestap bij inloggen</li>
+              <li>Gebruik een authenticator app zoals Google Authenticator of Authy</li>
             </ul>
           </div>
 
@@ -191,9 +226,9 @@ const TwoFactorAuthPanel = () => {
             iconName="Shield"
             iconPosition="left"
             onClick={startSetup}
-            disabled={isLoading}
+            disabled={isLoading || mfaUnavailable}
           >
-            Enable 2FA
+            2FA inschakelen
           </Button>
         </div>
       )}
@@ -255,8 +290,12 @@ const TwoFactorAuthPanel = () => {
 
           {/* QR Code */}
           <div className="flex flex-col items-center gap-4 p-6 rounded-lg bg-muted/20 border border-border">
-            {qrCodeUrl && (
+            {qrCodeUrl ? (
               <img src={qrCodeUrl} alt="QR Code" className="w-48 h-48 rounded-lg" />
+            ) : (
+              <div className="text-xs text-muted-foreground">
+                QR code wordt geladen...
+              </div>
             )}
 
             <div className="text-center">

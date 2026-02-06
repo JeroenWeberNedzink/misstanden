@@ -1,9 +1,28 @@
 /**
- * MFA Service for Auth0 Multi-Factor Authentication
- * Handles enrollment, verification, and management of 2FA
+ * MFA Service (browser-safe) via backend proxy
  */
 
-const AUTH0_DOMAIN = import.meta.env.VITE_AUTH0_DOMAIN || 'nedzinkbv.eu.auth0.com';
+const MFA_API_URL = '/api/mfa.api.php';
+
+async function postMfa(action, accessToken, extra = {}) {
+  const response = await fetch(MFA_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      action,
+      access_token: accessToken,
+      ...extra
+    })
+  });
+
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok || json?.success === false) {
+    throw new Error(json?.message || 'MFA proxy error');
+  }
+  return json?.data ?? null;
+}
 
 /**
  * Check if user has MFA enrolled by trying to list authenticators
@@ -12,20 +31,8 @@ const AUTH0_DOMAIN = import.meta.env.VITE_AUTH0_DOMAIN || 'nedzinkbv.eu.auth0.co
  */
 export async function checkMFAStatus(accessToken) {
   try {
-    const response = await fetch(`https://${AUTH0_DOMAIN}/mfa/authenticators`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    if (response.ok) {
-      const authenticators = await response.json();
-      // Check if user has any confirmed authenticators
-      return authenticators.some(auth => auth.active);
-    }
-
-    return false;
+    const data = await postMfa('check_status', accessToken);
+    return !!data?.has_active;
   } catch (error) {
     console.error('Error checking MFA status:', error);
     return false;
@@ -39,18 +46,8 @@ export async function checkMFAStatus(accessToken) {
  */
 export async function getMFAAuthenticators(accessToken) {
   try {
-    const response = await fetch(`https://${AUTH0_DOMAIN}/mfa/authenticators`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    if (response.ok) {
-      return await response.json();
-    }
-
-    return [];
+    const data = await postMfa('check_status', accessToken);
+    return data?.authenticators || [];
   } catch (error) {
     console.error('Error getting MFA authenticators:', error);
     return [];
@@ -64,28 +61,20 @@ export async function getMFAAuthenticators(accessToken) {
  */
 export async function startMFAEnrollment(accessToken) {
   try {
-    const response = await fetch(`https://${AUTH0_DOMAIN}/mfa/associate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        authenticator_types: ['otp'],
-      }),
-    });
+    const data = await postMfa('start_enrollment', accessToken);
+    const barcodeUri = data?.barcode_uri;
+    const qrCodeUrl =
+      data?.qr_code ||
+      data?.qr_code_url ||
+      (barcodeUri
+        ? `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(barcodeUri)}`
+        : '');
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('MFA enrollment error:', errorData);
-      throw new Error(errorData.error_description || 'Failed to start MFA enrollment');
-    }
-
-    const data = await response.json();
     return {
-      qrCodeUrl: data.barcode_uri,
-      secret: data.secret,
-      authenticatorId: data.id,
+      qrCodeUrl,
+      secret: data?.secret,
+      authenticatorId: data?.id,
+      barcodeUri,
     };
   } catch (error) {
     console.error('Error starting MFA enrollment:', error);
@@ -101,23 +90,7 @@ export async function startMFAEnrollment(accessToken) {
  */
 export async function verifyMFAEnrollment(code, accessToken) {
   try {
-    const response = await fetch(`https://${AUTH0_DOMAIN}/mfa/associate`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        otp: code,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('MFA verification error:', errorData);
-      return false;
-    }
-
+    await postMfa('verify_enrollment', accessToken, { otp: code });
     return true;
   } catch (error) {
     console.error('Error verifying MFA enrollment:', error);
@@ -133,19 +106,7 @@ export async function verifyMFAEnrollment(code, accessToken) {
  */
 export async function deleteMFAAuthenticator(authenticatorId, accessToken) {
   try {
-    const response = await fetch(`https://${AUTH0_DOMAIN}/mfa/authenticators/${authenticatorId}`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('MFA deletion error:', errorData);
-      return false;
-    }
-
+    await postMfa('delete_all', accessToken);
     return true;
   } catch (error) {
     console.error('Error deleting MFA authenticator:', error);
@@ -160,12 +121,7 @@ export async function deleteMFAAuthenticator(authenticatorId, accessToken) {
  */
 export async function deleteAllMFAAuthenticators(accessToken) {
   try {
-    const authenticators = await getMFAAuthenticators(accessToken);
-
-    for (const authenticator of authenticators) {
-      await deleteMFAAuthenticator(authenticator.id, accessToken);
-    }
-
+    await postMfa('delete_all', accessToken);
     return true;
   } catch (error) {
     console.error('Error deleting all MFA authenticators:', error);

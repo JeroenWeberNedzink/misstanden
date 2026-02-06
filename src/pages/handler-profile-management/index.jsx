@@ -1,4 +1,4 @@
-// src/pages/handler/HandlerProfileManagement.jsx
+﻿// src/pages/handler/HandlerProfileManagement.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useTranslation } from 'react-i18next';
@@ -9,13 +9,11 @@ import { emailNotificationService } from '../../services/emailNotificationServic
 import Icon from '../../components/AppIcon';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import { Checkbox } from '../../components/ui/Checkbox';
 import TwoFactorAuthPanel from './components/TwoFactorAuthPanel';
 
 /**
  * Single-page version:
  * - Contact info
- * - Availability
  * - Email preferences (global email enabled + per-event toggles)
  * - Two-Factor Authentication (2FA)
  * - NO NotificationPreferencesPanel (for now)
@@ -34,12 +32,6 @@ const HandlerProfileManagement = () => {
 
   // Form state
   const [contactInfo, setContactInfo] = useState({ phone: '', email: '' });
-
-  const [availability, setAvailability] = useState({
-    isAvailable: true,
-    status: 'available',
-    statusMessage: ''
-  });
 
   // Global email channel toggle (stored in notification settings table)
   const [emailChannel, setEmailChannel] = useState({ emailEnabled: true });
@@ -63,17 +55,7 @@ const HandlerProfileManagement = () => {
         email: profile?.email || ''
       });
 
-      // 2) Availability
-      const availStatus = await handlerProfileService?.getAvailabilityStatus(user?.sub);
-      if (availStatus) {
-        setAvailability({
-          isAvailable: availStatus?.isAvailable ?? true,
-          status: availStatus?.status || 'available',
-          statusMessage: availStatus?.statusMessage || ''
-        });
-      }
-
-      // 3) Notification settings (only use emailEnabled for now)
+      // 2) Notification settings (only use emailEnabled for now)
       const notifSettings = await handlerProfileService?.getNotificationSettings(profile?.id);
       if (notifSettings) {
         setEmailChannel({
@@ -106,13 +88,6 @@ const HandlerProfileManagement = () => {
         email: contactInfo?.email
       });
 
-      // Update availability status
-      await handlerProfileService?.updateAvailabilityStatus(user?.sub, {
-        isAvailable: availability?.isAvailable,
-        status: availability?.status,
-        statusMessage: availability?.statusMessage
-      });
-
       // Save global email channel toggle
       await handlerProfileService?.updateNotificationSettings(handlerProfile?.id, {
         emailEnabled: emailChannel?.emailEnabled ?? true
@@ -132,12 +107,6 @@ const HandlerProfileManagement = () => {
 
   const handleResetToDefaults = () => {
     if (!window.confirm('Weet u zeker dat u alle instellingen wilt resetten naar standaardwaarden?')) return;
-
-    setAvailability({
-      isAvailable: true,
-      status: 'available',
-      statusMessage: ''
-    });
 
     setEmailChannel({ emailEnabled: true });
   };
@@ -159,7 +128,7 @@ const HandlerProfileManagement = () => {
     <>
       <Helmet>
         <title>Profiel Beheer - Misstanden Portal</title>
-        <meta name="description" content="Beheer uw contactgegevens, beschikbaarheid en email voorkeuren" />
+        <meta name="description" content="Beheer uw contactgegevens en email voorkeuren" />
       </Helmet>
 
       <AuthContextNavigator>
@@ -243,7 +212,6 @@ const HandlerProfileManagement = () => {
             {/* Panels */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
               <ContactInfoPanel contactInfo={contactInfo} setContactInfo={setContactInfo} />
-              <AvailabilityPanel availability={availability} setAvailability={setAvailability} />
             </div>
 
             {/* Email Preferences Panel */}
@@ -349,86 +317,6 @@ const ContactInfoPanel = ({ contactInfo, setContactInfo }) => {
   );
 };
 
-const AvailabilityPanel = ({ availability, setAvailability }) => {
-  const statusOptions = [
-    { value: 'available', label: 'Beschikbaar', color: 'success' },
-    { value: 'busy', label: 'Bezet', color: 'warning' },
-    { value: 'away', label: 'Afwezig', color: 'muted' },
-    { value: 'offline', label: 'Offline', color: 'destructive' }
-  ];
-
-  return (
-    <div className="mb-6 p-6 rounded-lg bg-card border border-border">
-      <div className="flex items-center gap-2 mb-4">
-        <Icon name="Calendar" size={20} color="var(--color-primary)" />
-        <h2 className="text-xl font-semibold text-foreground">Beschikbaarheid</h2>
-      </div>
-      <p className="text-sm text-muted-foreground mb-6">
-        Beheer uw beschikbaarheidsstatus voor incident-toewijzingen.
-      </p>
-
-      <div className="space-y-6">
-        <div className="p-4 rounded-lg bg-muted/50 border border-border">
-          <Checkbox
-            label="Beschikbaar voor nieuwe toewijzingen"
-            description="Schakel dit uit om tijdelijk geen nieuwe incidenten toegewezen te krijgen"
-            checked={availability?.isAvailable ?? true}
-            onChange={(e) => setAvailability({ ...availability, isAvailable: e?.target?.checked })}
-          />
-        </div>
-
-        <div>
-          <label className="text-sm font-medium text-foreground mb-3 block">Status</label>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {statusOptions?.map((option) => (
-              <button
-                key={option?.value}
-                onClick={() => setAvailability({ ...availability, status: option?.value })}
-                className={`p-4 rounded-lg border-2 transition-all ${
-                  availability?.status === option?.value
-                    ? 'border-primary bg-primary/10'
-                    : 'border-border bg-card hover:border-primary/50'
-                }`}
-                type="button"
-              >
-                <div className="flex flex-col items-center gap-2">
-                  {/* NOTE: bg-${option.color} requires those utility classes to exist in your CSS/theme.
-                      If that’s not available, replace with explicit classes per value. */}
-                  <div className={`w-3 h-3 rounded-full bg-${option?.color}`} />
-                  <span className="text-sm font-medium text-foreground">{option?.label}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <Input
-          label="Status Bericht (Optioneel)"
-          type="text"
-          placeholder="Bijv. Op vakantie tot 15 januari"
-          value={availability?.statusMessage || ''}
-          onChange={(e) => setAvailability({ ...availability, statusMessage: e?.target?.value })}
-          description="Dit bericht is zichtbaar voor andere teamleden"
-        />
-
-        <div className="p-4 rounded-lg bg-muted/30 border border-border">
-          <p className="text-xs text-muted-foreground mb-2">Huidige Status Weergave:</p>
-          <div className="flex items-center gap-3">
-            <div className={`w-4 h-4 rounded-full ${availability?.isAvailable ? 'bg-success' : 'bg-destructive'}`} />
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {availability?.isAvailable ? 'Beschikbaar' : 'Niet Beschikbaar'}
-              </p>
-              {availability?.statusMessage && (
-                <p className="text-xs text-muted-foreground">{availability?.statusMessage}</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 /* ----------------------------- Email panel (combined) ----------------------------- */
 
@@ -461,7 +349,12 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
 
   const [preferencesByCategory, setPreferencesByCategory] = useState({});
   const [originalPreferences, setOriginalPreferences] = useState({});
-  const [expandedCategories, setExpandedCategories] = useState({ ticket: true, handler: true, sla: true, system: false });
+  const [expandedCategories, setExpandedCategories] = useState({
+    ticket: false,
+    handler: false,
+    sla: false,
+    system: false
+  });
 
   const [originalEmailEnabled, setOriginalEmailEnabled] = useState(true);
 
@@ -593,10 +486,10 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
 
   if (loading) {
     return (
-      <div className="mb-6 p-6 rounded-lg bg-card border border-border">
+      <div className="mb-4 p-4 rounded-lg bg-card border border-border">
         <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-8">
           <Icon name="Loader" size={16} className="animate-spin" />
-          Email voorkeuren laden…
+          Email voorkeuren laden...
         </div>
       </div>
     );
@@ -605,23 +498,41 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
   const categories = Object.keys(preferencesByCategory);
 
   return (
-    <div className="mb-6 p-6 rounded-lg bg-card border border-border">
+    <div className="mb-6 p-4 rounded-lg bg-card border border-border">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Icon name="Mail" size={20} color="var(--color-primary)" />
           <h2 className="text-xl font-semibold text-foreground">Email Voorkeuren</h2>
         </div>
-        <Button variant="outline" size="sm" iconName="RotateCcw" onClick={handleReset} disabled={saving}>
-          Reset naar standaard
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            iconName="ChevronDown"
+            onClick={() => setExpandedCategories({ ticket: true, handler: true, sla: true, system: true })}
+          >
+            Open alles
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            iconName="ChevronUp"
+            onClick={() => setExpandedCategories({ ticket: false, handler: false, sla: false, system: false })}
+          >
+            Sluit alles
+          </Button>
+          <Button variant="outline" size="sm" iconName="RotateCcw" onClick={handleReset} disabled={saving}>
+            Reset
+          </Button>
+        </div>
       </div>
 
-      <p className="text-sm text-muted-foreground mb-6">
+      <p className="text-sm text-muted-foreground mb-4">
         Kies welke emails u wilt ontvangen. Verplichte (systeem-kritieke) emails kunnen niet uitgeschakeld worden.
       </p>
 
       {/* Global email enabled toggle */}
-      <div className="mb-5 p-4 rounded-lg border border-border bg-muted/30">
+      <div className="mb-4 p-3 rounded-lg border border-border bg-muted/30">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -655,13 +566,13 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
         </div>
 
         {!hasEmail && (
-          <div className="mt-3 flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/20">
-            <Icon name="AlertTriangle" size={16} color="var(--color-warning)" className="mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-warning">
-              Vul een e-mailadres in bij Contactinformatie om email notificaties te activeren.
-            </p>
-          </div>
-        )}
+        <div className="mt-3 flex items-start gap-2 p-2 rounded-lg bg-warning/10 border border-warning/20">
+          <Icon name="AlertTriangle" size={16} color="var(--color-warning)" className="mt-0.5 flex-shrink-0" />
+          <p className="text-xs text-warning">
+            Vul een e-mailadres in bij Contactinformatie om email notificaties te activeren.
+          </p>
+        </div>
+      )}
       </div>
 
       {/* Messages */}
@@ -680,7 +591,7 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
       )}
 
       {/* Categories */}
-      <div className="space-y-3">
+      <div className="space-y-2">
         {categories.map((category) => {
           const events = preferencesByCategory[category] || [];
           const isExpanded = expandedCategories[category];
@@ -691,10 +602,10 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
               <button
                 type="button"
                 onClick={() => toggleCategory(category)}
-                className="w-full p-4 flex items-center justify-between hover:bg-muted/50 transition-colors rounded-lg"
+                className="w-full p-3 flex items-center justify-between hover:bg-muted/50 transition-colors rounded-lg"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                     <Icon name={categoryIcons[category] || 'Mail'} size={18} className="text-primary" />
                   </div>
                   <div className="text-left">
@@ -720,7 +631,7 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
               </button>
 
               {isExpanded && (
-                <div className="px-4 pb-4 space-y-2">
+                <div className="px-3 pb-3 grid grid-cols-1 md:grid-cols-2 gap-2">
                   {events.map((event) => {
                     const isSystemCritical = event.isSystemCritical;
                     const isEnabled = event.isEnabled;
@@ -728,7 +639,7 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
                     return (
                       <div
                         key={event.code}
-                        className={`p-3 rounded-lg border ${
+                        className={`p-2.5 rounded-lg border ${
                           isSystemCritical ? 'border-warning/30 bg-warning/5' : 'border-border bg-card'
                         }`}
                       >
@@ -742,7 +653,7 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
                                 </span>
                               )}
                             </div>
-                            <p className="text-xs text-muted-foreground mt-0.5">{event.descriptionNl}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{event.descriptionNl}</p>
                           </div>
 
                           <button
@@ -803,7 +714,7 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
             onClick={handleSave}
             disabled={saving || !hasChanges() || !handlerId}
           >
-            {saving ? 'Opslaan…' : 'Wijzigingen opslaan'}
+            {saving ? 'Opslaan...' : 'Wijzigingen opslaan'}
           </Button>
         </div>
       )}

@@ -1,4 +1,4 @@
-{
+﻿{
     "common": {
         "loading": "Laden...",
         "error": "Fout",
@@ -291,22 +291,28 @@
         "selectFilesLabel": "Selecteer bestanden",
         "selectedFiles": "Geselecteerde bestanden",
         "removeFile": "Verwijder",
-        "contactDetails": "Uw Contactgegevens (Optioneel)",
-        "contactDetailsHelp": "Optioneel om gegevens te ontvangen en voortgang meldingen te ontvangen. Deze gegevens worden gekoppeld aan uw OAuth-account, zodat u uw melding gemakkelijk kunt terugzien en volgen.",
+        "contactDetails": "Contactgegevens",
+        "contactDetailsHelp": "We gebruiken je e-mailadres alleen om updates te sturen.",
+        "yesAnonymous": "Anoniem",
+        "noProvideContact": "Naam/telefoon",
         "nameLabel": "Naam",
         "namePlaceholder": "Uw naam (optioneel)",
         "emailLabel": "E-mailadres",
         "emailPlaceholder": "uw.email@nedzink.nl",
         "phoneLabel": "Telefoonnummer",
         "phonePlaceholder": "+31 6 12345678",
-        "contactOptional": "Optionele Contactinformatie",
+        "contactOptional": "Contactinformatie",
+        "contactRequiredHelp": "E-mailadres is verplicht. Bij anonieme meldingen wordt dit versleuteld opgeslagen.",
+        "emailRequired": "E-mailadres is verplicht",
         "contactEmail": "E-mail voor updates",
         "contactPhone": "Telefoon voor urgent contact",
         "emailNotifications": "E-mail Notificaties",
         "emailNotificationsLabel": "Ontvang updates over deze melding via e-mail",
         "emailNotificationsDescription": "U ontvangt een bevestiging en statusupdates op het opgegeven e-mailadres. Dit is alleen mogelijk als u een e-mailadres heeft opgegeven.",
         "emailNotificationsWarning": "Voer eerst een e-mailadres in om notificaties te ontvangen",
-        "privacyAssurance": "Uw melding is volledig anoniem. Contactgegevens zijn optioneel en worden veilig opgeslagen.",
+        "statusEmailNotificationsLabel": "Statuswijzigingen per e-mail",
+        "statusEmailNotificationsDescription": "Ontvang een e-mail wanneer de status van uw melding wijzigt.",
+        "privacyAssurance": "Anoniem: naam en telefoon blijven verborgen.",
         "submitReport": "Melding Indienen",
         "submitting": "Melding Indienen...",
         "saveDraft": "Opslaan als Concept",
@@ -348,7 +354,7 @@
         "multipleFilesAllowed": "Meerdere bestanden toegestaan",
         "filesStoredSecurely": "Bestanden worden veilig opgeslagen",
         "filesReady": "bestand(en) klaar",
-        "filesWillBeUploaded": "Uw bestanden worden geüpload met uw melding",
+        "filesWillBeUploaded": "Uw bestanden worden geÃ¼pload met uw melding",
         "incidentType": "Incidenttype",
         "anonymousReport": "Anonieme Melding",
         "anonymousDescription": "Deze melding wordt anoniem ingediend zonder contactgegevens.",
@@ -459,7 +465,7 @@
         "to": "naar",
         "reporter": "Melder",
         "handler": "Handler",
-        "uploadedBy": "Geüpload door",
+        "uploadedBy": "GeÃ¼pload door",
         "low": "Laag",
         "medium": "Gemiddeld",
         "high": "Hoog",
@@ -584,12 +590,12 @@
             "setupInstructions": "Scan de QR-code hieronder met uw authenticator app",
             "scanQR": "Scan QR Code",
             "enterCode": "Voer de 6-cijferige code in van uw authenticator app",
-            "verifyCode": "Code Verifiëren",
-            "verifying": "Verifiëren...",
+            "verifyCode": "Code VerifiÃ«ren",
+            "verifying": "VerifiÃ«ren...",
             "backupCodes": "Backup Codes",
             "backupCodesDescription": "Bewaar deze backup codes op een veilige plaats. Elk kan eenmaal gebruikt worden als u de toegang tot uw authenticator verliest.",
             "downloadCodes": "Codes Downloaden",
-            "copyCodes": "Codes Kopiëren",
+            "copyCodes": "Codes KopiÃ«ren",
             "codesCopied": "Codes gekopieerd naar klembord",
             "regenerateCodes": "Backup Codes Opnieuw Genereren",
             "appRecommendations": "Aanbevolen apps: Google Authenticator, Microsoft Authenticator, Authy",
@@ -613,7 +619,7 @@
             "saveError": "Opslaan mislukt."
         },
         "navigation": {
-            "backToCategories": "Terug naar Categorieën",
+            "backToCategories": "Terug naar CategorieÃ«n",
             "chooseCategory": "Kies een categorie om instellingen te beheren",
             "chooseCategoryDescription": "Klik op een categorie hieronder om de instellingen te bekijken en te bewerken",
             "clickToConfigure": "Klik om te configureren",
@@ -625,7 +631,7 @@
     },
     "adminDashboard": {
         "title": "Admin Center",
-        "subtitle": "Eén plek voor beheer van accounts, toegang en workflows",
+        "subtitle": "EÃ©n plek voor beheer van accounts, toegang en workflows",
         "backToModules": "Terug naar Modules",
         "modules": {
             "users": {
@@ -668,13 +674,13 @@
                 "languageCodePlaceholder": "bijv. es, it, pt",
                 "languageCodeHelp": "2-letterige ISO code (bijv. es voor Spaans)",
                 "languageName": "Taalnaam",
-                "languageNamePlaceholder": "bijv. Español, Italiano",
+                "languageNamePlaceholder": "bijv. EspaÃ±ol, Italiano",
                 "cancel": "Annuleren",
                 "add": "Taal Toevoegen"
             },
             "messages": {
                 "saved": "Vertalingen succesvol opgeslagen",
-                "exported": "Vertalingen succesvol geëxporteerd",
+                "exported": "Vertalingen succesvol geÃ«xporteerd",
                 "imported": "Bestand geladen. Klik op Opslaan om wijzigingen toe te passen.",
                 "invalidFile": "Ongeldig JSON bestand",
                 "languageExists": "Taal bestaat al",
@@ -685,12 +691,12 @@
     },
     "legalGuidance": {
         "title": "Juridische Begeleiding voor Klokkenluiders",
-        "subtitle": "Uitgebreide landspecifieke juridische kaders en procedures voor Nederland, België, Duitsland en Frankrijk",
+        "subtitle": "Uitgebreide landspecifieke juridische kaders en procedures voor Nederland, BelgiÃ«, Duitsland en Frankrijk",
         "footer": "Veilig & Vertrouwelijk Melden",
         "searchPlaceholder": "Zoek juridische onderwerpen, procedures of contacten...",
         "countries": {
             "netherlands": "Nederland",
-            "belgium": "België",
+            "belgium": "BelgiÃ«",
             "germany": "Duitsland",
             "france": "Frankrijk"
         },
@@ -740,7 +746,7 @@
                     "Vertrouwelijkheid gewaarborgd"
                 ],
                 "features": [
-                    "Bundesamt für Justiz als extern kanaal",
+                    "Bundesamt fÃ¼r Justiz als extern kanaal",
                     "Anonieme meldingen toegestaan",
                     "Online formulier beschikbaar",
                     "Geen verplicht anoniem systeem"
@@ -889,10 +895,10 @@
                     },
                     {
                         "title": "Externe Melding",
-                        "description": "Melding bij Bundesamt für Justiz of andere bevoegde autoriteit",
+                        "description": "Melding bij Bundesamt fÃ¼r Justiz of andere bevoegde autoriteit",
                         "timeline": "Na interne procedure of direct",
                         "steps": [
-                            "Online formulier bij Bundesamt für Justiz",
+                            "Online formulier bij Bundesamt fÃ¼r Justiz",
                             "Anonieme melding mogelijk",
                             "Strikte gegevensopslag regels"
                         ]
@@ -927,7 +933,7 @@
                         "timeline": "Binnen redelijke termijn",
                         "steps": [
                             "Onderzoek gestart door bevoegde afdeling",
-                            "Melder wordt geïnformeerd over voortgang",
+                            "Melder wordt geÃ¯nformeerd over voortgang",
                             "Vertrouwelijkheid gewaarborgd"
                         ]
                     },
@@ -1017,7 +1023,7 @@
             ],
             "germany": [
                 {
-                    "name": "Bundesamt für Justiz",
+                    "name": "Bundesamt fÃ¼r Justiz",
                     "role": "Federale Meldstelle voor Klokkenluiders",
                     "type": "authority",
                     "website": "https://www.bundesjustizamt.de",
@@ -1026,7 +1032,7 @@
             ],
             "france": [
                 {
-                    "name": "Agence Française Anticorruption (AFA)",
+                    "name": "Agence FranÃ§aise Anticorruption (AFA)",
                     "role": "Franse Anti-Corruptie Agentschap",
                     "type": "authority",
                     "website": "https://www.agence-francaise-anticorruption.gouv.fr",
@@ -1034,7 +1040,7 @@
                 },
                 {
                     "name": "ANSSI",
-                    "role": "Agence Nationale de la Sécurité des Systèmes d'Information",
+                    "role": "Agence Nationale de la SÃ©curitÃ© des SystÃ¨mes d'Information",
                     "type": "authority",
                     "email": "lanceurdalerte@ssi.gouv.fr",
                     "phone": "+33 171758468",
@@ -1042,12 +1048,12 @@
                 },
                 {
                     "name": "ANSES",
-                    "role": "Agence Nationale de Sécurité Sanitaire",
+                    "role": "Agence Nationale de SÃ©curitÃ© Sanitaire",
                     "type": "authority",
                     "email": "lanceurdalerte@anses.fr"
                 },
                 {
-                    "name": "Autorité de la Concurrence",
+                    "name": "AutoritÃ© de la Concurrence",
                     "role": "Franse Mededingingsautoriteit",
                     "type": "authority",
                     "phone": "+33 155040005",
@@ -1056,7 +1062,7 @@
                 },
                 {
                     "name": "IGEDD",
-                    "role": "Inspection Générale de l'Environnement et du Développement Durable",
+                    "role": "Inspection GÃ©nÃ©rale de l'Environnement et du DÃ©veloppement Durable",
                     "type": "authority",
                     "website": "https://www.igedd.developpement-durable.gouv.fr/lanceur-d-alerte-signaler-une-atteinte-a-l-a3965.html"
                 }
