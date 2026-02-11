@@ -1,4 +1,4 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Button from '../../../components/ui/Button';
 import Icon from '../../../components/AppIcon';
@@ -24,6 +24,11 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
   const { t } = useTranslation();
   const { settings } = useSettings();
   const fileInputRef = useRef(null);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const [previewFile, setPreviewFile] = useState(null);
+  const [previewType, setPreviewType] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [previewText, setPreviewText] = useState('');
 
   // Get settings or use defaults
   const maxFileSize = (settings?.portal?.maxAttachmentSizeMb || 10) * 1024 * 1024;
@@ -34,8 +39,7 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
     return allowedExtensions.map(ext => MIME_TYPE_MAP[ext.toLowerCase()]).filter(Boolean);
   }, [allowedExtensions]);
 
-  const handleFileSelect = (e) => {
-    const selectedFiles = Array.from(e?.target?.files);
+  const processSelectedFiles = (selectedFiles = []) => {
     const validFiles = [];
     const errors = [];
 
@@ -58,9 +62,45 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
     if (validFiles?.length > 0) {
       onFilesAdd(validFiles);
     }
+  };
+
+  const handleFileSelect = (e) => {
+    const selectedFiles = Array.from(e?.target?.files || []);
+    processSelectedFiles(selectedFiles);
 
     if (fileInputRef?.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragActive) setIsDragActive(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragActive(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragActive(false);
+    const droppedFiles = Array.from(e?.dataTransfer?.files || []);
+    processSelectedFiles(droppedFiles);
+  };
+
+  const openFilePicker = () => {
+    fileInputRef?.current?.click();
+  };
+
+  const handleDropzoneKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openFilePicker();
     }
   };
 
@@ -88,24 +128,87 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
     }
   };
 
+  const getPreviewType = (file) => {
+    const ext = file?.name?.split('.')?.pop()?.toLowerCase();
+    const mime = file?.type || '';
+
+    if (mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
+      return 'image';
+    }
+    if (mime === 'application/pdf' || ext === 'pdf') {
+      return 'pdf';
+    }
+    if (mime.startsWith('text/') || ['txt', 'csv', 'log', 'json', 'md'].includes(ext)) {
+      return 'text';
+    }
+    return 'unsupported';
+  };
+
+  const closePreview = () => {
+    setPreviewFile(null);
+    setPreviewType(null);
+    setPreviewText('');
+    setPreviewUrl('');
+  };
+
+  const handlePreview = async (file) => {
+    const type = getPreviewType(file);
+    setPreviewFile(file);
+    setPreviewType(type);
+    setPreviewText('');
+
+    if (type === 'text') {
+      setPreviewUrl('');
+      try {
+        const textContent = await file.text();
+        setPreviewText(textContent);
+      } catch {
+        setPreviewText('Preview unavailable for this file.');
+      }
+      return;
+    }
+
+    try {
+      const objectUrl = URL.createObjectURL(file);
+      setPreviewUrl(objectUrl);
+    } catch {
+      setPreviewUrl('');
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Icon name="Paperclip" size={20} color="var(--color-primary)" />
-        <h3 className="text-lg font-semibold text-foreground">{t('reportForm.attachments')}</h3>
-      </div>
-      <div className={`border-2 border-dashed rounded-lg p-6 md:p-8 lg:p-10 text-center transition-smooth ${
-        error ? 'border-error bg-error/5' : 'border-border hover:border-primary/50 bg-muted/30'
+      <div
+        onDragOver={handleDragOver}
+        onDragEnter={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={openFilePicker}
+        onKeyDown={handleDropzoneKeyDown}
+        role="button"
+        tabIndex={0}
+        className={`border-2 border-dashed rounded-lg p-6 md:p-8 lg:p-10 text-center transition-smooth ${
+        error
+          ? 'border-error bg-error/5'
+          : isDragActive
+            ? 'border-primary bg-primary/5'
+            : 'border-border hover:border-primary/50 bg-muted/30'
       }`}>
-        <Icon name="Upload" size={40} className="mx-auto mb-4 text-muted-foreground" />
+        <Icon name="Upload" size={40} className="mx-auto mb-1 text-muted-foreground" />
         <p className="text-sm md:text-base text-foreground mb-2">
           {t('reportForm.dragDropOrClick')}
         </p>
-        <p className="text-xs md:text-sm text-muted-foreground mb-4">
+        {/* <p className="text-xs md:text-sm text-muted-foreground mb-1">
           {t('reportForm.supportedFormats')}: {allowedExtensions?.join(', ')?.toUpperCase()}
           <br />
           {t('reportForm.maxFileSize')}
-        </p>
+        </p> */}
         <input
           ref={fileInputRef}
           type="file"
@@ -115,14 +218,17 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
           className="hidden"
           aria-label={t('reportForm.selectFilesLabel')}
         />
-        <Button
+        {/* <Button
           variant="outline"
           iconName="FolderOpen"
           iconPosition="left"
-          onClick={() => fileInputRef?.current?.click()}
+          onClick={(e) => {
+            e.stopPropagation();
+            openFilePicker();
+          }}
         >
           {t('reportForm.selectFiles')}
-        </Button>
+        </Button> */}
         {error && (
           <p className="text-sm text-error mt-3 flex items-center justify-center gap-2">
             <Icon name="AlertCircle" size={16} />
@@ -152,16 +258,71 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
                     </p>
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  iconName="X"
-                  onClick={() => onFileRemove(index)}
-                  className="flex-shrink-0"
-                  aria-label={`${t('reportForm.removeFile')} ${file?.name}`}
-                />
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    iconName="Eye"
+                    onClick={() => handlePreview(file)}
+                    aria-label={`Preview ${file?.name}`}
+                  >
+                    Preview
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    iconName="X"
+                    onClick={() => onFileRemove(index)}
+                    aria-label={`${t('reportForm.removeFile')} ${file?.name}`}
+                  />
+                </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+      {previewFile && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+          onClick={closePreview}
+        >
+          <div
+            className="w-full max-w-5xl max-h-[90vh] bg-card border border-border rounded-lg overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-foreground truncate">{previewFile?.name}</p>
+              <Button variant="ghost" size="icon" iconName="X" onClick={closePreview} aria-label={t('common.close')} />
+            </div>
+            <div className="p-4 overflow-auto max-h-[80vh]">
+              {previewType === 'image' && previewUrl && (
+                <img src={previewUrl} alt={previewFile?.name} className="max-w-full mx-auto rounded-md" />
+              )}
+              {previewType === 'pdf' && previewUrl && (
+                <iframe title={previewFile?.name} src={previewUrl} className="w-full h-[70vh] rounded-md border border-border" />
+              )}
+              {previewType === 'text' && (
+                <pre className="text-sm text-foreground whitespace-pre-wrap break-words bg-muted/40 border border-border rounded-md p-4">
+                  {previewText}
+                </pre>
+              )}
+              {previewType === 'unsupported' && (
+                <div className="text-center py-8 space-y-3">
+                  <p className="text-sm text-muted-foreground">No inline preview available for this file type.</p>
+                  {previewUrl && (
+                    <a
+                      href={previewUrl}
+                      download={previewFile?.name}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center rounded-md border border-input px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+                    >
+                      Open or download file
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

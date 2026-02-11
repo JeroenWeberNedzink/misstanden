@@ -23,6 +23,7 @@ const STEPS = [
 ];
 
 export default function AnonymousReportForm() {
+  const DESCRIPTION_PREVIEW_LENGTH = 240;
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -32,6 +33,11 @@ export default function AnonymousReportForm() {
   const [severities, setSeverities] = useState([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showFullDescription, setShowFullDescription] = useState(false);
+  const [reviewPreviewFile, setReviewPreviewFile] = useState(null);
+  const [reviewPreviewType, setReviewPreviewType] = useState(null);
+  const [reviewPreviewUrl, setReviewPreviewUrl] = useState('');
+  const [reviewPreviewText, setReviewPreviewText] = useState('');
   const [error, setError] = useState('');
   const [errors, setErrors] = useState({});
 
@@ -62,6 +68,18 @@ export default function AnonymousReportForm() {
       }
     }
   }, [searchParams, workflows]);
+
+  useEffect(() => {
+    if (currentStep !== 6) {
+      setShowFullDescription(false);
+    }
+  }, [currentStep]);
+
+  useEffect(() => {
+    return () => {
+      if (reviewPreviewUrl) URL.revokeObjectURL(reviewPreviewUrl);
+    };
+  }, [reviewPreviewUrl]);
 
   const loadFormData = async () => {
     try {
@@ -201,18 +219,72 @@ export default function AnonymousReportForm() {
     }));
   };
 
+  const formatFileSize = (bytes) => {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let size = bytes;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex += 1;
+    }
+    return `${Math.round(size * 10) / 10} ${units[unitIndex]}`;
+  };
+
+  const getPreviewType = (file) => {
+    const ext = file?.name?.split('.')?.pop()?.toLowerCase();
+    const mime = file?.type || '';
+    if (mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return 'image';
+    if (mime === 'application/pdf' || ext === 'pdf') return 'pdf';
+    if (mime.startsWith('text/') || ['txt', 'csv', 'log', 'json', 'md'].includes(ext)) return 'text';
+    return 'unsupported';
+  };
+
+  const closeReviewPreview = () => {
+    setReviewPreviewFile(null);
+    setReviewPreviewType(null);
+    setReviewPreviewText('');
+    setReviewPreviewUrl('');
+  };
+
+  const handleReviewPreview = async (file) => {
+    if (reviewPreviewUrl) URL.revokeObjectURL(reviewPreviewUrl);
+    const type = getPreviewType(file);
+    setReviewPreviewFile(file);
+    setReviewPreviewType(type);
+    setReviewPreviewText('');
+    setReviewPreviewUrl('');
+
+    if (type === 'text') {
+      try {
+        const textContent = await file.text();
+        setReviewPreviewText(textContent);
+      } catch {
+        setReviewPreviewText('Preview unavailable for this file.');
+      }
+      return;
+    }
+
+    try {
+      const objectUrl = URL.createObjectURL(file);
+      setReviewPreviewUrl(objectUrl);
+    } catch {
+      setReviewPreviewUrl('');
+    }
+  };
+
   const renderStep = () => {
     switch (currentStep) {
       case 1:
         return (
-          <div className="max-w-4xl mx-auto">
+          <div className="max-w-6xl mx-auto">
             <div className="bg-card border border-border rounded-xl p-8">
               <div className="flex items-start gap-4 mb-6">
                 <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
                   <Icon name="FolderOpen" size={24} className="text-primary" />
                 </div>
                 <div className="flex-1">
-                  <h2 className="text-2xl font-bold text-foreground mb-2">
+                  <h2 className="text-2xl font-bold text-foreground">
                     {t('reportForm.step1Title')}
                   </h2>
                   <p className="text-muted-foreground">
@@ -238,14 +310,14 @@ export default function AnonymousReportForm() {
 
       case 2:
         return (
-          <div className="max-w-5xl mx-auto">
+          <div className="max-w-6xl mx-auto">
             <div className="bg-card border border-border rounded-xl p-8">
               <div className="flex items-start gap-4 mb-6">
                 <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
                   <Icon name="FileText" size={24} className="text-primary" />
                 </div>
                 <div className="flex-1">
-                  <h2 className="text-2xl font-bold text-foreground mb-2">
+                  <h2 className="text-2xl font-bold text-foreground">
                     {t('reportForm.step2Title')}
                   </h2>
                   <p className="text-muted-foreground">
@@ -270,14 +342,14 @@ export default function AnonymousReportForm() {
 
       case 3:
         return (
-          <div className="max-w-3xl mx-auto">
+          <div className="max-w-6xl mx-auto">
             <div className="bg-card border border-border rounded-xl p-8">
               <div className="flex items-start gap-4 mb-6">
                 <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
                   <Icon name="MapPin" size={24} className="text-primary" />
                 </div>
                 <div className="flex-1">
-                  <h2 className="text-2xl font-bold text-foreground mb-2">
+                  <h2 className="text-2xl font-bold text-foreground">
                     {t('reportForm.step3Title')}
                   </h2>
                   <p className="text-muted-foreground">
@@ -302,14 +374,14 @@ export default function AnonymousReportForm() {
 
       case 4:
         return (
-          <div className="max-w-4xl mx-auto">
+          <div className="max-w-6xl mx-auto">
             <div className="bg-card border border-border rounded-xl p-8">
               <div className="flex items-start gap-4 mb-4">
                 <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center flex-shrink-0">
                   <Icon name="User" size={24} className="text-accent" />
                 </div>
                 <div className="flex-1">
-                  <h2 className="text-2xl font-bold text-foreground mb-2">
+                  <h2 className="text-2xl font-bold text-foreground">
                     {t('reportForm.step4Title')}
                   </h2>
                   <p className="text-muted-foreground">
@@ -318,10 +390,10 @@ export default function AnonymousReportForm() {
                 </div>
               </div>
 
-              <div className="bg-accent/5 border border-accent/20 rounded-lg p-3 mb-6 flex items-start gap-2">
+              {/* <div className="bg-accent/5 border border-accent/20 rounded-lg p-3 mb-6 flex items-start gap-2">
                 <Icon name="ShieldCheck" size={18} className="text-accent mt-0.5 flex-shrink-0" />
                 <p className="text-sm text-muted-foreground">{t('reportForm.contactRequiredHelp')}</p>
-              </div>
+              </div> */}
 
               <div className="border-t border-border pt-6">
                 <ReporterContactFields
@@ -349,7 +421,7 @@ export default function AnonymousReportForm() {
                   <Icon name="Paperclip" size={24} className="text-accent" />
                 </div>
                 <div className="flex-1">
-                  <h2 className="text-2xl font-bold text-foreground mb-2">
+                  <h2 className="text-2xl font-bold text-foreground">
                     {t('reportForm.step5Title')}
                   </h2>
                   <p className="text-muted-foreground">
@@ -358,10 +430,10 @@ export default function AnonymousReportForm() {
                 </div>
               </div>
 
-              <div className="bg-accent/5 border border-accent/20 rounded-lg p-3 mb-6 flex items-start gap-2">
+              {/* <div className="bg-accent/5 border border-accent/20 rounded-lg p-3 mb-6 flex items-start gap-2">
                 <Icon name="Info" size={18} className="text-accent mt-0.5 flex-shrink-0" />
                 <p className="text-sm text-muted-foreground">{t('reportForm.step5Optional')}</p>
-              </div>
+              </div> */}
 
               <div className="border-t border-border pt-6">
                 <div className="grid md:grid-cols-2 gap-6">
@@ -450,6 +522,11 @@ export default function AnonymousReportForm() {
       case 6:
         const selectedWorkflow = workflows?.find(w => w?.code === formData?.workflow);
         const isAnonymous = !!formData?.isAnonymous;
+        const descriptionText = formData?.description || '';
+        const shouldTruncateDescription = descriptionText.length > DESCRIPTION_PREVIEW_LENGTH;
+        const visibleDescription = shouldTruncateDescription && !showFullDescription
+          ? `${descriptionText.slice(0, DESCRIPTION_PREVIEW_LENGTH).trimEnd()}...`
+          : descriptionText;
 
         return (
           <div className="max-w-6xl mx-auto">
@@ -459,7 +536,7 @@ export default function AnonymousReportForm() {
                   <Icon name="CheckCircle2" size={24} className="text-success" />
                 </div>
                 <div className="flex-1">
-                  <h2 className="text-2xl font-bold text-foreground mb-2">
+                  <h2 className="text-2xl font-bold text-foreground">
                     {t('reportForm.step6Title')}
                   </h2>
                   <p className="text-muted-foreground">
@@ -510,21 +587,59 @@ export default function AnonymousReportForm() {
                       </div>
                     </div>
 
-                    {formData?.files?.length > 0 && (
-                      <div className="bg-muted/30 rounded-lg p-4">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{t('reportForm.attachments')}</p>
-                        <div className="flex items-center gap-2">
-                          <Icon name="Paperclip" size={14} className="text-primary" />
-                          <p className="text-sm text-foreground font-medium">{formData.files.length} {t('reportForm.filesReady')}</p>
-                        </div>
+                    <div className="bg-muted/30 rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Icon name="Paperclip" size={14} className="text-primary" />
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t('reportForm.attachments')}</p>
                       </div>
-                    )}
+                      {formData?.files?.length > 0 ? (
+                        <div className="space-y-2">
+                          {formData.files.map((file, index) => (
+                            <div key={`${file?.name}-${index}`} className="flex items-center justify-between gap-2 rounded-md border border-border bg-card/70 p-2.5">
+                              <div className="min-w-0">
+                                <p className="text-sm text-foreground truncate">{file?.name}</p>
+                                <p className="text-xs text-muted-foreground">{formatFileSize(file?.size)}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleReviewPreview(file)}
+                                className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+                              >
+                                <Icon name="Eye" size={14} />
+                                <span>Preview</span>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">{t('ticketDetails.noAttachments')}</p>
+                      )}
+                    </div>
                   </div>
 
                   <div className="space-y-4">
-                    <div className="bg-muted/30 rounded-lg p-4">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{t('reportForm.description')}</p>
-                      <p className="text-sm text-foreground leading-relaxed">{formData?.description}</p>
+                    <div className="rounded-lg border border-primary/20 bg-gradient-to-b from-primary/5 to-transparent p-5">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center">
+                          <Icon name="FileText" size={16} className="text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t('reportForm.description')}</p>
+                          <p className="text-sm font-semibold text-foreground">{t('reportForm.reviewSubmit')}</p>
+                        </div>
+                      </div>
+                      <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap rounded-md bg-card/70 border border-border p-3">
+                        {visibleDescription}
+                      </p>
+                      {shouldTruncateDescription && (
+                        <button
+                          type="button"
+                          onClick={() => setShowFullDescription(prev => !prev)}
+                          className="mt-2 text-sm text-primary underline underline-offset-2 hover:text-primary/80"
+                        >
+                          {showFullDescription ? 'Sluit tekst' : 'Open tekst'}
+                        </button>
+                      )}
                     </div>
 
                     {isAnonymous && (
@@ -584,7 +699,7 @@ export default function AnonymousReportForm() {
 
           {/* Visual Timeline / Stepper */}
           <div className="mb-10">
-            <div className="max-w-5xl mx-auto">
+            <div className="max-w-4xl mx-auto">
               {/* Desktop Timeline */}
               <div className="hidden md:block">
                 <div className="relative">
@@ -689,7 +804,7 @@ export default function AnonymousReportForm() {
                 <button
                   type="button"
                   onClick={handlePrevious}
-                  className="btn-secondary h-11 px-6"
+                  className="btn-outline h-14 px-5 text-muted-foreground hover:text-foreground"
                 >
                   <Icon name="ArrowLeft" size={18} />
                   <span>{t('reportForm.back')}</span>
@@ -704,7 +819,7 @@ export default function AnonymousReportForm() {
                     className="w-full btn-sky-600 h-14 text-lg font-semibold shadow-lg hover:shadow-xl transition-shadow"
                   >
                     <span>{t('reportForm.continue')}</span>
-                    <Icon name="ArrowRight" size={20} />
+                    <Icon name="ChevronRight" size={20} />
                   </button>
                 ) : (
                   <button
@@ -750,6 +865,52 @@ export default function AnonymousReportForm() {
           </div>
         </div>
       </div>
+      {reviewPreviewFile && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={closeReviewPreview}>
+          <div className="w-full max-w-5xl max-h-[90vh] bg-card border border-border rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-foreground truncate">{reviewPreviewFile?.name}</p>
+              <button
+                type="button"
+                onClick={closeReviewPreview}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label={t('common.close')}
+              >
+                <Icon name="X" size={16} />
+              </button>
+            </div>
+            <div className="p-4 overflow-auto max-h-[80vh]">
+              {reviewPreviewType === 'image' && reviewPreviewUrl && (
+                <img src={reviewPreviewUrl} alt={reviewPreviewFile?.name} className="max-w-full mx-auto rounded-md" />
+              )}
+              {reviewPreviewType === 'pdf' && reviewPreviewUrl && (
+                <iframe title={reviewPreviewFile?.name} src={reviewPreviewUrl} className="w-full h-[70vh] rounded-md border border-border" />
+              )}
+              {reviewPreviewType === 'text' && (
+                <pre className="text-sm text-foreground whitespace-pre-wrap break-words bg-muted/40 border border-border rounded-md p-4">
+                  {reviewPreviewText}
+                </pre>
+              )}
+              {reviewPreviewType === 'unsupported' && (
+                <div className="text-center py-8 space-y-3">
+                  <p className="text-sm text-muted-foreground">No inline preview available for this file type.</p>
+                  {reviewPreviewUrl && (
+                    <a
+                      href={reviewPreviewUrl}
+                      download={reviewPreviewFile?.name}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center rounded-md border border-input px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+                    >
+                      Open or download file
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

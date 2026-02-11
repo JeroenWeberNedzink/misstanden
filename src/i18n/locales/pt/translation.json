@@ -278,7 +278,7 @@
         "contactOptional": "Contact information",
         "contactRequiredHelp": "Email is required. Anonymous reports store it encrypted.",
         "emailRequired": "Email is required",
-        "contactDetailsHelp": "We use your email only to send updates.",
+        "contactDetailsHelp": "Se Anônimo estiver selecionado, seu e-mail será armazenado com segurança e criptografado, e não ficará visível para os responsáveis.",
         "yesAnonymous": "Anonymous",
         "noProvideContact": "Name/phone",
         "contactEmail": "Email for updates",

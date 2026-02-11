@@ -292,7 +292,7 @@
         "selectedFiles": "Geselecteerde bestanden",
         "removeFile": "Verwijder",
         "contactDetails": "Contactgegevens",
-        "contactDetailsHelp": "We gebruiken je e-mailadres alleen om updates te sturen.",
+        "contactDetailsHelp": "Als Anoniem is geselecteerd, wordt je e-mailadres veilig en versleuteld opgeslagen en is het niet zichtbaar voor handlers.",
         "yesAnonymous": "Anoniem",
         "noProvideContact": "Naam/telefoon",
         "nameLabel": "Naam",

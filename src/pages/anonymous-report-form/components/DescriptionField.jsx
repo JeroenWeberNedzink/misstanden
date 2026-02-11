@@ -18,7 +18,7 @@ const DescriptionField = ({ value, onChange, error, maxLength = 2000 }) => {
           placeholder={t('reportForm.descriptionPlaceholder')}
           maxLength={maxLength}
           required
-          className={`w-full min-h-[200px] md:min-h-[240px] lg:min-h-[280px] px-4 py-3 rounded-lg border transition-smooth focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-y ${
+          className={`w-full min-h-[200px] md:min-h-[240px] lg:min-h-[220px] px-4 py-3 rounded-lg border transition-smooth focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-y ${
             error
               ? 'border-error bg-error/5 text-error' :'border-input bg-background text-foreground hover:border-primary/50'
           }`}

@@ -55,9 +55,20 @@ try {
 
     $isAnonymous = !empty($data['is_anonymous']);
 
+    if ($isAnonymous) {
+        $email = null;
+    } else {
+        $email = trim((string)($data['reporter_email'] ?? ''));
+        if ($email === '') {
+            throw new Exception('reporter_email is required for non‑anonymous reports');
+        }
+    }
+
+
     $key = get_email_crypto_key();
-    $encryptedEmail = encrypt_email($email, $key);
-    $emailHash = hash_email($email);
+    $encryptedEmail = $email ? encrypt_email($email, $key) : null;
+    $emailHash = $email ? hash_email($email) : null;
+
 
     $payload = [
         'ticket_number' => $data['ticket_number'] ?? null,
@@ -77,7 +88,8 @@ try {
         'metadata' => $data['metadata'] ?? null,
         'reporter_email' => $isAnonymous ? null : $email,
         'reporter_email_encrypted' => $encryptedEmail,
-        'reporter_email_hash' => $emailHash
+        'reporter_email_hash' => $emailHash,
+        'next_step_due' => $data['next_step_due'] ?? null,
     ];
 
     // Remove nulls to let DB defaults apply
