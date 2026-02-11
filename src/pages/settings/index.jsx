@@ -1,16 +1,16 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 import AuthContextNavigator from '../../components/navigation/AuthContextNavigator';
 import Icon from '../../components/AppIcon';
 import Button from '../../components/ui/Button';
-import Input from '../../components/ui/Input';
 import { settingsService } from '../../services/SettingsService';
 import { useSettings } from '../../contexts/SettingsContext';
 import EmailNotificationSettings from './components/EmailNotificationSettings';
 import LocationManagementPanel from './components/LocationManagementPanel';
-import SettingsSection from './components/SettingsSection';
 import SettingCard from './components/SettingCard';
+import AdminModulesPanel from './components/AdminModulesPanel';
 
 function useCurrentHandler() {
   return { id: 'handler_123', name: 'Jeroen', email: 'jeroen@example.com' };
@@ -164,6 +164,7 @@ const getCategoryMeta = (t) => ({
 
 export default function SystemSettingsAdmin() {
   const { t } = useTranslation();
+  const location = useLocation();
   const currentHandler = useCurrentHandler();
   const { reload: reloadGlobalSettings } = useSettings();
   const categoryMeta = useMemo(() => getCategoryMeta(t), [t]);
@@ -180,6 +181,7 @@ export default function SystemSettingsAdmin() {
   const [original, setOriginal] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('all'); // 'all', 'security', 'email_notifications'
+  const [pageMode, setPageMode] = useState('settings'); // 'settings' | 'admin'
   const [selectedCategory, setSelectedCategory] = useState(null); // For focused category view
 
   const [isLoading, setIsLoading] = useState(true);
@@ -283,6 +285,17 @@ export default function SystemSettingsAdmin() {
     load();
   }, []);
 
+  useEffect(() => {
+    const modeParam = new URLSearchParams(location.search).get('mode');
+    if (modeParam === 'admin') {
+      setPageMode('admin');
+      return;
+    }
+    if (modeParam === 'settings') {
+      setPageMode('settings');
+    }
+  }, [location.search]);
+
   const save = async () => {
     if (!dirtyKeys.length) return;
     setIsSaving(true);
@@ -333,12 +346,34 @@ export default function SystemSettingsAdmin() {
           <div className="max-w-7xl mx-auto">
             {/* Header */}
             <div className="mb-6">
-              <h1 className="text-3xl md:text-4xl font-bold text-primary mb-2">
-                {t('settings.title')}
-              </h1>
-              <p className="text-muted-foreground">
-                {t('settings.subtitle')}
-              </p>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <h1 className="text-3xl md:text-4xl font-bold text-primary mb-2">
+                    {t('settings.title')}
+                  </h1>
+                  <p className="text-muted-foreground">
+                    {t('settings.subtitle')}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 rounded-xl border border-border bg-card p-1">
+                  <button
+                    onClick={() => setPageMode('settings')}
+                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                      pageMode === 'settings' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Instellingen
+                  </button>
+                  <button
+                    onClick={() => setPageMode('admin')}
+                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                      pageMode === 'admin' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Admin Center
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Quick Stats & Actions Bar
@@ -389,6 +424,10 @@ export default function SystemSettingsAdmin() {
               </div>
             </div> */}
 
+            {pageMode === 'admin' ? (
+              <AdminModulesPanel />
+            ) : (
+              <div>
             {/* Search & Action Bar */}
             <div className="mb-6 flex flex-col md:flex-row gap-3">
               {/* Search */}
@@ -560,7 +599,7 @@ export default function SystemSettingsAdmin() {
                                 </span>
                                 {changedInBundle > 0 && (
                                   <>
-                                    <span className="text-sm text-muted-foreground">â€¢</span>
+                                    <span className="text-sm text-muted-foreground">•</span>
                                     <span className={`text-sm font-semibold ${meta.iconColor} bg-white/80 px-2 py-0.5 rounded-full`}>
                                       {changedInBundle} {t('settings.navigation.modified')}
                                     </span>
@@ -631,7 +670,7 @@ export default function SystemSettingsAdmin() {
                             </span>
                             {changedInCategory > 0 && (
                               <>
-                                <span className="text-sm text-muted-foreground">â€¢</span>
+                                <span className="text-sm text-muted-foreground">•</span>
                                 <span className={`text-sm font-semibold ${meta.iconColor} bg-white/80 px-2 py-0.5 rounded-full`}>
                                   {changedInCategory} {t('settings.navigation.modified')}
                                 </span>
@@ -724,7 +763,7 @@ export default function SystemSettingsAdmin() {
                                   </span>
                                   {changedInCategory > 0 && (
                                     <>
-                                      <span className="text-xs text-muted-foreground">â€¢</span>
+                                      <span className="text-xs text-muted-foreground">•</span>
                                       <span className={`text-xs font-semibold ${meta.iconColor} bg-white/80 px-2 py-0.5 rounded-full`}>
                                         {changedInCategory} {t('settings.navigation.unsavedChanges')}
                                       </span>
@@ -752,6 +791,7 @@ export default function SystemSettingsAdmin() {
                   </div>
                 )}
               </div>
+            )}</div>
             )}
           </div>
         </div>

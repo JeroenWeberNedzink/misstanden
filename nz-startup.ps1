@@ -59,19 +59,31 @@ $VITE_PORT = if ($env:VITE_PORT){ [int]$env:VITE_PORT } else { 3000 }
 # -----------------------------
 # Logs (stdout / stderr separate)
 # -----------------------------
-$PHP_LOG   = Join-Path $RootDir "php-server.log"
-$PHP_ERR   = Join-Path $RootDir "php-server.err.log"
-$SLA_LOG   = Join-Path $RootDir "sla-monitor.log"
-$SLA_ERR   = Join-Path $RootDir "sla-monitor.err.log"
-$VITE_LOG  = Join-Path $RootDir "vite.log"
-$VITE_ERR  = Join-Path $RootDir "vite.err.log"
+$LogsDir     = Join-Path $RootDir "logs"
+$PhpLogsDir  = Join-Path $LogsDir "php"
+$SlaLogsDir  = Join-Path $LogsDir "sla"
+$ViteLogsDir = Join-Path $LogsDir "vite"
+
+$PHP_LOG   = Join-Path $PhpLogsDir "php-server.log"
+$PHP_ERR   = Join-Path $PhpLogsDir "php-server.err.log"
+$SLA_LOG   = Join-Path $SlaLogsDir "sla-monitor.log"
+$SLA_ERR   = Join-Path $SlaLogsDir "sla-monitor.err.log"
+$VITE_LOG  = Join-Path $ViteLogsDir "vite.log"
+$VITE_ERR  = Join-Path $ViteLogsDir "vite.err.log"
 
 # -----------------------------
 # PID files (to prevent duplicates)
 # -----------------------------
-$PHP_PID   = Join-Path $RootDir ".php.pid"
-$SLA_PID   = Join-Path $RootDir ".sla.pid"
-$VITE_PID  = Join-Path $RootDir ".vite.pid"
+$RunDir      = Join-Path $RootDir "run"
+$PidDir      = Join-Path $RunDir "pids"
+$PHP_PID     = Join-Path $PidDir "php.pid"
+$SLA_PID     = Join-Path $PidDir "sla.pid"
+$VITE_PID    = Join-Path $PidDir "vite.pid"
+$PHP_PID_OLD = Join-Path $RootDir ".php.pid"
+$SLA_PID_OLD = Join-Path $RootDir ".sla.pid"
+$VITE_PID_OLD = Join-Path $RootDir ".vite.pid"
+
+if (-not (Test-Path $PidDir)) { New-Item -ItemType Directory -Path $PidDir | Out-Null }
 
 # -----------------------------
 # Command checks
@@ -160,10 +172,10 @@ function Kill-IfRunningWithCommandMatch($procId, $label, $expectedName = $null, 
     } catch {}
 }
 
-function Cleanup-LockedLogs($rootDir, $days = 7) {
+function Cleanup-LockedLogs($path, $days = 7) {
     try {
         $cutoff = (Get-Date).AddDays(-$days)
-        Get-ChildItem -Path $rootDir -Filter "*.locked" -File -ErrorAction SilentlyContinue |
+        Get-ChildItem -Path $path -Filter "*.locked" -File -Recurse -ErrorAction SilentlyContinue |
             Where-Object { $_.LastWriteTime -lt $cutoff } |
             ForEach-Object {
                 try { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue } catch {}
@@ -193,8 +205,16 @@ function Wait-ForPort($port, $timeoutSeconds = 15) {
 # Kill previous known processes (PID files)
 # -----------------------------
 Kill-IfRunning (Read-PidFile $PHP_PID) "PHP" "php*"
+Kill-IfRunning (Read-PidFile $PHP_PID_OLD) "PHP" "php*"
 Kill-IfRunningWithCommandMatch (Read-PidFile $SLA_PID) "SLA" "php*" "sla_monitor.php"
+Kill-IfRunningWithCommandMatch (Read-PidFile $SLA_PID_OLD) "SLA" "php*" "sla_monitor.php"
 Kill-IfRunning (Read-PidFile $VITE_PID) "Frontend" "node*"
+Kill-IfRunning (Read-PidFile $VITE_PID_OLD) "Frontend" "node*"
+
+# Remove legacy root PID files once handled.
+foreach ($f in @($PHP_PID_OLD,$SLA_PID_OLD,$VITE_PID_OLD)) {
+    try { if (Test-Path $f) { Remove-Item $f -Force -ErrorAction SilentlyContinue } } catch {}
+}
 
 # -----------------------------
 # Kill port conflicts (only for the ports we want)
@@ -212,7 +232,7 @@ foreach ($port in @($PHP_PORT, $VITE_PORT)) {
 # Start PHP
 # -----------------------------
 Info "Starting PHP on http://${PHP_HOST}:${PHP_PORT}"
-$null = Cleanup-LockedLogs $RootDir 7
+$null = Cleanup-LockedLogs $LogsDir 7
 $PHP_LOG = Prepare-Log $PHP_LOG
 $PHP_ERR = Prepare-Log $PHP_ERR
 
@@ -380,6 +400,9 @@ Register-EngineEvent PowerShell.Exiting -Action {
         }
     }
     foreach ($f in @($VITE_PID,$SLA_PID,$PHP_PID)) {
+        try { if (Test-Path $f) { Remove-Item $f -Force -ErrorAction SilentlyContinue } } catch {}
+    }
+    foreach ($f in @($VITE_PID_OLD,$SLA_PID_OLD,$PHP_PID_OLD)) {
         try { if (Test-Path $f) { Remove-Item $f -Force -ErrorAction SilentlyContinue } } catch {}
     }
 } | Out-Null

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+﻿import React, { useMemo, useState } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import TicketTableRow from './TicketTableRow';
@@ -54,7 +54,7 @@ const TicketsTable = ({ tickets, workflows = [], onStatusChange, onAssignHandler
     }));
   };
 
-  // ✅ Build a workflow -> statusCode -> statusMeta map, based on DB-driven workflow statuses
+  // ✓ Build a workflow -> statusCode -> statusMeta map, based on DB-driven workflow statuses
   const workflowStatusMap = useMemo(() => {
     const map = new Map(); // workflowCode -> Map(statusCodeLower -> meta)
     (workflows || []).forEach((wf) => {
@@ -174,7 +174,7 @@ const TicketsTable = ({ tickets, workflows = [], onStatusChange, onAssignHandler
                 handlerOptions={handlerOptions}
                 userRole={userRole}
                 viewMode="desktop"
-                workflowStatusMap={workflowStatusMap}   // ✅ pass map
+                workflowStatusMap={workflowStatusMap}   // ✓ pass map
               />
             ))}
           </tbody>
@@ -192,7 +192,7 @@ const TicketsTable = ({ tickets, workflows = [], onStatusChange, onAssignHandler
             handlerOptions={handlerOptions}
             userRole={userRole}
             viewMode="mobile"
-            workflowStatusMap={workflowStatusMap}   // ✅ pass map
+            workflowStatusMap={workflowStatusMap}   // ✓ pass map
           />
         ))}
       </div>

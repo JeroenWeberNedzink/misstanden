@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from '../../../components/AppIcon';
 import { format } from 'date-fns';
@@ -35,6 +35,7 @@ const TicketCard = ({ ticket, workflowStatusMap, currentHandlerId, onQuickStatus
 
   const statusInfo = getStatusInfo(ticket?.statusCode, ticket?.workflowType);
   const severityInfo = getSeverityInfo(ticket?.severityCode);
+  const statusAccentStyle = statusInfo.color ? { borderTopColor: statusInfo.color } : undefined;
 
   const submittedDate = ticket?.submittedAt
     ? format(new Date(ticket.submittedAt), 'dd MMM yyyy', { locale: nl })
@@ -79,11 +80,12 @@ const TicketCard = ({ ticket, workflowStatusMap, currentHandlerId, onQuickStatus
 
 return (
   <div
-    className="bg-white rounded-xl border border-gray-200 hover:border-sky-600/40 hover:shadow-xl shadow-md transition-all duration-300 overflow-hidden cursor-pointer group"
+    className="bg-white rounded-2xl border border-gray-200 hover:border-sky-600/40 hover:shadow-xl shadow-md transition-all duration-300 overflow-hidden cursor-pointer group border-t-4"
+    style={statusAccentStyle}
     onClick={handleViewDetails}
   >
-    {/* Header with gradient background */}
-    <div className={`${statusInfo.bg} ${statusInfo.border} border-b px-6 py-4`}>
+    {/* Header */}
+    <div className="border-b border-gray-100 px-6 py-4 bg-gradient-to-r from-white via-white to-slate-50">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-2">
@@ -132,7 +134,7 @@ return (
           <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center">
             <Icon name="GitBranch" size={15} className="text-sky-700" />
           </div>
-          <span className="font-s emibold text-gray-900">{ticket?.workflowName || ticket?.workflowType || '-'}</span>
+          <span className="font-semibold text-gray-900">{ticket?.workflowName || ticket?.workflowType || '-'}</span>
         </div>
         {ticket?.handlers?.name && (
           <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 px-3 py-1.5 rounded-lg">
@@ -168,7 +170,7 @@ return (
               onClick={handleAssign}
               className="px-4 py-2 rounded-lg text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700 active:bg-sky-800 transition-colors shadow-sm hover:shadow-md"
             >
-              Assign to me
+              Toewijzen aan mij
             </button>
           )}
           {/* {!isClosed && nextStatusCode && (

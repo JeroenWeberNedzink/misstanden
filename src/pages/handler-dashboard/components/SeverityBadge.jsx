@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import Icon from '../../../components/AppIcon';
 
 const safeLower = (v) => String(v ?? '').toLowerCase().trim();
@@ -25,7 +25,7 @@ const SeverityBadge = ({
   severity,
   size = 'default',
 
-  // ✅ NEW (optional): DB-driven overrides
+  // ✓ NEW (optional): DB-driven overrides
   label: labelOverride,
   color: colorOverride,
   icon: iconOverride,

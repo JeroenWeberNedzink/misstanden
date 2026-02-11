@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import { useTranslation } from 'react-i18next';
 import { useAuth0 } from '@auth0/auth0-react';
 import AuthContextNavigator from '../../components/navigation/AuthContextNavigator';
 import TicketCardGrid from './components/TicketCardGrid';
+import TicketsTable from './components/TicketsTable';
 import QuickStats from './components/QuickStats';
-import SimpleFilter from './components/SimpleFilter';
 import { ticketService } from '../../services/ticketService';
 import { workflowService } from '../../services/workflowService';
 import { supabase } from '../../lib/supabase';
@@ -28,6 +28,7 @@ export default function HandlerDashboard() {
   const [severityFilter, setSeverityFilter] = useState('all');
   const [scopeFilter, setScopeFilter] = useState('all');
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [layout, setLayout] = useState('cards');
   const navigate = useNavigate();
   const { t } = useTranslation();
 
@@ -89,6 +90,17 @@ export default function HandlerDashboard() {
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .map((s) => ({ value: s.code, label: s.label, color: s.color }));
   }, [workflows]);
+
+  const severityOptions = useMemo(() => {
+    const base = [{ value: 'all', label: 'Alle prioriteiten' }];
+    const list = Array.isArray(severities) ? severities : [];
+    return base.concat(
+      list.map((s) => ({
+        value: s?.code || s?.severity_code || s?.id || s?.name || 'medium',
+        label: s?.label || s?.name || s?.code || 'Gemiddeld',
+      }))
+    );
+  }, [severities]);
 
   const getStatusMetaForTicket = (ticket) => {
     const wfCode = safeTrim(ticket?.workflowType || ticket?.workflow_type);
@@ -327,84 +339,141 @@ export default function HandlerDashboard() {
       <AuthContextNavigator>
         <div className="min-h-screen bg-background">
           <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 md:py-8 lg:py-12">
-            <div className="mb-6 md:mb-8 space-y-3">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <h1 className="text-3xl md:text-4xl font-bold text-foreground text-primary">
-                    {t('handlerDashboard.welcomeMessage')} {user?.name || user?.email || 'User'}
-                  </h1>
-                  <p className="text-sm md:text-base text-muted-foreground mt-2">
-                    {t('handlerDashboard.subtitle')}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Icon name="RefreshCw" size={14} />
-                  <span>Laatste update:</span>
-                  <span className="font-semibold text-foreground">
-                    {lastUpdatedLabel || 'Nog niet geladen'}
-                  </span>
+            <div className="mb-8">
+              <div className="rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-sky-900 text-white p-6 md:p-8 shadow-xl">
+                <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.2em] text-sky-200 mb-2">
+                      Handler Dashboard
+                    </div>
+                    <h1 className="text-3xl md:text-4xl font-bold">
+                      {t('handlerDashboard.welcomeMessage')} {user?.name || user?.email || 'User'}
+                    </h1>
+                    <p className="text-sm md:text-base text-slate-200 mt-3 max-w-2xl">
+                      {t('handlerDashboard.subtitle')}
+                    </p>
+                    <div className="flex items-center gap-2 text-xs text-slate-300 mt-4">
+                      <Icon name="RefreshCw" size={14} />
+                      <span>Laatste update:</span>
+                      <span className="font-semibold text-white">
+                        {lastUpdatedLabel || 'Nog niet geladen'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full xl:w-auto">
+                    {[
+                      { label: 'Open', value: stats.open, icon: 'Inbox' },
+                      { label: 'Onbehandeld', value: stats.unassigned, icon: 'UserX' },
+                      { label: 'Urgent', value: stats.highPriority, icon: 'AlertTriangle' },
+                      { label: 'Vandaag', value: stats.today, icon: 'Calendar' },
+                    ].map((item) => (
+                      <div key={item.label} className="rounded-2xl bg-white/10 border border-white/10 px-4 py-3">
+                        <div className="flex items-center justify-between text-xs text-slate-200 mb-2">
+                          <span>{item.label}</span>
+                          <Icon name={item.icon} size={14} />
+                        </div>
+                        <div className="text-2xl font-bold">{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
 
             <div className="space-y-6">
+              <QuickStats
+                tickets={tickets}
+                currentHandlerId={currentHandlerId}
+                workflowStatusMap={workflowStatusMap}
+              />
+
               <div className="bg-white rounded-2xl border border-border p-5 shadow-sm space-y-4">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col xl:flex-row gap-3 xl:items-center">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Zoek op ticketnummer of beschrijving..."
+                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
+                  </div>
+                  <div className="min-w-[220px]">
+                    <Select
+                      value={statusFilter}
+                      onChange={(value) => setStatusFilter(value)}
+                      options={[
+                        { value: 'all', label: 'Alle statussen' },
+                        ...statusOptions.map((o) => ({ value: o.value, label: o.label || o.value })),
+                      ]}
+                    />
+                  </div>
+                  <div className="min-w-[220px]">
+                    <Select
+                      value={severityFilter}
+                      onChange={(value) => setSeverityFilter(value)}
+                      options={severityOptions}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 p-1">
+                    <button
+                      onClick={() => setLayout('cards')}
+                      className={`px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
+                        layout === 'cards' ? 'bg-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      Kaarten
+                    </button>
+                    <button
+                      onClick={() => setLayout('table')}
+                      className={`px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
+                        layout === 'table' ? 'bg-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      Tabel
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
                   {quickViews.map((view) => (
                     <button
                       key={view.key}
                       onClick={() => applyQuickView(view.key)}
-                      className={`flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 text-left text-sm transition-all hover:shadow-sm ${
-                        scopeFilter === view.key ? 'ring-2 ring-primary/30' : ''
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${
+                        scopeFilter === view.key ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      <div className="flex items-center gap-2">
-                        <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${view.tone}`}>
-                          <Icon name={view.icon} size={16} />
-                        </span>
-                        <div className="flex flex-col">
-                          <span className="font-medium text-foreground">{view.label}</span>
-                          <span className="text-xs text-muted-foreground">{view.count} tickets</span>
-                        </div>
-                      </div>
-                      <Icon name="ChevronRight" size={16} className="text-muted-foreground" />
+                      <Icon name={view.icon} size={14} />
+                      <span>{view.label}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-foreground">
+                        {view.count}
+                      </span>
                     </button>
                   ))}
                 </div>
-
-                <div className="flex flex-col gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Status
-                  </span>
-                  <Select
-                    value={statusFilter}
-                    onChange={(value) => setStatusFilter(value)}
-                    options={[
-                      { value: 'all', label: 'Alle statussen' },
-                      ...statusOptions.map((o) => ({ value: o.value, label: o.label || o.value })),
-                    ]}
-                  />
-                </div>
               </div>
-{/* 
-              <SimpleFilter
-                search={search}
-                onSearchChange={setSearch}
-                statusFilter={statusFilter}
-                onStatusChange={setStatusFilter}
-                severityFilter={severityFilter}
-                onSeverityChange={setSeverityFilter}
-                scopeFilter={scopeFilter}
-                onScopeChange={setScopeFilter}
-              /> */}
 
-              <TicketCardGrid
-                tickets={filteredTickets}
-                workflows={workflows}
-                currentHandlerId={currentHandlerId}
-                onQuickStatusChange={handleStatusChange}
-                onAssignToMe={handleAssignToMe}
-              />
+              {layout === 'cards' ? (
+                <TicketCardGrid
+                  tickets={filteredTickets}
+                  workflows={workflows}
+                  currentHandlerId={currentHandlerId}
+                  onQuickStatusChange={handleStatusChange}
+                  onAssignToMe={handleAssignToMe}
+                />
+              ) : (
+                <TicketsTable
+                  tickets={filteredTickets}
+                  workflows={workflows}
+                  onStatusChange={handleStatusChange}
+                  onAssignHandler={handleAssignHandler}
+                  handlerOptions={[]}
+                  userRole={currentHandlerRole}
+                />
+              )}
             </div>
           </div>
         </div>

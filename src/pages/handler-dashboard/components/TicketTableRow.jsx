@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+﻿import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
@@ -101,12 +101,12 @@ const TicketTableRow = ({
   // Check if ticket is anonymous (no reporter email or name)
   const isAnonymous = !reporterEmail && !reporterName;
 
-  // ✅ DB-driven display code:
+  // ✓ DB-driven display code:
   // - If a workflow uses detailed steps, you store that in current_stage
   // - So for the dashboard, prefer current_stage, else fallback to status_code
   const displayCode = useMemo(() => currentStage || statusCode, [currentStage, statusCode]);
 
-  // ✅ Resolve workflow-specific meta (label/color/description) by displayCode
+  // ✓ Resolve workflow-specific meta (label/color/description) by displayCode
   const statusMeta = useMemo(() => {
     if (!workflowCode || !displayCode || !workflowStatusMap) return null;
     const wfMap = workflowStatusMap.get(workflowCode);
@@ -144,7 +144,7 @@ const TicketTableRow = ({
     return 'normal';
   }, [isCritical, isHigh, isUnassigned, isNew]);
 
-  // ✅ Cleaner styling: mostly bg-*-50, minimal borders
+  // ✓ Cleaner styling: mostly bg-*-50, minimal borders
   const rowStyle = useMemo(() => {
     const base = 'border-b border-border transition-smooth';
     const hover = 'hover:bg-muted/40';
@@ -217,8 +217,8 @@ const TicketTableRow = ({
     <StatusBadge
       status={statusCode}            // keep generic status for icon fallback if your badge uses it
       size="sm"
-      label={displayStatusLabel}     // ✅ DB-driven label (from workflows.statuses via map)
-      color={displayStatusColor}     // ✅ DB-driven color (optional)
+      label={displayStatusLabel}     // ✓ DB-driven label (from workflows.statuses via map)
+      color={displayStatusColor}     // ✓ DB-driven color (optional)
     />
   );
 
