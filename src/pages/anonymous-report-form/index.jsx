@@ -22,11 +22,20 @@ const STEPS = [
   { id: 6, name: 'reportForm.stepName6', icon: 'CheckCircle2', desc: 'reportForm.stepDesc6' }
 ];
 
+const safeTrim = (v) => String(v ?? '').trim();
+const toWorkflowKey = (v) =>
+  safeTrim(v)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
 export default function AnonymousReportForm() {
   const DESCRIPTION_PREVIEW_LENGTH = 240;
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const [currentStep, setCurrentStep] = useState(1);
   const [workflows, setWorkflows] = useState([]);
@@ -40,6 +49,19 @@ export default function AnonymousReportForm() {
   const [reviewPreviewText, setReviewPreviewText] = useState('');
   const [error, setError] = useState('');
   const [errors, setErrors] = useState({});
+
+  const getLocalizedWorkflowName = (workflow) => {
+    const code = safeTrim(workflow?.code);
+    const name = safeTrim(workflow?.name);
+    const candidates = Array.from(new Set([code, toWorkflowKey(code), toWorkflowKey(name)].filter(Boolean)));
+
+    for (const candidate of candidates) {
+      const translated = t(`reportForm.workflowOptions.${candidate}.name`, { defaultValue: '' });
+      if (translated) return translated;
+    }
+
+    return name || code;
+  };
 
   const [formData, setFormData] = useState({
     workflow: '',
@@ -113,7 +135,7 @@ export default function AnonymousReportForm() {
 
     if (step === 3) {
       if (!formData?.location || formData?.location?.trim() === '') {
-        validationErrors.location = 'Locatie is verplicht / Location is required';
+        validationErrors.location = t('reportForm.locationRequired');
       }
     }
     if (step === 4) {
@@ -170,6 +192,7 @@ export default function AnonymousReportForm() {
         location: formData?.location,
         workflowType: formData?.workflow,
         severity: formData?.severity,
+        reporterLanguage: i18n?.resolvedLanguage || i18n?.language || 'en',
         reporterEmail: email || null,
         reporterName: String(formData?.reporterName || '').trim() || null,
         reporterPhone: String(formData?.reporterPhone || '').trim() || null,
@@ -189,7 +212,7 @@ export default function AnonymousReportForm() {
 
       const ticketWithDetails = {
         ...newTicket,
-        workflow: selectedWorkflow?.name || formData?.workflow,
+        workflow: getLocalizedWorkflowName(selectedWorkflow) || formData?.workflow,
         severity: selectedSeverity?.label || formData?.severity,
         location: formData?.location || null,
         attachmentCount: formData?.files?.length || 0,
@@ -260,7 +283,7 @@ export default function AnonymousReportForm() {
         const textContent = await file.text();
         setReviewPreviewText(textContent);
       } catch {
-        setReviewPreviewText('Preview unavailable for this file.');
+        setReviewPreviewText(t('reportForm.previewUnavailable'));
       }
       return;
     }
@@ -521,6 +544,7 @@ export default function AnonymousReportForm() {
 
       case 6:
         const selectedWorkflow = workflows?.find(w => w?.code === formData?.workflow);
+        const selectedWorkflowLabel = getLocalizedWorkflowName(selectedWorkflow);
         const isAnonymous = !!formData?.isAnonymous;
         const descriptionText = formData?.description || '';
         const shouldTruncateDescription = descriptionText.length > DESCRIPTION_PREVIEW_LENGTH;
@@ -550,7 +574,7 @@ export default function AnonymousReportForm() {
                   <div className="space-y-4">
                     <div className="bg-muted/30 rounded-lg p-4">
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{t('reportForm.incidentType')}</p>
-                      <p className="text-lg font-semibold text-foreground">{selectedWorkflow?.name}</p>
+                      <p className="text-lg font-semibold text-foreground">{selectedWorkflowLabel}</p>
                     </div>
 
                     <div className="bg-muted/30 rounded-lg p-4">
@@ -606,7 +630,7 @@ export default function AnonymousReportForm() {
                                 className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
                               >
                                 <Icon name="Eye" size={14} />
-                                <span>Preview</span>
+                                <span>{t('reportForm.preview')}</span>
                               </button>
                             </div>
                           ))}
@@ -637,7 +661,7 @@ export default function AnonymousReportForm() {
                           onClick={() => setShowFullDescription(prev => !prev)}
                           className="mt-2 text-sm text-primary underline underline-offset-2 hover:text-primary/80"
                         >
-                          {showFullDescription ? 'Sluit tekst' : 'Open tekst'}
+                          {showFullDescription ? t('reportForm.closeText') : t('reportForm.openText')}
                         </button>
                       )}
                     </div>
@@ -893,7 +917,7 @@ export default function AnonymousReportForm() {
               )}
               {reviewPreviewType === 'unsupported' && (
                 <div className="text-center py-8 space-y-3">
-                  <p className="text-sm text-muted-foreground">No inline preview available for this file type.</p>
+                  <p className="text-sm text-muted-foreground">{t('reportForm.noInlinePreview')}</p>
                   {reviewPreviewUrl && (
                     <a
                       href={reviewPreviewUrl}
@@ -902,7 +926,7 @@ export default function AnonymousReportForm() {
                       rel="noreferrer"
                       className="inline-flex items-center justify-center rounded-md border border-input px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
                     >
-                      Open or download file
+                      {t('reportForm.openOrDownloadFile')}
                     </a>
                   )}
                 </div>

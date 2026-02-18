@@ -126,9 +126,23 @@ export const priorityWorkflowService = {
 
   // Reassign ticket to different handler
   async reassignTicket(ticketId, newHandlerId) {
+    const normalizedHandlerId = newHandlerId || null;
+
+    if (normalizedHandlerId) {
+      const { data: handler, error: handlerError } = await supabase
+        ?.from('handlers')
+        ?.select('id, active')
+        ?.eq('id', normalizedHandlerId)
+        ?.maybeSingle();
+
+      if (handlerError) throw handlerError;
+      if (!handler?.id) throw new Error('Selected handler no longer exists');
+      if (handler.active === false) throw new Error('Inactive handlers cannot be assigned');
+    }
+
     const { data, error } = await supabase
       ?.from('tickets')
-      ?.update({ handler_id: newHandlerId })
+      ?.update({ handler_id: normalizedHandlerId })
       ?.eq('id', ticketId)
       ?.select()
       ?.single();

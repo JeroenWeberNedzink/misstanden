@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import Button from '../../../components/ui/Button';
 import Select from '../../../components/ui/Select';
 import { Checkbox } from '../../../components/ui/Checkbox';
@@ -15,32 +16,44 @@ const CaseManagementPanel = ({
   handlers,
   isWhistleblower,
 }) => {
+  const { t } = useTranslation();
   const [savingAssignment, setSavingAssignment] = useState(false);
   const [savingPriority, setSavingPriority] = useState(false);
   const [savingStatusEmail, setSavingStatusEmail] = useState(false);
 
   const priorityOptions = useMemo(
     () => [
-      { value: 'Laag', label: 'Laag', description: 'Routine behandeling' },
-      { value: 'Gemiddeld', label: 'Gemiddeld', description: 'Standaard prioriteit' },
-      { value: 'Hoog', label: 'Hoog', description: 'Urgente behandeling vereist' },
-      { value: 'Kritiek', label: 'Kritiek', description: 'Directe actie vereist' },
+      { value: 'low', label: t('caseManagement.low'), description: t('caseManagementDetail.management.priorityLowDesc') },
+      { value: 'medium', label: t('caseManagement.medium'), description: t('caseManagementDetail.management.priorityMediumDesc') },
+      { value: 'high', label: t('caseManagement.high'), description: t('caseManagementDetail.management.priorityHighDesc') },
+      { value: 'critical', label: t('caseManagement.critical'), description: t('caseManagementDetail.management.priorityCriticalDesc') },
     ],
-    []
+    [t]
   );
 
   const handlerOptions = useMemo(() => {
-    const list = (handlers || []).map((handler) => ({
-      value: handler?.id,
-      label: handler?.name,
-      description: handler?.role,
-    }));
+    const inactiveLabel = t('common.inactive', { defaultValue: 'Inactive' });
+    const list = (handlers || [])
+      .filter((handler) => Boolean(handler?.id))
+      .map((handler) => {
+        const isActive = handler?.active !== false;
+        return {
+          value: handler?.id,
+          label: isActive ? handler?.name : `${handler?.name} (${inactiveLabel})`,
+          description: isActive ? handler?.role : inactiveLabel,
+          disabled: !isActive,
+        };
+      });
 
     return [
-      { value: '', label: 'Niet toegewezen', description: 'Geen handler gekoppeld' },
+      {
+        value: '',
+        label: t('caseManagement.notAssigned'),
+        description: t('caseManagementDetail.management.notAssignedDescription'),
+      },
       ...list,
     ];
-  }, [handlers]);
+  }, [handlers, t]);
 
   const isBusy = savingAssignment || savingPriority || savingStatusEmail;
   const statusEmailChecked = caseData?.statusEmailNotify !== false;
@@ -62,18 +75,17 @@ const CaseManagementPanel = ({
 
   const handlePrioritySelect = useCallback(
     async (value) => {
-      const nextPriority = value;
-      if (!nextPriority) return;
-      if (caseData?.priority === nextPriority) return;
+      const nextPriorityCode = value;
+      if (!nextPriorityCode || caseData?.priorityCode === nextPriorityCode) return;
 
       try {
         setSavingPriority(true);
-        await onPriorityChange?.(nextPriority);
+        await onPriorityChange?.(nextPriorityCode);
       } finally {
         setSavingPriority(false);
       }
     },
-    [caseData?.priority, onPriorityChange]
+    [caseData?.priorityCode, onPriorityChange]
   );
 
   const handleStatusEmailToggle = useCallback(
@@ -88,69 +100,46 @@ const CaseManagementPanel = ({
     [onStatusEmailNotifyChange]
   );
 
-  /**
-   * Z-INDEX / DROPDOWN FIX STRATEGY
-   * 1) Ensure panel does NOT clip menus: overflow-visible
-   * 2) Create a stacking context that we control: isolate
-   * 3) Wrap each Select in a relative + high z-index so the menu can sit above neighbors
-   *
-   * If your Select still gets clipped somewhere higher up the tree, the real fix is
-   * portaling the menu to document.body inside the Select component.
-   */
   return (
     <div className="bg-card rounded-xl border border-border overflow-visible isolate">
       <div className="p-4 md:p-6 space-y-4">
         <div className="grid grid-cols-1 gap-4">
-          {/* Status */}
           {!isWhistleblower && (
             <PermissionGuard permission={PERMISSIONS.EDIT_TICKETS}>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground block">Status</label>
-                <Button
-                  variant="outline"
-                  fullWidth
-                  iconName="Edit"
-                  iconPosition="left"
-                  onClick={onStatusChange}
-                  disabled={isBusy}
-                >
-                  Status wijzigen: {caseData?.status || 'Onbekend'}
+                <label className="text-sm font-medium text-foreground block">{t('caseManagement.updateStatus')}</label>
+                <Button variant="outline" fullWidth iconName="Edit" iconPosition="left" onClick={onStatusChange} disabled={isBusy}>
+                  {t('caseManagementDetail.management.changeStatusCta', {
+                    status: caseData?.status || t('caseManagementDetail.common.unknown'),
+                  })}
                 </Button>
               </div>
             </PermissionGuard>
           )}
 
-          {/* Assignment (higher z-index) */}
           <PermissionGuard permission={PERMISSIONS.EDIT_TICKETS}>
             <div className="relative z-[80]">
               <Select
-                label="Toegewezen aan"
-                description="Selecteer de handler die verantwoordelijk is voor deze zaak"
+                label={t('caseManagement.assignTo')}
+                description={t('caseManagementDetail.management.assignDescription')}
                 options={handlerOptions}
                 value={caseData?.assignedToId || ''}
                 onChange={handleAssignmentSelect}
                 searchable
                 disabled={savingAssignment}
-                // If your Select supports className or menuClassName props, these help:
-                // className="relative"
-                // menuClassName="z-[9999]"
-                // portal  // (if supported)
               />
             </div>
           </PermissionGuard>
 
-          {/* Priority (slightly lower z, still above most UI) */}
           <PermissionGuard permission={PERMISSIONS.EDIT_TICKETS}>
             <div className="relative z-[70]">
               <Select
-                label="Prioriteitsniveau"
-                description="Stel de urgentie van deze zaak in"
+                label={t('caseManagementDetail.management.priorityLevel')}
+                description={t('caseManagementDetail.management.priorityDescription')}
                 options={priorityOptions}
-                value={caseData?.priority}
+                value={caseData?.priorityCode || ''}
                 onChange={handlePrioritySelect}
                 disabled={savingPriority}
-                // menuClassName="z-[9999]"
-                // portal
               />
             </div>
           </PermissionGuard>
@@ -158,8 +147,8 @@ const CaseManagementPanel = ({
           <PermissionGuard permission={PERMISSIONS.EDIT_TICKETS}>
             <div className="rounded-lg border border-border bg-muted/20 p-3">
               <Checkbox
-                label="Status e-mails naar melder"
-                description="Stuur een e-mail wanneer de status van de melding wijzigt."
+                label={t('caseManagementDetail.management.statusEmailsLabel')}
+                description={t('caseManagementDetail.management.statusEmailsDescription')}
                 checked={statusEmailChecked}
                 onChange={(e) => handleStatusEmailToggle(e?.target?.checked)}
                 disabled={savingStatusEmail}
@@ -168,15 +157,13 @@ const CaseManagementPanel = ({
           </PermissionGuard>
         </div>
 
-        {/* Saving indicator */}
         {isBusy && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-accent" />
-            <span>Wijziging opslaan…</span>
+            <span>{t('caseManagementDetail.management.savingChange')}</span>
           </div>
         )}
 
-        {/* Optional: Escalation actions (kept, compact) */}
         {onEscalate && (
           <div className="pt-1">
             <Button
@@ -187,7 +174,7 @@ const CaseManagementPanel = ({
               onClick={() => onEscalate?.('management')}
               disabled={isBusy}
             >
-              Escaleren naar management
+              {t('caseManagementDetail.management.escalateToManagement')}
             </Button>
           </div>
         )}

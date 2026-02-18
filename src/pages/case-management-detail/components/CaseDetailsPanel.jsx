@@ -3,13 +3,14 @@ import Icon from '../../../components/AppIcon';
 import Input from '../../../components/ui/Input';
 import PermissionGuard from '../../../components/auth/PermissionGuard';
 import { PERMISSIONS } from '../../../utils/permissions';
+import { useTranslation } from 'react-i18next';
 
-const fmtDateTimeNL = (value) => {
+const fmtDateTime = (value, locale) => {
   if (!value) return '';
   try {
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return String(value);
-    return d.toLocaleString('nl-NL', {
+    return d.toLocaleString(locale || undefined, {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -70,6 +71,7 @@ const CaseDetailsPanel = ({
   isSaving = false,
   onUpdate, // async (patch) => Promise<void>
 }) => {
+  const { t, i18n } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
 
   // normalize reporter fields from both shapes
@@ -131,9 +133,11 @@ const CaseDetailsPanel = ({
     const patch = {
       description,
       location: location || null,
-      reporter_name: reporterName || null,
-      reporter_email: reporterEmail || null,
-      reporter_phone: reporterPhone || null,
+      reporterDetails: {
+        name: reporterName || null,
+        email: reporterEmail || null,
+        phone: reporterPhone || null,
+      },
     };
 
     await onUpdate(patch);
@@ -151,7 +155,7 @@ const CaseDetailsPanel = ({
     const viewport = rm?.viewport || {};
     const viewportStr =
       viewport && (viewport.w || viewport.h)
-        ? `${viewport.w ?? '?'}×${viewport.h ?? '?'} (dpr ${viewport.dpr ?? '?'})`
+        ? `${viewport.w ?? '?'}x${viewport.h ?? '?'} (dpr ${viewport.dpr ?? '?'})`
         : null;
 
     const languages =
@@ -175,9 +179,9 @@ const CaseDetailsPanel = ({
       viewport: viewportStr,
       userAgent,
       createdFrom,
-      createdAt: createdAtClient ? fmtDateTimeNL(createdAtClient) : null,
+      createdAt: createdAtClient ? fmtDateTime(createdAtClient, i18n?.resolvedLanguage || i18n?.language) : null,
     };
-  }, [caseData]);
+  }, [caseData, i18n?.resolvedLanguage, i18n?.language]);
 
   // compact tab UX
   const [activeTab, setActiveTab] = useState('contact'); // contact | location | meta
@@ -205,7 +209,7 @@ const CaseDetailsPanel = ({
             <div className="p-4 md:p-5 border-b border-border flex items-center gap-2">
               <Icon name="AlignLeft" size={14} />
               <h3 className="text-xs md:text-sm font-semibold text-foreground truncate">
-                Beschrijving
+                {t('common.description')}
               </h3>
 
               {/* quick badges (small, no extra height)
@@ -226,7 +230,7 @@ const CaseDetailsPanel = ({
                         className="text-xs px-2 py-1 rounded-md border border-border bg-background/60 hover:bg-muted/40 transition"
                         onClick={() => setIsEditing(true)}
                       >
-                        Bewerken
+                        {t('common.edit')}
                       </button>
                     ) : (
                       <>
@@ -236,7 +240,7 @@ const CaseDetailsPanel = ({
                           onClick={handleCancel}
                           disabled={isSaving}
                         >
-                          Annuleer
+                          {t('common.cancel')}
                         </button>
                         <button
                           type="button"
@@ -244,7 +248,7 @@ const CaseDetailsPanel = ({
                           onClick={handleSave}
                           disabled={isSaving || !hasChanges}
                         >
-                          Opslaan
+                          {t('common.save')}
                         </button>
                       </>
                     )}
@@ -265,7 +269,7 @@ const CaseDetailsPanel = ({
                   className="w-full rounded border border-border bg-background/60 p-4 outline-none text-xs md:text-sm text-foreground leading-relaxed min-h-[140px] focus:ring-1 focus:ring-primary/20"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Beschrijf het incident..."
+                  placeholder={t('caseManagementDetail.details.descriptionPlaceholder')}
                   disabled={isSaving}
                 />
               </div>
@@ -277,7 +281,7 @@ const CaseDetailsPanel = ({
                 <div className="rounded border border-border bg-muted/10 p-2">
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Icon name="Info" size={12} />
-                    <p className="font-medium text-foreground/90">Niet-opgeslagen wijzigingen</p>
+                    <p className="font-medium text-foreground/90">{t('caseManagementDetail.details.unsavedChanges')}</p>
                   </div>
                 </div>
               </div>
@@ -285,13 +289,13 @@ const CaseDetailsPanel = ({
           </div>
         </div>
 
-        {/* RIGHT: Single compact “Details” card with tabs */}
+        {/* RIGHT: Single compact details card with tabs */}
         <div className="lg:col-span-2 space-y-2 md:space-y-2.5">
           <div className="bg-white rounded-lg border border-border bg-muted/10 overflow-hidden">
             <div className="p-4 md:p-5 border-b border-border flex items-center gap-2">
               <Icon name="LayoutList" size={14} />
               <h3 className="text-xs md:text-sm font-semibold text-foreground">
-                Details
+                {t('common.details')}
               </h3>
 
               {/* tiny meta indicator without taking space */}
@@ -309,19 +313,19 @@ const CaseDetailsPanel = ({
                   active={activeTab === 'contact'}
                   onClick={() => setActiveTab('contact')}
                   icon="User"
-                  label="Contact"
+                  label={t('caseManagementDetail.details.tabContact')}
                 />
                 <TabButton
                   active={activeTab === 'location'}
                   onClick={() => setActiveTab('location')}
                   icon="MapPin"
-                  label="Locatie"
+                  label={t('caseManagementDetail.details.tabLocation')}
                 />
                 <TabButton
                   active={activeTab === 'meta'}
                   onClick={() => setActiveTab('meta')}
                   icon="Info"
-                  label="Meta"
+                  label={t('caseManagementDetail.details.tabMeta')}
                 />
               </div>
             </div>
@@ -367,11 +371,11 @@ const CaseDetailsPanel = ({
                       </div>
                     ) : (
                       <div className="rounded border border-border bg-background/60 p-3 flex items-start gap-2">
-                        <Icon name="UserX" size={16} className="text-muted-foreground mt-0.5" />
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold text-foreground">Anoniem</p>
+                          <Icon name="UserX" size={16} className="text-muted-foreground mt-0.5" />
+                          <div className="min-w-0">
+                          <p className="text-xs font-semibold text-foreground">{t('caseManagement.anonymous')}</p>
                           <p className="text-xs text-muted-foreground">
-                            Geen contactgegevens beschikbaar
+                            {t('caseManagementDetail.details.noContactInfo')}
                           </p>
                         </div>
                       </div>
@@ -380,26 +384,26 @@ const CaseDetailsPanel = ({
                     <div className="space-y-2">
                       <Input
                         type="text"
-                        label="Naam"
+                        label={t('common.name')}
                         value={reporterName}
                         onChange={(e) => setReporterName(e?.target?.value)}
-                        placeholder="Optioneel"
+                        placeholder={t('caseManagementDetail.common.optional')}
                         disabled={isSaving}
                       />
                       <Input
                         type="email"
-                        label="E-mail"
+                        label={t('common.email')}
                         value={reporterEmail}
                         onChange={(e) => setReporterEmail(e?.target?.value)}
-                        placeholder="Optioneel"
+                        placeholder={t('caseManagementDetail.common.optional')}
                         disabled={isSaving}
                       />
                       <Input
                         type="text"
-                        label="Telefoon"
+                        label={t('common.phone')}
                         value={reporterPhone}
                         onChange={(e) => setReporterPhone(e?.target?.value)}
-                        placeholder="Optioneel"
+                        placeholder={t('caseManagementDetail.common.optional')}
                         disabled={isSaving}
                       />
                     </div>
@@ -414,14 +418,14 @@ const CaseDetailsPanel = ({
                     <div className="flex items-start gap-2">
                       <Icon name="MapPin" size={16} className="text-muted-foreground mt-0.5" />
                       <p className="text-xs md:text-sm text-foreground break-words">
-                        {caseData?.location || 'Niet opgegeven'}
+                        {caseData?.location || t('caseManagementDetail.details.notProvided')}
                       </p>
                     </div>
                   ) : (
                     <Input
                       type="text"
-                      label="Locatie"
-                      placeholder="Bijv. Werkplaats, kantoor..."
+                      label={t('caseManagementDetail.details.tabLocation')}
+                      placeholder={t('caseManagementDetail.details.locationPlaceholder')}
                       value={location}
                       onChange={(e) => setLocation(e?.target?.value)}
                       disabled={isSaving}
@@ -447,32 +451,32 @@ const CaseDetailsPanel = ({
 
                       <div className="space-y-2">
                         {/* <KV k="Workflow status" v={reporterMeta.workflowStatusCode} mono /> */}
-                        <KV k="Tijdzone" v={reporterMeta.timezone} />
-                        <KV k="Viewport" v={reporterMeta.viewport} mono />
-                        <KV k="Aangemaakt (client)" v={reporterMeta.createdAt} />
+                        <KV k={t('caseManagementDetail.details.timezone')} v={reporterMeta.timezone} />
+                        <KV k={t('caseManagementDetail.details.viewport')} v={reporterMeta.viewport} mono />
+                        <KV k={t('caseManagementDetail.details.createdClient')} v={reporterMeta.createdAt} />
                         {/* <KV k="Pagina" v={reporterMeta.createdFrom} /> */}
 
                         {/* User agent is huge: collapse it */}
                         <div className="pt-2 border-t border-border">
                           <div className="flex items-center justify-between gap-2">
-                            <div className="text-[11px] text-muted-foreground">User-Agent</div>
+                            <div className="text-[11px] text-muted-foreground">{t('caseManagementDetail.details.userAgent')}</div>
                             <button
                               type="button"
                               className="text-[11px] text-primary hover:underline"
                               onClick={() => setShowUA((v) => !v)}
                             >
-                              {showUA ? 'Minder' : 'Meer'}
+                              {showUA ? t('caseManagementDetail.common.less') : t('caseManagementDetail.common.more')}
                             </button>
                           </div>
                           <div className={cx('text-xs text-foreground break-words mt-1', !showUA && 'line-clamp-2')}>
-                            {reporterMeta.userAgent || '—'}
+                            {reporterMeta.userAgent || '-'}
                           </div>
                         </div>
                       </div>
                     </div>
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      Geen metadata beschikbaar voor deze melding.
+                      {t('caseManagementDetail.details.noMetadata')}
                     </p>
                   )}
                 </>

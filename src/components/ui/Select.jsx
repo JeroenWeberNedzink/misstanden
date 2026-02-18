@@ -1,7 +1,8 @@
 // components/ui/Select.jsx - Shadcn style Select
 import React, { useState } from "react";
+import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faChevronDown, faCheck, faSearch, faTimes, faSpinner } from '@fortawesome/free-solid-svg-icons';
+import { faChevronDown, faCheck, faSearch, faTimes } from '@fortawesome/free-solid-svg-icons';
 import { cn } from "../../utils/cn";
 import Button from "./Button";
 import Input from "./Input";
@@ -11,7 +12,7 @@ const Select = React.forwardRef(({
     options = [],
     value,
     defaultValue,
-    placeholder = "Select an option",
+    placeholder,
     multiple = false,
     disabled = false,
     required = false,
@@ -27,8 +28,10 @@ const Select = React.forwardRef(({
     onOpenChange,
     ...props
 }, ref) => {
+    const { t } = useTranslation();
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
+    const resolvedPlaceholder = placeholder || t('ui.select.placeholder', { defaultValue: 'Select an option' });
 
     // Generate unique ID if not provided
     const selectId = id || `select-${Math.random()?.toString(36)?.substr(2, 9)}`;
@@ -43,17 +46,20 @@ const Select = React.forwardRef(({
 
     // Get selected option(s) for display
     const getSelectedDisplay = () => {
-        if (!value) return placeholder;
+        if (!value) return resolvedPlaceholder;
 
         if (multiple) {
             const selectedOptions = options?.filter(opt => value?.includes(opt?.value));
-            if (selectedOptions?.length === 0) return placeholder;
+            if (selectedOptions?.length === 0) return resolvedPlaceholder;
             if (selectedOptions?.length === 1) return selectedOptions?.[0]?.label;
-            return `${selectedOptions?.length} items selected`;
+            return t('ui.select.itemsSelected', {
+                count: selectedOptions?.length,
+                defaultValue: '{{count}} items selected',
+            });
         }
 
         const selectedOption = options?.find(opt => opt?.value === value);
-        return selectedOption ? selectedOption?.label : placeholder;
+        return selectedOption ? selectedOption?.label : resolvedPlaceholder;
     };
 
     const handleToggle = () => {
@@ -168,7 +174,7 @@ const Select = React.forwardRef(({
                     multiple={multiple}
                     required={required}
                 >
-                    <option key="placeholder" value="">Select...</option>
+                    <option key="placeholder" value="">{t('ui.select.selectOption', { defaultValue: 'Select...' })}</option>
                     {options?.map((option, index) => (
                         <option key={option?.value ?? `option-${index}`} value={option?.value}>
                             {option?.label}
@@ -188,7 +194,7 @@ const Select = React.forwardRef(({
                                         style={{ width: '16px', height: '16px' }}
                                     />
                                     <Input
-                                        placeholder="Search options..."
+                                        placeholder={t('ui.select.searchOptions', { defaultValue: 'Search options...' })}
                                         value={searchTerm}
                                         onChange={handleSearchChange}
                                         className="pl-8"
@@ -200,7 +206,9 @@ const Select = React.forwardRef(({
                         <div className="py-1 max-h-60 overflow-auto">
                             {filteredOptions?.length === 0 ? (
                                 <div className="px-3 py-2 text-sm text-muted-foreground">
-                                    {searchTerm ? 'No options found' : 'No options available'}
+                                    {searchTerm
+                                        ? t('ui.select.noOptionsFound', { defaultValue: 'No options found' })
+                                        : t('ui.select.noOptionsAvailable', { defaultValue: 'No options available' })}
                                 </div>
                             ) : (
                                 filteredOptions?.map((option, index) => (

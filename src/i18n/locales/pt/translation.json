@@ -1,4 +1,4 @@
-﻿{
+{
     "common": {
         "loading": "Loading...",
         "error": "Error",
@@ -70,7 +70,9 @@
         "handlerLogin": "Handler Login",
         "loginWithMicrosoft": "Login with Microsoft",
         "securityNotice": "Your privacy is our priority. All communications are encrypted and anonymous.",
-        "errorInvalidCredentials": "Invalid ticket ID or access code"
+        "errorInvalidCredentials": "Invalid ticket ID or access code",
+        "requiredField": "{{field}} e obrigatorio",
+        "tooManyAttempts": "Muitas tentativas. Tente novamente em {{seconds}} segundos."
     },
     "handlerDashboard": {
         "welcomeMessage": "Welcome, ",
@@ -262,7 +264,7 @@
         "privacyGDPRDesc": "Fully compliant with privacy legislation and GDPR regulations.",
         "privacyNoRepercussions": "No Repercussions",
         "privacyNoRepercussionsDesc": "Reports are handled confidentially without consequences for the reporter.",
-        "privacyNote": "Your report is completely anonymous. Contact details are optional and stored securely.",
+        "privacyNote": "Your privacy is important to us. All reports are handled confidentially and securely.",
         "workflow": "Incident Type",
         "workflowHelp": "Select the category that best describes your report",
         "workflowRequired": "Workflow is required",
@@ -326,7 +328,7 @@
         "incidentType": "Incident Type",
         "anonymousReport": "Anonymous Report",
         "anonymousDescription": "This report will be submitted anonymously without any contact information.",
-        "privacyNote": "Your privacy is important to us. All reports are handled confidentially and securely."
+        "locationDescription": "Specify the country and exact location"
     },
     "reportConfirmation": {
         "title": "Report Submitted Successfully",
@@ -493,7 +495,7 @@
         "select": "Select Language",
         "en": "English",
         "nl": "Nederlands",
-        "fr": "FranÃ§ais",
+        "fr": "Français",
         "de": "Deutsch"
     },
     "settings": {
@@ -524,7 +526,19 @@
             "security": "Security",
             "audit": "Audit Logging",
             "retention": "Retention Periods",
-            "danger": "Danger Zone"
+            "danger": "Danger Zone",
+            "generalDescription": "Core platform configuration",
+            "portalDescription": "Portal behavior and user-facing options",
+            "workflowDescription": "Case workflows and process logic",
+            "slaDescription": "Deadlines, response targets and timeline rules",
+            "emailNotificationsDescription": "Email delivery, templates and notification rules",
+            "notificationsDescription": "Legacy notification preferences",
+            "securityDescription": "Access control and security policies",
+            "auditDescription": "Audit trails and event logging",
+            "retentionDescription": "Data retention and cleanup policies",
+            "dangerDescription": "Advanced and potentially destructive actions",
+            "locations": "Locations",
+            "locationsDescription": "Manage countries available for incident reporting"
         },
         "fields": {
             "value": "Value",
@@ -573,6 +587,33 @@
             "noChanges": "No changes.",
             "saveSuccess": "Settings saved successfully",
             "saveError": "Save failed."
+        },
+        "navigation": {
+            "backToCategories": "Back to categories",
+            "chooseCategory": "Choose a category to manage settings",
+            "chooseCategoryDescription": "Click a category below to view and edit its settings",
+            "clickToConfigure": "Click to configure",
+            "unsavedChanges": "unsaved",
+            "setting": "setting",
+            "settings": "settings",
+            "modified": "modified"
+        },
+        "tabs": {
+            "settings": "Settings",
+            "adminCenter": "Admin Center"
+        },
+        "actions": {
+            "resetAll": "Reset All",
+            "reset": "Reset"
+        },
+        "search": {
+            "result": "{{count}} result",
+            "results": "{{count}} results",
+            "for": "for"
+        },
+        "empty": {
+            "noSettingsFound": "No settings found",
+            "tryAdjustSearch": "Try adjusting your search query"
         }
     },
     "legalGuidance": {
@@ -954,9 +995,192 @@
                 }
             ]
         }
+    },
+    "caseManagementDetail": {
+        "common": {
+            "confirm": "Confirm",
+            "download": "Download",
+            "less": "Less",
+            "more": "More",
+            "new": "New",
+            "optional": "Optional",
+            "preview": "Preview",
+            "remove": "Remove",
+            "send": "Send",
+            "status": "Status",
+            "unknown": "Unknown",
+            "update": "Update"
+        },
+        "header": {
+            "share": "Share"
+        },
+        "details": {
+            "createdClient": "Created (client)",
+            "descriptionPlaceholder": "Describe the incident in detail",
+            "locationPlaceholder": "Where did this happen?",
+            "noContactInfo": "No contact information was provided.",
+            "noMetadata": "No metadata available.",
+            "notProvided": "Not provided",
+            "tabContact": "Contact",
+            "tabLocation": "Location",
+            "tabMeta": "Metadata",
+            "timezone": "Timezone",
+            "unsavedChanges": "You have unsaved changes.",
+            "userAgent": "User agent",
+            "viewport": "Viewport"
+        },
+        "attachments": {
+            "add": "Add file",
+            "attachmentAlt": "Attachment {{name}}",
+            "by": "by",
+            "downloadUnavailableReason": "This attachment has no downloadable URL.",
+            "files": "files",
+            "noDownloadUrl": "No download URL available",
+            "openInNewTab": "Open in new tab",
+            "previewUnavailable": "Preview is not available for this file type."
+        },
+        "notes": {
+            "addHint": "Add an internal note to start the investigation log.",
+            "attachment": "Attach file",
+            "auditReady": "This note is audit-ready",
+            "internalAttachments": "Internal attachments",
+            "internalOnly": "Internal only",
+            "internalOnlyDescription": "Visible to handlers only",
+            "newNoteLabel": "New note",
+            "newNotePlaceholder": "Add an internal investigation note",
+            "none": "No investigation notes yet."
+        },
+        "communication": {
+            "anonymousNoDirect": "Reporter is anonymous. Direct messaging is unavailable.",
+            "encryption": "Encrypted channel",
+            "fullyAnonymous": "Fully anonymous",
+            "messageLabel": "Message",
+            "messagePlaceholder": "Type your message",
+            "noContact": "No contact information",
+            "read": "Read",
+            "replyPrompt": "Reply to keep the reporter informed.",
+            "secureChat": "Secure communication",
+            "secured": "Secured",
+            "startBySending": "Start by sending the first message.",
+            "startPrompt": "Start communication with the reporter.",
+            "write": "Write"
+        },
+        "actionHistory": {
+            "changesAppear": "Changes will appear here once actions are performed.",
+            "defaultAction": "Action",
+            "log": "Activity log",
+            "multipleActions": "actions",
+            "noActions": "No actions yet.",
+            "singleAction": "action"
+        },
+        "management": {
+            "assignDescription": "Assign this case to a handler",
+            "changeStatusCta": "Change status (current: {{status}})",
+            "escalateToManagement": "Escalate to management",
+            "notAssignedDescription": "No handler assigned",
+            "priorityCriticalDesc": "Immediate response required",
+            "priorityDescription": "Set handling priority",
+            "priorityHighDesc": "High urgency",
+            "priorityLevel": "Priority level",
+            "priorityLowDesc": "Low urgency",
+            "priorityMediumDesc": "Normal urgency",
+            "savingChange": "Saving changes...",
+            "statusEmailsDescription": "Reporter receives an email when status changes",
+            "statusEmailsLabel": "Status change emails"
+        },
+        "sla": {
+            "breached": "SLA breached",
+            "contact": "Contact",
+            "contactPerson": "Contact person",
+            "days": "days",
+            "dayShort": "d",
+            "dueBy": "Due by {{date}}",
+            "email": "Email",
+            "expected": "Expected",
+            "expectedBy": "Expected by {{date}}",
+            "firstResponse": "First response",
+            "hourShort": "h",
+            "inProgress": "In progress",
+            "name": "Name",
+            "nextStep": "Next step",
+            "notConfigured": "Not configured",
+            "note": "Note",
+            "overdue": "Overdue",
+            "overdueIn": "Overdue by {{time}}",
+            "phone": "Phone",
+            "received": "Received",
+            "remainingIn": "Remaining {{time}}",
+            "resolve": "Resolution",
+            "respondedAt": "Responded at {{date}}",
+            "slaDays": "{{count}} day SLA",
+            "title": "SLA timeline"
+        },
+        "statusFlow": {
+            "changeStatus": "Change status",
+            "completedHint": "Completed",
+            "currentShort": "Current",
+            "currentStatus": "Current status",
+            "expected": "Expected",
+            "expectedLeadTime": "Expected lead time",
+            "loading": "Loading workflow...",
+            "noStatusesConfigured": "No statuses configured for this workflow.",
+            "noteDescription": "Add context for this status change",
+            "noteLabel": "Update note",
+            "notePlaceholder": "Explain why you are changing this status",
+            "noteRequired": "A note is required.",
+            "pendingHint": "Pending",
+            "workflowLoadError": "Could not load workflow statuses."
+        },
+        "statusModal": {
+            "clickToSelect": "Click a step to select it",
+            "currentStatus": "Current status",
+            "expectedLeadTime": "Expected lead time",
+            "footer": "Status updates are logged in the audit trail.",
+            "lastStep": "This is the last step",
+            "leadTime": "Lead time",
+            "loading": "Loading...",
+            "nextStep": "Next step",
+            "noteDescription": "Required for auditability",
+            "noteLabel": "Status update note",
+            "notePlaceholder": "Add a reason for this status update",
+            "noteRequiredAlert": "Please provide a note before updating status.",
+            "processSteps": "Process steps",
+            "rollbackNotAllowedAlert": "Rollback is not allowed by workflow settings.",
+            "selected": "Selected",
+            "selectStep": "Select a step",
+            "title": "Update case status",
+            "whatNext": "What happens next?",
+            "workflowFallback": "Workflow"
+        },
+        "toasts": {
+            "assignmentRemoved": "Assignment removed",
+            "attachmentAddedAction": "Attachment added",
+            "caseDetailsChanged": "Case details changed",
+            "changedFields": "Changed fields: {{fields}}",
+            "filesUploaded": "Files uploaded successfully",
+            "filesUploadError": "Could not upload all files",
+            "handlerAssigned": "Handler assigned",
+            "messageSentAction": "Message sent",
+            "noteAndAttachmentsSaved": "Note and attachments saved",
+            "statusChangedTo": "Status changed to {{status}}",
+            "statusEmailPreferenceUpdated": "Status email preference updated",
+            "statusEmailPreferenceUpdateError": "Could not update status email preference",
+            "statusEmailsDisabled": "Status emails disabled",
+            "statusEmailsEnabled": "Status emails enabled",
+            "uploadedFile": "Uploaded {{name}}",
+            "uploadingFiles": "Uploading {{count}} file(s)..."
+        }
+    },
+    "ui": {
+        "select": {
+            "placeholder": "Selecione uma opcao",
+            "selectOption": "Selecionar...",
+            "searchOptions": "Pesquisar opcoes...",
+            "noOptionsFound": "Nenhuma opcao encontrada",
+            "noOptionsAvailable": "Nenhuma opcao disponivel",
+            "clearAll": "Limpar tudo",
+            "itemsSelected": "{{count}} itens selecionados",
+            "maximumSelectionsReached": "Maximo de {{max}} selecoes atingido"
+        }
     }
 }
-
-
-
-

@@ -4,6 +4,12 @@ import Icon from '../../../components/AppIcon';
 
 const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
+const toKey = (v) =>
+  safeLower(v)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 
 /**
  * Tailwind-safe color mapping for workflow.color_scheme.
@@ -98,6 +104,34 @@ const toIconName = (iconNameDb) => {
 const WorkflowSelector = ({ value, onChange, workflows, error }) => {
   const { t } = useTranslation();
 
+  const resolveWorkflowText = (workflow) => {
+    const code = safeTrim(workflow?.code);
+    const name = safeTrim(workflow?.name);
+
+    const candidates = Array.from(
+      new Set([
+        code,
+        toKey(code),
+        toKey(name),
+      ].filter(Boolean))
+    );
+
+    for (const candidate of candidates) {
+      const translatedName = t(`reportForm.workflowOptions.${candidate}.name`, { defaultValue: '' });
+      if (translatedName) {
+        const translatedDescription = t(`reportForm.workflowOptions.${candidate}.description`, {
+          defaultValue: safeTrim(workflow?.description) || t('reportForm.noDescription'),
+        });
+        return { name: translatedName, description: translatedDescription };
+      }
+    }
+
+    return {
+      name: name || code,
+      description: safeTrim(workflow?.description) || t('reportForm.noDescription'),
+    };
+  };
+
   const items = useMemo(() => {
     const list = Array.isArray(workflows) ? workflows : [];
     return [...list]
@@ -127,6 +161,7 @@ const WorkflowSelector = ({ value, onChange, workflows, error }) => {
           const code = safeTrim(workflow?.code);
           const isSelected = value === code;
           const isActive = workflow?.active !== false;
+          const localized = resolveWorkflowText(workflow);
 
           const scheme = getScheme(workflow?.color_scheme);
           const iconName = toIconName(workflow?.icon_name);
@@ -163,7 +198,7 @@ const WorkflowSelector = ({ value, onChange, workflows, error }) => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <h4 className={['font-semibold truncate', isSelected ? scheme.titleSelected : 'text-foreground'].join(' ')}>
-                      {workflow?.name || code}
+                      {localized.name}
                     </h4>
 
                     {!isActive && (
@@ -173,13 +208,13 @@ const WorkflowSelector = ({ value, onChange, workflows, error }) => {
                     )}
                   </div>
 
-                  {workflow?.description ? (
+                  {localized.description ? (
                     <p className="text-xs text-muted-foreground line-clamp-2">
-                      {workflow.description}
+                      {localized.description}
                     </p>
                   ) : (
                     <p className="text-xs text-muted-foreground italic">
-                      {t('reportForm.noDescription') || 'Geen beschrijving beschikbaar'}
+                      {t('reportForm.noDescription')}
                     </p>
                   )}
                   

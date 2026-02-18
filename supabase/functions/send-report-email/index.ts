@@ -11,6 +11,33 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
+
+const toPositiveNumber = (value: unknown): number | null => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+};
+
+const addDays = (base: Date, days: number): Date => {
+  const d = new Date(base);
+  d.setDate(d.getDate() + days);
+  return d;
+};
+
+const formatDateTimeNL = (value: Date | string | null): string => {
+  if (!value) return "-";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString("nl-NL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 serve(async (req) => {
   // ✅ CORS preflight
   if (req?.method === "OPTIONS") {
@@ -41,6 +68,8 @@ serve(async (req) => {
         reporter_name,
         email_notify,
         submitted_at,
+        status_code,
+        workflow_type,
         handler_id,
         handlers (name, email)
       `)?.eq("id", ticketId)?.single();
@@ -53,6 +82,46 @@ serve(async (req) => {
     const { data: severity } = await supabase?.from("incident_severities")?.select("label")?.eq("code", ticket?.severity_code)?.single();
 
     const severityLabel = severity?.label || ticket?.severity_code || "Medium";
+    let currentStepLabel = ticket?.status_code || "Ontvangen";
+    let nextStepLabel = null;
+    let expectedNextUpdateText = "Binnenkort";
+
+    if (ticket?.workflow_type) {
+      const { data: wf } = await supabase
+        .from("workflows")
+        .select("id")
+        .eq("code", ticket.workflow_type)
+        .single();
+
+      if (wf?.id) {
+        const { data: statusRows } = await supabase
+          .from("workflow_statuses")
+          .select("code, label, sort_order, expected_duration_days")
+          .eq("workflow_id", wf.id)
+          .order("sort_order", { ascending: true });
+
+        const rows = Array.isArray(statusRows) ? statusRows : [];
+        if (rows.length > 0) {
+          const statusCode = normalize(ticket?.status_code);
+          const currentStatus = rows.find((s) => normalize(s?.code) === statusCode) || rows[0];
+
+          if (currentStatus) {
+            currentStepLabel = currentStatus?.label || currentStatus?.code || currentStepLabel;
+            const currentIndex = rows.findIndex((s) => s?.code === currentStatus.code);
+            const nextStatus = currentIndex >= 0 ? rows[currentIndex + 1] : null;
+            if (nextStatus) {
+              nextStepLabel = nextStatus?.label || nextStatus?.code || null;
+            }
+
+            const expectedDays = toPositiveNumber(currentStatus.expected_duration_days);
+            if (expectedDays !== null) {
+              const dueAt = addDays(new Date(), expectedDays);
+              expectedNextUpdateText = `Binnen ${expectedDays} dag(en), rond ${formatDateTimeNL(dueAt)}`;
+            }
+          }
+        }
+      }
+    }
 
     // Email to reporter (if they opted in)
     if (ticket?.email_notify && ticket?.reporter_email) {
@@ -87,6 +156,12 @@ serve(async (req) => {
         <p><strong>Omschrijving:</strong></p>
         <p>${ticket?.description}</p>
         <p><strong>Ingediend op:</strong> ${new Date(ticket.submitted_at)?.toLocaleString("nl-NL")}</p>
+      </div>
+      <div class="info-box">
+        <p style="margin:0 0 8px 0;font-weight:600;">Volgende stap in het proces (SLA)</p>
+        <p style="margin:6px 0;"><strong>Huidige stap:</strong> ${currentStepLabel}</p>
+        <p style="margin:6px 0;"><strong>Volgende stap:</strong> ${nextStepLabel || "Eindfase / afronding"}</p>
+        <p style="margin:6px 0;"><strong>Verwachte volgende update:</strong> ${expectedNextUpdateText}</p>
       </div>
       <p>U kunt de status van uw melding volgen met uw ticketnummer en toegangscode.</p>
       <p style="margin-top:20px;font-size:13px;color:#6b7280;">U ontvangt automatisch updates wanneer de status van uw melding wijzigt.</p>

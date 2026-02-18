@@ -1,214 +1,145 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
 
 const SLAStatus = ({
-  submittedAt,
   status,
-  slaResponseHours,
-  slaResolutionHours,
   firstResponseAt,
   firstResponseDueAt,
   nextStepDueAt,
-  resolutionDueAt
+  resolutionDueAt,
 }) => {
-  const now = new Date();
-  const submitted = submittedAt ? new Date(submittedAt) : null;
+  const { t, i18n } = useTranslation();
+  const locale = i18n?.resolvedLanguage || i18n?.language;
 
-  const calculateTimeRemaining = (targetDate) => {
-    if (!targetDate) return null;
-    const target = new Date(targetDate);
-    if (Number.isNaN(target.getTime())) return null;
-    const diff = target - now;
-    if (diff < 0) return { isOverdue: true, text: 'Overschreden' };
-
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
-    if (hours < 1) {
-      return { isOverdue: false, text: `${minutes} minuten` };
-    } else if (hours < 24) {
-      return { isOverdue: false, text: `${hours} uur ${minutes} min` };
-    } else {
-      const days = Math.floor(hours / 24);
-      const remainingHours = hours % 24;
-      return { isOverdue: false, text: `${days}d ${remainingHours}u` };
-    }
-  };
-
-  const formatDate = (date) => {
-    if (!date) return '-';
-    return new Date(date).toLocaleDateString('nl-NL', {
+  const formatDate = (value) => {
+    if (!value) return '-';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '-';
+    return d.toLocaleDateString(locale || undefined, {
       day: '2-digit',
       month: 'short',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
-  const responseRemaining = calculateTimeRemaining(firstResponseDueAt);
-  const nextStepRemaining = calculateTimeRemaining(nextStepDueAt);
-  const resolutionRemaining = calculateTimeRemaining(resolutionDueAt);
-  const hoursElapsed = submitted ? (now - submitted) / (1000 * 60 * 60) : 0;
-  const totalResponseHours = slaResponseHours || 24;
-  const responsePercentage = Math.min((hoursElapsed / totalResponseHours) * 100, 100);
+  const remainingText = (value, isDone = false) => {
+    if (!value) return null;
+    if (isDone) return t('ticketDetailsView.sla.completed');
 
-  const getStatusColor = () => {
-    if (status === 'Gesloten' || status === 'Opgelost') return 'success';
-    if (!responseRemaining) return 'muted';
-    if (responseRemaining.isOverdue) return 'error';
-    if (responsePercentage > 80) return 'warning';
-    return 'primary';
+    const target = new Date(value);
+    if (Number.isNaN(target.getTime())) return null;
+
+    const diff = target.getTime() - Date.now();
+    const overdue = diff < 0;
+    const abs = Math.abs(diff);
+    const hours = Math.floor(abs / (1000 * 60 * 60));
+    const mins = Math.floor((abs % (1000 * 60 * 60)) / (1000 * 60));
+
+    let time = '';
+    if (hours >= 24) {
+      const days = Math.floor(hours / 24);
+      const remHours = hours % 24;
+      time = `${days}${t('ticketDetailsView.sla.dayShort')} ${remHours}${t('ticketDetailsView.sla.hourShort')}`;
+    } else {
+      time = `${hours}${t('ticketDetailsView.sla.hourShort')} ${mins}m`;
+    }
+
+    return overdue
+      ? t('ticketDetailsView.sla.overdueIn', { time })
+      : t('ticketDetailsView.sla.remainingIn', { time });
   };
 
-  const statusColor = getStatusColor();
+  const isClosed = ['closed', 'resolved', 'opgelost', 'gesloten'].includes(String(status || '').toLowerCase());
 
-  if (status === 'Gesloten' || status === 'Opgelost') {
-    return (
-      <div className="bg-card rounded-xl border border-border p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
-            <Icon name="CheckCircle" size={20} className="text-success" />
-          </div>
-          <div>
-            <h3 className="text-base font-semibold text-foreground">SLA Status</h3>
-            <p className="text-xs text-muted-foreground">Service Level Agreement</p>
-          </div>
-        </div>
-        <div className="text-center py-4">
-          <Icon name="CheckCircle" size={32} className="text-success mx-auto mb-2" />
-          <p className="text-sm font-medium text-success">Zaak afgerond binnen SLA</p>
-        </div>
-      </div>
-    );
-  }
+  const getState = (dueAt, completedAt) => {
+    if (completedAt) return 'completed';
+    if (!dueAt) return 'pending';
+    return new Date(dueAt).getTime() < Date.now() ? 'overdue' : 'expected';
+  };
+
+  const chipClass = {
+    completed: 'bg-emerald-100 text-emerald-700',
+    expected: 'bg-blue-100 text-blue-700',
+    overdue: 'bg-red-100 text-red-700',
+    pending: 'bg-muted text-muted-foreground',
+  };
+
+  const chipLabel = {
+    completed: t('ticketDetailsView.sla.completed'),
+    expected: t('ticketDetailsView.sla.expected'),
+    overdue: t('ticketDetailsView.sla.overdue'),
+    pending: t('ticketDetailsView.sla.pending'),
+  };
+
+  const milestones = [
+    {
+      key: 'response',
+      label: t('ticketDetailsView.sla.firstResponse'),
+      state: getState(firstResponseDueAt, firstResponseAt),
+      date: firstResponseAt || firstResponseDueAt,
+      meta: firstResponseAt
+        ? t('ticketDetailsView.sla.respondedAt', { date: formatDate(firstResponseAt) })
+        : t('ticketDetailsView.sla.dueBy', { date: formatDate(firstResponseDueAt) }),
+      tail: remainingText(firstResponseDueAt, Boolean(firstResponseAt)),
+    },
+    {
+      key: 'next',
+      label: t('ticketDetailsView.sla.nextStep'),
+      state: getState(nextStepDueAt, isClosed),
+      date: nextStepDueAt,
+      meta: t('ticketDetailsView.sla.expectedBy', { date: formatDate(nextStepDueAt) }),
+      tail: remainingText(nextStepDueAt, isClosed),
+    },
+    {
+      key: 'resolve',
+      label: t('ticketDetailsView.sla.resolve'),
+      state: getState(resolutionDueAt, isClosed),
+      date: resolutionDueAt,
+      meta: resolutionDueAt
+        ? t('ticketDetailsView.sla.expectedBy', { date: formatDate(resolutionDueAt) })
+        : t('ticketDetailsView.sla.notConfigured'),
+      tail: remainingText(resolutionDueAt, isClosed),
+    },
+  ].filter((m) => m.date || m.key === 'response');
+
+  const hasBreach = milestones.some((m) => m.state === 'overdue');
+  const headlineState = isClosed ? 'completed' : hasBreach ? 'overdue' : 'expected';
 
   return (
-    <div className="bg-card rounded-xl border border-border p-6">
-      <div className="flex items-center gap-3 mb-4">
-        <div className={`w-10 h-10 rounded-lg bg-${statusColor}/10 flex items-center justify-center`}>
-          <Icon name="Clock" size={20} className={`text-${statusColor}`} />
+    <div className="bg-card rounded-xl border border-border p-5 md:p-6">
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Icon name="Clock" size={18} className="text-primary" />
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-foreground">{t('ticketDetailsView.sla.title')}</h3>
+            <p className="text-xs text-muted-foreground">{t('ticketDetails.statusTimeline')}</p>
+          </div>
         </div>
-        <div>
-          <h3 className="text-base font-semibold text-foreground">SLA Status</h3>
-          <p className="text-xs text-muted-foreground">Service Level Agreement</p>
-        </div>
+
+        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${chipClass[headlineState]}`}>
+          {chipLabel[headlineState]}
+        </span>
       </div>
 
-      {/* First response */}
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-foreground">Eerste reactie</span>
-          {responseRemaining && !firstResponseAt && (
-            <span className={`text-xs font-medium ${
-              responseRemaining.isOverdue ? 'text-error' : responsePercentage > 80 ? 'text-warning' : 'text-success'
-            }`}>
-              {responseRemaining.text}
-            </span>
-          )}
-          {firstResponseAt && (
-            <span className="text-xs font-medium text-success">
-              Reageerde
-            </span>
-          )}
-        </div>
-        <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-          <div
-            className={`h-full transition-all duration-500 ${
-              responseRemaining?.isOverdue ? 'bg-error' :
-              responsePercentage > 80 ? 'bg-warning' :
-              'bg-success'
-            }`}
-            style={{ width: `${Math.min(responsePercentage, 100)}%` }}
-          />
-        </div>
-        <div className="flex items-center justify-between mt-1">
-          <span className="text-xs text-muted-foreground">
-            {slaResponseHours || 24} uur reactietijd
-          </span>
-          {firstResponseDueAt && !firstResponseAt && (
-            <span className="text-xs text-muted-foreground">
-              {formatDate(firstResponseDueAt)}
-            </span>
-          )}
-          {firstResponseAt && (
-            <span className="text-xs text-muted-foreground">
-              {formatDate(firstResponseAt)}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Next step due */}
-      {nextStepDueAt && (
-        <div className="mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-foreground">Volgende stap</span>
-            {nextStepRemaining && (
-              <span className={`text-xs font-medium ${
-                nextStepRemaining.isOverdue ? 'text-error' : 'text-foreground'
-              }`}>
-                {nextStepRemaining.text}
-              </span>
-            )}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            Verwacht voor {formatDate(nextStepDueAt)}
-          </div>
-        </div>
-      )}
-
-      {/* Resolution Time */}
-      {(slaResolutionHours || resolutionDueAt) && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-foreground">Oplostijd</span>
-            {slaResolutionHours && (
-              <span className="text-xs text-muted-foreground">
-                {slaResolutionHours} uur
-              </span>
-            )}
-          </div>
-          {resolutionDueAt && (
-            <div className="text-xs text-muted-foreground">
-              Verwachte afronding: {formatDate(resolutionDueAt)}
+      <div className="space-y-3">
+        {milestones.map((item) => (
+          <div key={item.key} className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <p className="text-sm font-medium text-foreground">{item.label}</p>
+                <span className={`text-[11px] px-2 py-0.5 rounded-full ${chipClass[item.state]}`}>
+                  {chipLabel[item.state]}
+                </span>
+              </div>
+              {item.tail ? <p className="text-xs text-muted-foreground whitespace-nowrap">{item.tail}</p> : null}
             </div>
-          )}
-        </div>
-      )}
-
-      {/* Status indicator */}
-      <div className={`mt-4 p-3 rounded-lg border flex items-start gap-2 ${
-        responseRemaining?.isOverdue
-          ? 'bg-error/10 border-error/20'
-          : responsePercentage > 80
-          ? 'bg-warning/10 border-warning/20'
-          : 'bg-success/10 border-success/20'
-      }`}>
-        <Icon
-          name={responseRemaining?.isOverdue ? 'AlertCircle' : responsePercentage > 80 ? 'Clock' : 'CheckCircle'}
-          size={16}
-          className={`${
-            responseRemaining?.isOverdue ? 'text-error' : responsePercentage > 80 ? 'text-warning' : 'text-success'
-          } mt-0.5`}
-        />
-        <div className="flex-1">
-          <p className={`text-xs font-medium ${
-            responseRemaining?.isOverdue ? 'text-error' : responsePercentage > 80 ? 'text-warning' : 'text-success'
-          }`}>
-            {responseRemaining?.isOverdue
-              ? 'SLA Overschreden'
-              : responsePercentage > 80
-              ? 'SLA Deadline nadert'
-              : 'Binnen SLA'
-            }
-          </p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {responseRemaining?.isOverdue
-              ? 'We werken er hard aan om uw zaak zo snel mogelijk af te handelen'
-              : 'Uw zaak wordt behandeld binnen de afgesproken tijd'
-            }
-          </p>
-        </div>
+            <p className="text-xs text-muted-foreground mt-1">{item.meta}</p>
+          </div>
+        ))}
       </div>
     </div>
   );

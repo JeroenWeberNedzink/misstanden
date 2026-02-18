@@ -1,8 +1,8 @@
-﻿{
+{
     "common": {
         "loading": "Chargement...",
         "error": "Erreur",
-        "success": "SuccÃ¨s",
+        "success": "Succès",
         "save": "Enregistrer",
         "cancel": "Annuler",
         "delete": "Supprimer",
@@ -15,53 +15,53 @@
         "refresh": "Actualiser",
         "back": "Retour",
         "next": "Suivant",
-        "previous": "PrÃ©cÃ©dent",
+        "previous": "Précédent",
         "confirm": "Confirmer",
         "yes": "Oui",
         "no": "Non",
         "all": "Tous",
         "none": "Aucun",
-        "select": "SÃ©lectionner",
+        "select": "Sélectionner",
         "actions": "Actions",
         "status": "Statut",
         "date": "Date",
         "time": "Heure",
         "name": "Nom",
         "email": "E-mail",
-        "phone": "TÃ©lÃ©phone",
+        "phone": "Téléphone",
         "description": "Description",
-        "details": "DÃ©tails",
-        "settings": "ParamÃ¨tres",
+        "details": "Détails",
+        "settings": "Paramètres",
         "profile": "Profil",
-        "logout": "DÃ©connexion",
+        "logout": "Déconnexion",
         "login": "Connexion"
     },
     "ticketAccess": {
-        "title": "AccÃ¨s SÃ©curisÃ© au Ticket",
+        "title": "Accès Sécurisé au Ticket",
         "subtitle": "Entrez vos identifiants pour voir le statut de votre rapport",
         "ticketId": "ID du Ticket",
-        "accessCode": "Code d'AccÃ¨s",
+        "accessCode": "Code d'Accès",
         "viewStatus": "Voir le Statut",
-        "secureConnection": "Connexion SÃ©curisÃ©e",
-        "encryptedData": "Toutes les donnÃ©es sont cryptÃ©es",
-        "anonymousAccess": "AccÃ¨s anonyme protÃ©gÃ©",
+        "secureConnection": "Connexion Sécurisée",
+        "encryptedData": "Toutes les données sont cryptées",
+        "anonymousAccess": "Accès anonyme protégé",
         "needHelp": "Besoin d'Aide?",
-        "contactSupport": "Contactez notre Ã©quipe de support",
-        "forgotCredentials": "Identifiants perdus? VÃ©rifiez votre e-mail",
-        "forgotCredentialsDesc": "VÃ©rifiez votre e-mail pour confirmation avec le numÃ©ro de ticket",
-        "lostAccessCode": "Code d'accÃ¨s perdu?",
-        "lostAccessCodeDesc": "Le code Ã  6 chiffres a Ã©tÃ© affichÃ© lors de la soumission. Conservez-le en sÃ©curitÃ© pour un accÃ¨s futur.",
-        "privacyGuaranteed": "ConfidentialitÃ© garantie",
-        "privacyGuaranteedDesc": "Votre accÃ¨s n'est pas enregistrÃ©. Aucune adresse IP ou donnÃ©es d'appareil stockÃ©es.",
+        "contactSupport": "Contactez notre équipe de support",
+        "forgotCredentials": "Identifiants perdus? Vérifiez votre e-mail",
+        "forgotCredentialsDesc": "Vérifiez votre e-mail pour la confirmation avec le numéro de ticket",
+        "lostAccessCode": "Code d'accès perdu ?",
+        "lostAccessCodeDesc": "Le code à 6 chiffres a été affiché lors de la soumission. Conservez-le en sécurité pour un accès futur.",
+        "privacyGuaranteed": "Confidentialité garantie",
+        "privacyGuaranteedDesc": "Votre accès n'est pas enregistré. Aucune adresse IP ni donnée d'appareil n'est stockée.",
         "noReportYet": "Aucun rapport soumis pour l'instant?",
         "submitNewReport": "Soumettre un Nouveau Rapport",
-        "invalidFormat": "Format invalide (ex. NZ-2025-778403)",
-        "mustBeSixDigits": "Doit Ãªtre 6 chiffres",
-        "ticketIdPlaceholder": "NZ-123456",
-        "ticketIdDescription": "Format: PRÃ‰FIXE-NUMÃ‰RO (ex. NZ-123456)",
-        "accessCodeDescription": "Code Ã  6 chiffres reÃ§u lors de la soumission",
-        "secureAccessTitle": "AccÃ¨s SÃ©curisÃ©",
-        "secureAccessSubtitle": "Votre vie privÃ©e est notre prioritÃ© absolue. Ce portail utilise des mesures de sÃ©curitÃ© avancÃ©es.",
+        "invalidFormat": "Format invalide (ex. NZ-2026-123456)",
+        "mustBeSixDigits": "Doit être composé de 6 chiffres",
+        "ticketIdPlaceholder": "NZ-2026-123456",
+        "ticketIdDescription": "Format : PRÉFIXE-ANNÉE-NUMÉRO (ex. NZ-2026-123456)",
+        "accessCodeDescription": "Code à 6 chiffres reçu lors de la soumission",
+        "secureAccessTitle": "Accès Sécurisé",
+        "secureAccessSubtitle": "Votre vie privée est notre priorité absolue. Ce portail utilise des mesures de sécurité avancées.",
         "securityEndToEnd": "Chiffrement de bout en bout",
         "securityNoTracking": "Pas de suivi ni d'enregistrement",
         "securityGDPR": "Conforme au RGPD",
@@ -69,8 +69,10 @@
         "reportIncident": "Signaler un Nouvel Incident",
         "handlerLogin": "Connexion Gestionnaire",
         "loginWithMicrosoft": "Se connecter avec Microsoft",
-        "securityNotice": "Votre vie privÃ©e est notre prioritÃ©. Toutes les communications sont cryptÃ©es et anonymes.",
-        "errorInvalidCredentials": "ID de ticket ou code d'accÃ¨s invalide"
+        "securityNotice": "Votre vie privée est notre priorité. Toutes les communications sont cryptées et anonymes.",
+        "errorInvalidCredentials": "ID de ticket ou code d'accès invalide",
+        "requiredField": "Le champ {{field}} est obligatoire",
+        "tooManyAttempts": "Trop de tentatives. Veuillez réessayer dans {{seconds}} secondes."
     },
     "handlerDashboard": {
         "title": "Tableau de bord gestionnaire",
@@ -205,30 +207,30 @@
     },
     "priorityWorkflow": {
         "title": "Workflow Prioritaire",
-        "subtitle": "Cas urgents et de haute gravitÃ© classÃ©s par Ã©chÃ©ance",
+        "subtitle": "Cas urgents et de haute gravité classés par échéance",
         "filters": {
-            "severity": "GravitÃ©",
+            "severity": "Gravité",
             "workflow": "Workflow",
             "sortBy": "Trier Par",
-            "deadline": "ProximitÃ© de l'Ã‰chÃ©ance",
+            "deadline": "Proximité de l'Échéance",
             "assignmentTime": "Heure d'Attribution"
         },
         "table": {
             "rank": "Rang",
             "ticketId": "ID Ticket",
-            "severity": "GravitÃ©",
+            "severity": "Gravité",
             "workflow": "Workflow",
-            "assigned": "AttribuÃ©",
-            "deadline": "Ã‰chÃ©ance",
-            "priority": "Score de PrioritÃ©",
+            "assigned": "Attribué",
+            "deadline": "Échéance",
+            "priority": "Score de Priorité",
             "actions": "Actions",
             "viewCase": "Voir le Cas",
-            "noCases": "Aucun cas prioritaire trouvÃ©"
+            "noCases": "Aucun cas prioritaire trouvé"
         },
         "deadlineStatus": {
             "overdue": "En Retard",
             "today": "Aujourd'hui",
-            "soon": "BientÃ´t"
+            "soon": "Bientôt"
         }
     },
     "adminAnalytics": {
@@ -236,14 +238,14 @@
         "dateRange": "Plage de Dates",
         "summary": {
             "totalReports": "Total des Rapports",
-            "avgResolutionTime": "Temps Moy. de RÃ©solution",
+            "avgResolutionTime": "Temps Moy. de Résolution",
             "activeHandlers": "Gestionnaires Actifs",
-            "resolutionRate": "Taux de RÃ©solution"
+            "resolutionRate": "Taux de Résolution"
         },
         "charts": {
             "volumeTrends": "Tendances de Volume",
-            "severityDistribution": "Distribution de GravitÃ©",
-            "resolutionTime": "Temps de RÃ©solution par Workflow",
+            "severityDistribution": "Distribution de Gravité",
+            "resolutionTime": "Temps de Résolution par Workflow",
             "workflowPerformance": "Performance du Workflow"
         },
         "subtitle": "Comprehensive incident metrics and performance insights",
@@ -262,9 +264,9 @@
             "email": "E-mail (Resend)"
         },
         "stats": {
-            "totalSent": "Total EnvoyÃ©",
-            "delivered": "LivrÃ©",
-            "failed": "Ã‰chouÃ©",
+            "totalSent": "Total Envoyé",
+            "delivered": "Livré",
+            "failed": "Échoué",
             "deliveryRate": "Taux de Livraison"
         },
         "filters": {
@@ -278,8 +280,8 @@
             "handler": "Gestionnaire",
             "recipient": "Destinataire",
             "status": "Statut",
-            "message": "AperÃ§u du Message",
-            "noLogs": "Aucun journal de livraison trouvÃ©"
+            "message": "Aperçu du Message",
+            "noLogs": "Aucun journal de livraison trouvé"
         },
         "exportCsv": "Exporter en CSV",
         "errorLoading": "Error loading",
@@ -292,138 +294,243 @@
         "contactInfo": {
             "title": "Informations de Contact",
             "email": "Adresse E-mail",
-            "phone": "NumÃ©ro de TÃ©lÃ©phone",
+            "phone": "Numéro de Téléphone",
             "phoneHelp": "Pour les notifications SMS via Twilio"
         },
         "availability": {
-            "title": "Statut de DisponibilitÃ©",
+            "title": "Statut de Disponibilité",
             "status": "Statut Actuel",
             "available": "Disponible",
-            "busy": "OccupÃ©",
+            "busy": "Occupé",
             "offline": "Hors Ligne",
             "autoAssign": "Attribution automatique de nouveaux cas"
         },
         "notifications": {
-            "title": "PrÃ©fÃ©rences de Notification",
+            "title": "Préférences de Notification",
             "alertTypes": "Types d'Alerte",
             "newAssignment": "Nouvelle Attribution de Cas",
             "statusChange": "Changements de Statut",
-            "highPriority": "Mises Ã  Jour Haute PrioritÃ©",
-            "deadlineReminder": "Rappels d'Ã‰chÃ©ance",
-            "severityThreshold": "GravitÃ© Minimale pour les Alertes",
+            "highPriority": "Mises à Jour Haute Priorité",
+            "deadlineReminder": "Rappels d'Échéance",
+            "severityThreshold": "Gravité Minimale pour les Alertes",
             "channels": "Canaux de Communication",
             "enableSms": "Activer SMS (Twilio)",
             "enableEmail": "Activer E-mail (Resend)"
         },
         "saveChanges": "Enregistrer les Modifications",
-        "changesSaved": "Modifications enregistrÃ©es avec succÃ¨s"
+        "changesSaved": "Modifications enregistrées avec succès"
     },
     "reportForm": {
-        "title": "Rapport d'Incident Anonyme",
-        "subtitle": "Votre identitÃ© est protÃ©gÃ©e. Tous les rapports sont confidentiels.",
-        "pageTitle": "Signaler un ProblÃ¨me",
-        "pageSubtitle": "Votre voix compte. Signalez de maniÃ¨re anonyme et sÃ©curisÃ©e en quelques Ã©tapes.",
-        "step": "Ã‰tape",
+        "title": "Signalement anonyme d'incident",
+        "subtitle": "Votre identité est protégée. Tous les signalements sont confidentiels.",
+        "pageTitle": "Signaler un problème",
+        "pageSubtitle": "Votre voix compte. Signalez de manière anonyme et sécurisée en quelques étapes.",
+        "step": "Étape",
         "of": "sur",
         "stepName1": "Type",
-        "stepDesc1": "SÃ©lectionner catÃ©gorie",
-        "stepName2": "DÃ©tails",
-        "stepDesc2": "DÃ©crire l'incident",
+        "stepDesc1": "Sélectionner une catégorie",
+        "stepName2": "Détails",
+        "stepDesc2": "Décrire l'incident",
         "stepName3": "Lieu",
-        "stepDesc3": "OÃ¹ c'est arrivÃ©",
+        "stepDesc3": "Où cela s'est produit",
         "stepName4": "Contact",
-        "stepDesc4": "Info optionnelle",
+        "stepDesc4": "Informations optionnelles",
         "stepName5": "Fichiers",
-        "stepDesc5": "Ajouter preuves",
-        "stepName6": "RÃ©vision",
-        "stepDesc6": "Soumettre rapport",
+        "stepDesc5": "Ajouter des preuves",
+        "stepName6": "Révision",
+        "stepDesc6": "Soumettre le signalement",
         "country": "Pays",
-        "selectCountry": "SÃ©lectionner pays",
+        "selectCountry": "Sélectionner un pays",
         "loadingCountries": "Chargement des pays...",
         "countryRequired": "Le pays est requis",
-        "specificLocation": "Emplacement spÃ©cifique",
-        "specificLocationRequired": "L'emplacement spÃ©cifique est requis",
-        "savedAs": "EnregistrÃ© comme",
-        "privacyTitle": "Garanties de ConfidentialitÃ© et SÃ©curitÃ©",
-        "privacyAnonymity": "Anonymat Complet",
-        "privacyAnonymityDesc": "Votre identitÃ© reste entiÃ¨rement protÃ©gÃ©e. Nous n'enregistrons pas les adresses IP ou les informations sur les appareils.",
-        "privacySecure": "Traitement SÃ©curisÃ©",
-        "privacySecureDesc": "Toutes les donnÃ©es sont cryptÃ©es et accessibles uniquement aux gestionnaires autorisÃ©s.",
+        "specificLocation": "Emplacement précis",
+        "specificLocationRequired": "L'emplacement précis est requis",
+        "savedAs": "Enregistré comme",
+        "privacyTitle": "Garanties de confidentialité et de sécurité",
+        "privacyAnonymity": "Anonymat complet",
+        "privacyAnonymityDesc": "Votre identité reste entièrement protégée. Nous n'enregistrons pas les adresses IP ni les informations d'appareil.",
+        "privacySecure": "Traitement sécurisé",
+        "privacySecureDesc": "Toutes les données sont chiffrées et accessibles uniquement aux gestionnaires autorisés.",
         "privacyGDPR": "Conforme au RGPD",
-        "privacyGDPRDesc": "EntiÃ¨rement conforme Ã  la lÃ©gislation sur la vie privÃ©e et aux rÃ¨glements RGPD.",
-        "privacyNoRepercussions": "Aucune RÃ©percussion",
-        "privacyNoRepercussionsDesc": "Les rapports sont traitÃ©s de maniÃ¨re confidentielle sans consÃ©quences pour le rapporteur.",
-        "privacyNote": "Votre rapport est complÃ¨tement anonyme. Les coordonnÃ©es sont optionnelles et stockÃ©es en toute sÃ©curitÃ©.",
-        "workflow": "Type d'Incident",
-        "workflowHelp": "SÃ©lectionnez la catÃ©gorie qui dÃ©crit le mieux votre rapport",
-        "severity": "Niveau de GravitÃ©",
+        "privacyGDPRDesc": "Entièrement conforme à la législation sur la vie privée et aux exigences RGPD.",
+        "privacyNoRepercussions": "Aucune répercussion",
+        "privacyNoRepercussionsDesc": "Les signalements sont traités de façon confidentielle, sans conséquences pour le déclarant.",
+        "privacyNote": "Votre signalement est complètement anonyme. Les coordonnées sont optionnelles et stockées de manière sécurisée.",
+        "workflow": "Type d'incident",
+        "workflowHelp": "Sélectionnez la catégorie qui décrit le mieux votre signalement",
+        "severity": "Niveau de gravité",
         "location": "Emplacement",
-        "locationPlaceholder": "BÃ¢timent, Ã©tage ou zone",
+        "locationPlaceholder": "Bâtiment, étage ou zone",
         "description": "Description",
-        "descriptionPlaceholder": "Fournissez des informations dÃ©taillÃ©es sur l'incident",
-        "attachments": "PiÃ¨ces Jointes",
-        "attachmentsHelp": "TÃ©lÃ©chargez des documents ou images de support (optionnel)",
-        "contactOptional": "Contact information",
-        "contactRequiredHelp": "Email is required. Anonymous reports store it encrypted.",
-        "emailRequired": "Email is required",
-        "contactDetailsHelp": "Si Anonyme est sélectionné, votre e-mail est stocké de manière sécurisée et chiffrée, et il ne sera pas visible pour les gestionnaires.",
-        "yesAnonymous": "Anonymous",
-        "noProvideContact": "Name/phone",
-        "contactEmail": "E-mail pour les mises Ã  jour",
-        "contactPhone": "TÃ©lÃ©phone pour contact urgent",
-        "emailNotifications": "Recevoir des mises Ã  jour par e-mail sur ce rapport",
-        "privacyAssurance": "Anonymous: name and phone are hidden.",
-        "submitReport": "Soumettre le Rapport",
+        "descriptionPlaceholder": "Fournissez des informations détaillées sur l'incident",
+        "attachments": "Pièces jointes",
+        "attachmentsHelp": "Téléversez des documents ou des images de support (optionnel)",
+        "contactOptional": "Coordonnées (optionnel)",
+        "contactRequiredHelp": "L'e-mail est requis. Pour les signalements anonymes, il est stocké chiffré.",
+        "emailRequired": "L'e-mail est requis",
+        "contactDetailsHelp": "Si « Anonyme » est sélectionné, votre e-mail est stocké de manière sécurisée et chiffrée, et n'est pas visible pour les gestionnaires.",
+        "yesAnonymous": "Anonyme",
+        "noProvideContact": "Nom/téléphone",
+        "contactEmail": "E-mail pour les mises à jour",
+        "contactPhone": "Téléphone pour contact urgent",
+        "emailNotifications": "Recevoir des mises à jour par e-mail sur ce signalement",
+        "privacyAssurance": "Anonyme : le nom et le téléphone sont masqués.",
+        "submitReport": "Soumettre le signalement",
         "submitting": "Soumission...",
-        "workflowRequired": "Workflow is required"
+        "workflowRequired": "Le type d'incident est requis",
+        "locationDescription": "Indiquez le pays et le lieu précis",
+        "locationRequired": "Le lieu est requis",
+        "severityHelp": "Indiquez le niveau de gravité estimé de l'incident",
+        "severityRequired": "Le niveau de gravité est requis",
+        "descriptionLabel": "Description de l'incident",
+        "descriptionHelp": "Champ obligatoire - Décrivez les faits en détail",
+        "descriptionRequired": "La description est requise",
+        "charactersRemaining": "caractères restants",
+        "emailLabel": "Adresse e-mail",
+        "emailPlaceholder": "vous@exemple.com",
+        "nameLabel": "Nom",
+        "namePlaceholder": "Votre nom (optionnel)",
+        "phoneLabel": "Téléphone",
+        "phonePlaceholder": "+33 6 12 34 56 78 (optionnel)",
+        "emailNotificationsLabel": "Mises à jour par e-mail",
+        "emailNotificationsDescription": "Recevez les confirmations et mises à jour importantes par e-mail.",
+        "emailNotificationsWarning": "Une adresse e-mail est requise pour recevoir des mises à jour.",
+        "statusEmailNotificationsLabel": "E-mails de changement de statut",
+        "statusEmailNotificationsDescription": "Recevoir un e-mail quand le statut de votre signalement change.",
+        "errorLoadingData": "Erreur lors du chargement du formulaire",
+        "errorSubmitting": "Erreur lors de l'envoi du signalement. Veuillez réessayer.",
+        "errorFillRequired": "Veuillez remplir tous les champs obligatoires",
+        "selectCategory": "Sélectionner une catégorie",
+        "selectCategoryDescription": "Choisissez le type d'incident que vous souhaitez signaler",
+        "describeIncident": "Décrire l'incident",
+        "describeIncidentDescription": "Fournissez des détails sur ce qui s'est passé et où",
+        "contactInformation": "Informations de contact (optionnel)",
+        "contactInformationDescription": "Laissez vos coordonnées si vous souhaitez recevoir des mises à jour ou être contacté. Cette étape est entièrement optionnelle.",
+        "attachmentsDescription": "Téléversez des documents, photos ou preuves (optionnel)",
+        "reviewSubmit": "Vérifier et soumettre",
+        "reviewSubmitDescription": "Vérifiez votre signalement avant de le soumettre",
+        "step1Title": "Quel type d'incident ?",
+        "step1Description": "Choisissez la catégorie qui correspond le mieux à votre signalement",
+        "step2Title": "Que s'est-il passé ?",
+        "step2Description": "Décrivez l'incident en détail",
+        "step3Title": "Où cela s'est-il passé ?",
+        "step3Description": "Précisez le lieu de l'incident",
+        "step4Title": "Coordonnées (optionnel)",
+        "step4Description": "Laissez vos coordonnées si vous souhaitez des mises à jour",
+        "step4Optional": "Vous pouvez ignorer cette étape : elle est entièrement optionnelle",
+        "step5Title": "Ajouter des fichiers (optionnel)",
+        "step5Description": "Téléversez des photos, documents ou autres preuves",
+        "step5Optional": "Vous pouvez ignorer cette étape si vous n'avez pas de fichiers",
+        "step6Title": "Vérifiez votre signalement",
+        "step6Description": "Vérifiez que tout est correct avant de soumettre",
+        "skipStep": "Ignorer cette étape",
+        "continue": "Continuer",
+        "back": "Retour",
+        "supportedFormats": "Formats pris en charge",
+        "fileRequirements": "Exigences des fichiers",
+        "maxFileSize": "Taille maximale : 10 Mo par fichier",
+        "multipleFilesAllowed": "Plusieurs fichiers autorisés",
+        "filesStoredSecurely": "Les fichiers sont stockés de manière sécurisée",
+        "filesReady": "fichier(s) prêt(s)",
+        "filesWillBeUploaded": "Vos fichiers seront envoyés avec votre signalement",
+        "incidentType": "Type d'incident",
+        "anonymousReport": "Signalement anonyme",
+        "anonymousDescription": "Ce signalement sera soumis de façon anonyme sans informations personnelles visibles.",
+        "dragDropOrClick": "Glissez-déposez vos fichiers ici ou cliquez pour sélectionner",
+        "selectFilesLabel": "Sélectionner des fichiers",
+        "selectFiles": "Sélectionner des fichiers",
+        "selectedFiles": "Fichiers sélectionnés",
+        "removeFile": "Supprimer le fichier",
+        "invalidFileType": "Type de fichier non autorisé",
+        "fileTooLarge": "Fichier trop volumineux",
+        "saveDraft": "Enregistrer le brouillon",
+        "savingDraft": "Enregistrement du brouillon...",
+        "draftSaved": "Brouillon enregistré",
+        "submitInfo": "Après soumission, vous recevrez un identifiant de ticket et un code d'accès pour suivre votre dossier.",
+        "noDescription": "Aucune description disponible",
+        "preview": "Aperçu",
+        "previewUnavailable": "Aperçu indisponible pour ce fichier.",
+        "noInlinePreview": "Aucun aperçu intégré disponible pour ce type de fichier.",
+        "openOrDownloadFile": "Ouvrir ou télécharger le fichier",
+        "openText": "Afficher le texte",
+        "closeText": "Masquer le texte",
+        "workflowOptions": {
+            "klokkenluidersmeldingen": {
+                "name": "Signalements de lanceurs d'alerte",
+                "description": "Fraude, abus et atteintes à l'intégrité"
+            },
+            "omgangsvormen": {
+                "name": "Comportements inappropriés",
+                "description": "Comportement indésirable et harcèlement"
+            },
+            "misstanden": {
+                "name": "Signalements de dysfonctionnements",
+                "description": "Fraude, abus et atteintes à l'intégrité"
+            },
+            "whistleblower": {
+                "name": "Signalements de lanceurs d'alerte",
+                "description": "Fraude, abus et atteintes à l'intégrité"
+            },
+            "hr": {
+                "name": "Comportements inappropriés",
+                "description": "Comportement indésirable et harcèlement"
+            }
+        }
     },
     "reportConfirmation": {
-        "title": "Rapport Soumis avec SuccÃ¨s",
-        "subtitle": "Votre rapport a Ã©tÃ© reÃ§u et attribuÃ© Ã  notre Ã©quipe",
+        "title": "Rapport Soumis avec Succès",
+        "subtitle": "Votre rapport a été reçu et attribué à notre équipe",
         "credentials": {
-            "title": "Vos Identifiants d'AccÃ¨s",
+            "title": "Vos Identifiants d'Accès",
             "ticketId": "ID du Ticket",
-            "accessCode": "Code d'AccÃ¨s",
-            "saveInstructions": "Enregistrez ces identifiants pour vÃ©rifier le statut de votre rapport"
+            "accessCode": "Code d'Accès",
+            "saveInstructions": "Enregistrez ces identifiants pour vérifier le statut de votre rapport"
         },
         "nextSteps": {
-            "title": "Prochaines Ã‰tapes",
-            "step1": "Votre rapport est examinÃ© par notre Ã©quipe",
-            "step2": "L'enquÃªte commence dans les 24 heures",
-            "step3": "Vous recevrez des mises Ã  jour via votre canal prÃ©fÃ©rÃ©",
-            "step4": "Suivez les progrÃ¨s avec vos identifiants"
+            "title": "Prochaines Étapes",
+            "step1": "Votre rapport est examiné par notre équipe",
+            "step2": "L'enquête commence dans les 24 heures",
+            "step3": "Vous recevrez des mises à jour via votre canal préféré",
+            "step4": "Suivez les progrès avec vos identifiants"
         },
         "actions": {
-            "checkStatus": "VÃ©rifier le Statut",
+            "checkStatus": "Vérifier le Statut",
             "submitAnother": "Soumettre un Autre Rapport",
-            "downloadCredentials": "TÃ©lÃ©charger les Identifiants"
+            "downloadCredentials": "Télécharger les Identifiants"
         }
     },
     "ticketDetails": {
-        "title": "DÃ©tails du Ticket",
-        "reportDetails": "DÃ©tails du Rapport",
+        "title": "Détails du ticket",
+        "reportDetails": "Vue d'ensemble du signalement",
         "workflow": "Workflow",
-        "severity": "GravitÃ©",
-        "location": "Emplacement",
+        "severity": "Gravité",
+        "location": "Lieu",
         "description": "Description",
         "submittedOn": "Soumis le",
-        "lastUpdated": "DerniÃ¨re Mise Ã  Jour",
-        "statusTimeline": "Chronologie du Statut",
-        "attachments": "PiÃ¨ces Jointes",
-        "communication": "Journal de Communication",
-        "privacyReminder": "Ceci est un rapport anonyme. Toutes les communications sont confidentielles.",
-        "noAttachments": "Aucune piÃ¨ce jointe",
-        "noMessages": "Aucun message pour le moment"
+        "lastUpdated": "Dernière Mise à Jour",
+        "statusTimeline": "Chronologie SLA",
+        "attachments": "Pièces jointes",
+        "communication": "Communication",
+        "privacyReminder": "Chiffrement de bout en bout. Votre confidentialité est protégée.",
+        "noAttachments": "Aucune pièce jointe",
+        "noMessages": "Aucun message pour le moment",
+        "locationNotProvided": "Non précisé",
+        "loadingReport": "Chargement du signalement...",
+        "errorLoadingTicket": "Erreur lors du chargement des données du signalement",
+        "ticketNotFound": "Signalement introuvable",
+        "ticketNotFoundDescription": "Le signalement demandé n'a pas pu être chargé",
+        "backToAccessPortal": "Retour au portail d'accès",
+        "reportReceived": "Signalement reçu et enregistré dans le système"
     },
     "caseManagement": {
         "title": "Gestion des Cas",
-        "caseDetails": "DÃ©tails du Cas",
-        "investigation": "Notes d'EnquÃªte",
+        "caseDetails": "Détails du Cas",
+        "investigation": "Notes d'Enquête",
         "addNote": "Ajouter une Note",
-        "noteAdded": "Note ajoutÃ©e avec succÃ¨s",
-        "updateStatus": "Mettre Ã  Jour le Statut",
-        "assignTo": "Attribuer Ã€",
-        "priority": "PrioritÃ©",
+        "noteAdded": "Note ajoutée avec succès",
+        "updateStatus": "Mettre à Jour le Statut",
+        "assignTo": "Attribuer À",
+        "priority": "Priorité",
         "actionHistory": "Historique des Actions",
         "closeCase": "Fermer le Cas",
         "reopenCase": "Rouvrir le Cas",
@@ -431,17 +538,17 @@
     },
     "workflowConfig": {
         "title": "Configuration du Workflow",
-        "subtitle": "GÃ©rer les workflows d'incident et les rÃ¨gles de routage",
-        "createWorkflow": "CrÃ©er un Workflow",
+        "subtitle": "Gérer les workflows d'incident et les règles de routage",
+        "createWorkflow": "Créer un Workflow",
         "editWorkflow": "Modifier le Workflow",
         "workflowName": "Nom du Workflow",
         "description": "Description",
-        "routingRules": "RÃ¨gles de Routage",
-        "autoAssignment": "Attribution automatique activÃ©e",
-        "notificationSettings": "ParamÃ¨tres de Notification",
+        "routingRules": "Règles de Routage",
+        "autoAssignment": "Attribution automatique activée",
+        "notificationSettings": "Paramètres de Notification",
         "active": "Actif",
         "inactive": "Inactif",
-        "deleteConfirm": "ÃŠtes-vous sÃ»r de vouloir supprimer ce workflow?"
+        "deleteConfirm": "Êtes-vous sûr de vouloir supprimer ce workflow?"
     },
     "navigation": {
         "dashboard": "Tableau de Bord",
@@ -452,96 +559,135 @@
         "legalGuidance": "Conseils Juridiques"
     },
     "language": {
-        "select": "SÃ©lectionner la Langue",
+        "select": "Sélectionner la Langue",
         "en": "ENG",
         "nl": "NL",
         "fr": "FR",
         "de": "DE"
     },
     "settings": {
-        "title": "ParamÃ¨tres SystÃ¨me",
-        "subtitle": "Configurer le comportement du portail, la sÃ©curitÃ©, les notifications, SLA et l'audit logging",
-        "pageTitle": "ParamÃ¨tres SystÃ¨me | Admin",
+        "title": "Paramètres Système",
+        "subtitle": "Configurer le comportement du portail, la sécurité, les notifications, les SLA et la journalisation d'audit",
+        "pageTitle": "Paramètres Système | Admin",
         "refresh": "Actualiser",
-        "resetTab": "RÃ©initialiser l'onglet",
+        "resetTab": "Réinitialiser l'onglet",
         "saveChanges": "Enregistrer les modifications",
         "saving": "Enregistrement...",
         "close": "Fermer",
         "overview": {
-            "title": "AperÃ§u",
-            "currentCategory": "CatÃ©gorie actuelle",
-            "settingsCount": "Nombre de paramÃ¨tres",
-            "changedCount": "ModifiÃ© (total)",
-            "updater": "Mise Ã  jour par",
+            "title": "Aperçu",
+            "currentCategory": "Catégorie actuelle",
+            "settingsCount": "Nombre de paramètres",
+            "changedCount": "Modifiés (total)",
+            "updater": "Mise à jour par",
             "tip": "Astuce",
-            "sensitiveHint": "Marquez les valeurs sensibles avec is_sensitive. Elles seront masquÃ©es dans l'interface utilisateur mais resteront auditables."
+            "sensitiveHint": "Marquez les valeurs sensibles avec is_sensitive. Elles seront masquées dans l'interface utilisateur mais resteront auditables."
         },
         "categories": {
-            "general": "GÃ©nÃ©ral",
+            "general": "Général",
             "portal": "Portail",
             "workflow": "Workflows",
             "sla": "SLA & Chronologie",
             "email_notifications": "Notifications Email",
             "notifications": "Notifications (Ancien)",
-            "security": "SÃ©curitÃ©",
+            "security": "Sécurité",
             "audit": "Audit logging",
-            "retention": "PÃ©riodes de rÃ©tention",
-            "danger": "Zone dangereuse"
+            "retention": "Périodes de rétention",
+            "danger": "Zone dangereuse",
+            "generalDescription": "Configuration generale du portail",
+            "portalDescription": "Comportement du portail et options cote utilisateur",
+            "workflowDescription": "Workflows et logique de traitement des dossiers",
+            "slaDescription": "Delais, objectifs de reponse et regles de chronologie",
+            "emailNotificationsDescription": "Parametres e-mail, modeles et regles de notification",
+            "notificationsDescription": "Preferences de notification heritagees",
+            "securityDescription": "Controle d acces et parametres de securite",
+            "auditDescription": "Journalisation et tracabilite des actions",
+            "retentionDescription": "Retention et suppression des donnees",
+            "dangerDescription": "Actions avancees et potentiellement risquees",
+            "locations": "Lieux",
+            "locationsDescription": "Gerer les pays disponibles pour le signalement d incident"
         },
         "fields": {
             "value": "Valeur",
             "currentValue": "Valeur actuelle",
             "sensitive": "Sensible",
-            "onOff": "ActivÃ© / DÃ©sactivÃ©",
-            "jsonAdvanced": "JSON (pour paramÃ¨tres avancÃ©s)"
+            "onOff": "Activé / Désactivé",
+            "jsonAdvanced": "JSON (pour paramètres avancés)"
         },
         "twoFactor": {
-            "title": "Authentification Ã  Deux Facteurs (2FA)",
-            "subtitle": "Ajoutez une couche de sÃ©curitÃ© supplÃ©mentaire Ã  votre compte",
+            "title": "Authentification à Deux Facteurs (2FA)",
+            "subtitle": "Ajoutez une couche de sécurité supplémentaire à votre compte",
             "status": "Statut 2FA",
-            "enabled": "ActivÃ©",
-            "disabled": "DÃ©sactivÃ©",
-            "notConfigured": "Non configurÃ©",
+            "enabled": "Activé",
+            "disabled": "Désactivé",
+            "notConfigured": "Non configuré",
             "enableButton": "Activer 2FA",
-            "disableButton": "DÃ©sactiver 2FA",
+            "disableButton": "Désactiver 2FA",
             "setup": "Configurer 2FA",
             "setupInstructions": "Scannez le code QR ci-dessous avec votre application d'authentification",
             "scanQR": "Scanner le code QR",
-            "enterCode": "Entrez le code Ã  6 chiffres de votre application d'authentification",
-            "verifyCode": "VÃ©rifier le code",
-            "verifying": "VÃ©rification...",
+            "enterCode": "Entrez le code à 6 chiffres de votre application d'authentification",
+            "verifyCode": "Vérifier le code",
+            "verifying": "Vérification...",
             "backupCodes": "Codes de secours",
-            "backupCodesDescription": "Enregistrez ces codes de secours dans un endroit sÃ»r. Chacun peut Ãªtre utilisÃ© une fois si vous perdez l'accÃ¨s Ã  votre authentificateur.",
-            "downloadCodes": "TÃ©lÃ©charger les codes",
+            "backupCodesDescription": "Enregistrez ces codes de secours dans un endroit sûr. Chacun peut être utilisé une fois si vous perdez l'accès à votre authentificateur.",
+            "downloadCodes": "Télécharger les codes",
             "copyCodes": "Copier les codes",
-            "codesCopied": "Codes copiÃ©s dans le presse-papiers",
-            "regenerateCodes": "RÃ©gÃ©nÃ©rer les codes de secours",
-            "appRecommendations": "Applications recommandÃ©es: Google Authenticator, Microsoft Authenticator, Authy",
-            "setupComplete": "Configuration 2FA terminÃ©e!",
-            "invalidCode": "Code de vÃ©rification invalide",
+            "codesCopied": "Codes copiés dans le presse-papiers",
+            "regenerateCodes": "Régénérer les codes de secours",
+            "appRecommendations": "Applications recommandées : Google Authenticator, Microsoft Authenticator, Authy",
+            "setupComplete": "Configuration 2FA terminée !",
+            "invalidCode": "Code de vérification invalide",
             "errorEnabling": "Erreur lors de l'activation de 2FA",
-            "errorDisabling": "Erreur lors de la dÃ©sactivation de 2FA",
-            "confirmDisable": "ÃŠtes-vous sÃ»r de vouloir dÃ©sactiver 2FA? Cela rendra votre compte moins sÃ©curisÃ©.",
-            "accountKey": "ClÃ© de compte",
-            "accountKeyDescription": "Si vous ne pouvez pas scanner le code QR, entrez cette clÃ© manuellement:"
+            "errorDisabling": "Erreur lors de la désactivation de 2FA",
+            "confirmDisable": "Êtes-vous sûr de vouloir désactiver 2FA ? Cela rendra votre compte moins sécurisé.",
+            "accountKey": "Clé de compte",
+            "accountKeyDescription": "Si vous ne pouvez pas scanner le code QR, entrez cette clé manuellement :"
         },
         "messages": {
-            "loading": "Chargement des paramÃ¨tres...",
-            "errorLoading": "Impossible de charger les paramÃ¨tres.",
-            "noSettings": "Aucun paramÃ¨tre trouvÃ© dans system_settings.",
-            "noSettingsInCategory": "Aucun paramÃ¨tre dans cette catÃ©gorie.",
-            "addSettings": "Ajoutez des lignes Ã  system_settings.",
-            "changesPending": "modification(s) prÃªte(s) Ã  enregistrer.",
+            "loading": "Chargement des paramètres...",
+            "errorLoading": "Impossible de charger les paramètres.",
+            "noSettings": "Aucun paramètre trouvé dans system_settings.",
+            "noSettingsInCategory": "Aucun paramètre dans cette catégorie.",
+            "addSettings": "Ajoutez des lignes à system_settings.",
+            "changesPending": "Modification(s) prête(s) à enregistrer.",
             "noChanges": "Aucune modification.",
-            "saveSuccess": "ParamÃ¨tres enregistrÃ©s avec succÃ¨s",
-            "saveError": "Ã‰chec de l'enregistrement."
+            "saveSuccess": "Paramètres enregistrés avec succès",
+            "saveError": "Échec de l'enregistrement."
+        },
+        "navigation": {
+            "backToCategories": "Retour aux categories",
+            "chooseCategory": "Choisissez une categorie a configurer",
+            "chooseCategoryDescription": "Cliquez sur une categorie pour afficher et modifier ses parametres",
+            "clickToConfigure": "Cliquer pour configurer",
+            "unsavedChanges": "non enregistres",
+            "setting": "parametre",
+            "settings": "parametres",
+            "modified": "modifies"
+        },
+        "tabs": {
+            "settings": "Parametres",
+            "adminCenter": "Centre Admin"
+        },
+        "actions": {
+            "resetAll": "Tout reinitialiser",
+            "reset": "Reinitialiser"
+        },
+        "search": {
+            "result": "{{count}} resultat",
+            "results": "{{count}} resultats",
+            "for": "pour"
+        },
+        "empty": {
+            "noSettingsFound": "Aucun parametre trouve",
+            "tryAdjustSearch": "Essayez d ajuster votre recherche"
         }
     },
     "legalGuidance": {
         "title": "Conseils Juridiques pour Lanceurs d'Alerte",
-        "subtitle": "Cadres juridiques et procÃ©dures spÃ©cifiques par pays pour les Pays-Bas, la Belgique, l'Allemagne et la France",
-        "footer": "Signalement SÃ©curisÃ© & Confidentiel",
-        "searchPlaceholder": "Rechercher des sujets juridiques, procÃ©dures ou contacts...",
+        "subtitle": "Cadres juridiques et procédures spécifiques par pays pour les Pays-Bas, la Belgique, l'Allemagne et la France",
+        "footer": "Signalement Sécurisé & Confidentiel",
+        "searchPlaceholder": "Rechercher des sujets juridiques, procédures ou contacts...",
         "countries": {
             "netherlands": "Pays-Bas",
             "belgium": "Belgique",
@@ -551,74 +697,74 @@
         "legalFramework": {
             "title": "Cadre Juridique",
             "protectionRights": "Droits de Protection",
-            "keyFeatures": "CaractÃ©ristiques ClÃ©s",
+            "keyFeatures": "Caractéristiques Clés",
             "netherlands": {
                 "lawTitle": "Loi sur la protection des lanceurs d'alerte (2023)",
-                "lawDescription": "En vigueur depuis le 18 fÃ©vrier 2023, met en Å“uvre la directive UE 2019/1937",
+                "lawDescription": "En vigueur depuis le 18 février 2023, met en œuvre la directive UE 2019/1937",
                 "protections": [
-                    "Protection contre les reprÃ©sailles et le licenciement",
-                    "ConfidentialitÃ© de l'identitÃ© garantie",
-                    "Droit Ã  l'assistance juridique",
-                    "Indemnisation pour reprÃ©sailles"
+                    "Protection contre les représailles et le licenciement",
+                    "Confidentialité de l'identité garantie",
+                    "Droit à l'assistance juridique",
+                    "Indemnisation pour représailles"
                 ],
                 "features": [
-                    "Signalement externe direct autorisÃ©",
-                    "AccusÃ© de rÃ©ception sous 7 jours",
-                    "EnquÃªte lancÃ©e sous 2 semaines",
+                    "Signalement externe direct autorisé",
+                    "Accusé de réception sous 7 jours",
+                    "Enquête lancée sous 2 semaines",
                     "Position sous 8-12 semaines"
                 ]
             },
             "belgium": {
                 "lawTitle": "Loi sur la protection des lanceurs d'alerte (2023)",
-                "lawDescription": "Met en Å“uvre la directive UE 2019/1937 pour la protection des lanceurs d'alerte",
+                "lawDescription": "Met en Åuvre la directive UE 2019/1937 pour la protection des lanceurs d'alerte",
                 "protections": [
-                    "Forte insistance sur la confidentialitÃ©",
-                    "Protection contre les reprÃ©sailles",
-                    "Anonymat autorisÃ©",
+                    "Forte insistance sur la confidentialité",
+                    "Protection contre les représailles",
+                    "Anonymat autorisé",
                     "Soutien juridique disponible"
                 ],
                 "features": [
-                    "OmÃ©ga fÃ©dÃ©ral comme canal externe",
-                    "Application sÃ©curisÃ©e pour signalements anonymes",
-                    "SIOD comme superviseur compÃ©tent",
+                    "Oméga fédéral comme canal externe",
+                    "Application sécurisée pour signalements anonymes",
+                    "SIOD comme superviseur compétent",
                     "Aucune obligation de facilitation anonyme"
                 ]
             },
             "germany": {
                 "lawTitle": "Loi sur la protection des lanceurs d'alerte (HinSchG, 2023)",
-                "lawDescription": "En vigueur depuis juillet 2023, met en Å“uvre la directive UE pour la protection des lanceurs d'alerte",
+                "lawDescription": "En vigueur depuis juillet 2023, met en Åuvre la directive UE pour la protection des lanceurs d'alerte",
                 "protections": [
-                    "Protection contre les reprÃ©sailles",
-                    "RÃ¨gles strictes de stockage des donnÃ©es",
-                    "Minimisation des donnÃ©es requise",
-                    "ConfidentialitÃ© garantie"
+                    "Protection contre les représailles",
+                    "Règles strictes de stockage des données",
+                    "Minimisation des données requise",
+                    "Confidentialité garantie"
                 ],
                 "features": [
-                    "Office fÃ©dÃ©ral de la justice comme canal externe",
-                    "Signalements anonymes autorisÃ©s",
+                    "Office fédéral de la justice comme canal externe",
+                    "Signalements anonymes autorisés",
                     "Formulaire en ligne disponible",
-                    "Aucun systÃ¨me anonyme obligatoire"
+                    "Aucun système anonyme obligatoire"
                 ]
             },
             "france": {
-                "lawTitle": "Loi Sapin II (modifiÃ©e 2022)",
-                "lawDescription": "ModifiÃ©e en 2022 pour mettre en Å“uvre la directive UE 2019/1937",
+                "lawTitle": "Loi Sapin II (modifiée 2022)",
+                "lawDescription": "Modifiée en 2022 pour mettre en œuvre la directive UE 2019/1937",
                 "protections": [
                     "Protection pour stagiaires et freelances",
-                    "Droit Ã  la libertÃ© de la presse si aucun effet",
+                    "Droit à la liberté de la presse si aucun effet",
                     "Traitement obligatoire des signalements anonymes",
-                    "DÃ©finition large des personnes protÃ©gÃ©es"
+                    "Définition large des personnes protégées"
                 ],
                 "features": [
-                    "Plusieurs autoritÃ©s compÃ©tentes (AFA, ANSSI, etc.)",
-                    "Les signalements anonymes doivent Ãªtre traitÃ©s",
-                    "AccÃ¨s direct Ã  la presse possible",
-                    "Fournisseurs explicitement protÃ©gÃ©s"
+                    "Plusieurs autorités compétentes (AFA, ANSSI, etc.)",
+                    "Les signalements anonymes doivent être traités",
+                    "Accès direct à la presse possible",
+                    "Fournisseurs explicitement protégés"
                 ]
             }
         },
         "workflow": {
-            "title": "ProcÃ©dure de Signalement",
+            "title": "Procédure de Signalement",
             "netherlands": {
                 "phases": [
                     {
@@ -633,44 +779,44 @@
                     },
                     {
                         "title": "Signalement Interne",
-                        "description": "Signalement au superviseur ou via conseiller confidentiel avec accusÃ© de rÃ©ception",
+                        "description": "Signalement au superviseur ou via conseiller confidentiel avec accusé de réception",
                         "timeline": "Confirmation sous 7 jours",
                         "steps": [
                             "Soumettre le signalement au superviseur ou conseiller confidentiel",
-                            "AccusÃ© de rÃ©ception sous 7 jours",
-                            "Personne de contact contre les reprÃ©sailles dÃ©signÃ©e"
+                            "Accusé de réception sous 7 jours",
+                            "Personne de contact contre les représailles désignée"
                         ]
                     },
                     {
-                        "title": "EnquÃªte par l'Employeur",
-                        "description": "L'employeur dÃ©cide de l'enquÃªte et informe le signalant dans les dÃ©lais",
-                        "timeline": "DÃ©cision sous 2 semaines",
+                        "title": "Enquête par l'Employeur",
+                        "description": "L'employeur décide de l'enquête et informe le signalant dans les délais",
+                        "timeline": "Décision sous 2 semaines",
                         "steps": [
-                            "DÃ©cision: lancer l'enquÃªte ou non",
+                            "Décision: lancer l'enquête ou non",
                             "Informer le signalant sous 2 semaines",
-                            "EnquÃªteurs indÃ©pendants nommÃ©s",
-                            "Audition du signalant et des parties concernÃ©es"
+                            "Enquêteurs indépendants nommés",
+                            "Audition du signalant et des parties concernées"
                         ]
                     },
                     {
                         "title": "Position de l'Employeur",
-                        "description": "Rapport final et position avec possibilitÃ© de rÃ©pondre",
+                        "description": "Rapport final et position avec possibilité de répondre",
                         "timeline": "8-12 semaines",
                         "steps": [
-                            "Projet et rapport final prÃ©parÃ©s",
+                            "Projet et rapport final préparés",
                             "Position sous 8 semaines (max. 12 semaines)",
-                            "PossibilitÃ© pour le signalant de rÃ©pondre",
-                            "EnquÃªte supplÃ©mentaire possible"
+                            "Possibilité pour le signalant de répondre",
+                            "Enquête supplémentaire possible"
                         ]
                     },
                     {
                         "title": "Signalement Externe & Protection",
-                        "description": "Directement possible ou aprÃ¨s procÃ©dure interne auprÃ¨s de l'autoritÃ© compÃ©tente",
+                        "description": "Directement possible ou après procédure interne auprès de l'autorité compétente",
                         "timeline": "En cours",
                         "steps": [
-                            "Signalement Ã  la Maison des Lanceurs d'Alerte ou autre autoritÃ©",
+                            "Signalement à la Maison des Lanceurs d'Alerte ou autre autorité",
                             "Personne de contact surveille la protection",
-                            "Mesures par la direction supÃ©rieure"
+                            "Mesures par la direction supérieure"
                         ]
                     }
                 ]
@@ -680,41 +826,41 @@
                     {
                         "title": "Signalement Interne",
                         "description": "Signalement via canal de signalement interne ou conseiller confidentiel",
-                        "timeline": "PremiÃ¨re Ã©tape",
+                        "timeline": "Première étape",
                         "steps": [
-                            "Soumettre le signalement via systÃ¨me interne",
-                            "ConfidentialitÃ© de l'identitÃ© garantie",
-                            "Recevoir un accusÃ© de rÃ©ception"
+                            "Soumettre le signalement via système interne",
+                            "Confidentialité de l'identité garantie",
+                            "Recevoir un accusé de réception"
                         ]
                     },
                     {
-                        "title": "EnquÃªte",
-                        "description": "L'organisation mÃ¨ne une enquÃªte sur le signalement",
-                        "timeline": "Dans un dÃ©lai raisonnable",
+                        "title": "Enquête",
+                        "description": "L'organisation mène une enquête sur le signalement",
+                        "timeline": "Dans un délai raisonnable",
                         "steps": [
-                            "EnquÃªte lancÃ©e par le dÃ©partement compÃ©tent",
-                            "Signalant entendu si nÃ©cessaire",
-                            "Mises Ã  jour intermÃ©diaires fournies"
+                            "Enquête lancée par le département compétent",
+                            "Signalant entendu si nécessaire",
+                            "Mises à jour intermédiaires fournies"
                         ]
                     },
                     {
                         "title": "Signalement Externe",
-                        "description": "Signalement Ã  l'Ombudsman fÃ©dÃ©ral ou superviseur compÃ©tent",
-                        "timeline": "AprÃ¨s procÃ©dure interne ou directement",
+                        "description": "Signalement à l'Ombudsman fédéral ou superviseur compétent",
+                        "timeline": "Après procédure interne ou directement",
                         "steps": [
-                            "Soumettre formulaire en ligne Ã  l'Ombudsman fÃ©dÃ©ral",
-                            "Ou signalement via application sÃ©curisÃ©e",
-                            "Ou signalement au SIOD (superviseur compÃ©tent)"
+                            "Soumettre formulaire en ligne à l'Ombudsman fédéral",
+                            "Ou signalement via application sécurisée",
+                            "Ou signalement au SIOD (superviseur compétent)"
                         ]
                     },
                     {
                         "title": "Protection",
-                        "description": "Protection contre les reprÃ©sailles tout au long du processus",
+                        "description": "Protection contre les représailles tout au long du processus",
                         "timeline": "En cours",
                         "steps": [
-                            "Surveillance des reprÃ©sailles",
+                            "Surveillance des représailles",
                             "Soutien juridique disponible",
-                            "ConfidentialitÃ© maintenue"
+                            "Confidentialité maintenue"
                         ]
                     }
                 ]
@@ -724,41 +870,41 @@
                     {
                         "title": "Signalement Interne",
                         "description": "Signalement via canal de signalement interne de l'organisation",
-                        "timeline": "PremiÃ¨re Ã©tape (recommandÃ©e)",
+                        "timeline": "Première étape (recommandée)",
                         "steps": [
-                            "Soumettre le signalement via systÃ¨me interne",
-                            "Confirmation de rÃ©ception sous 7 jours",
-                            "ConfidentialitÃ© garantie"
+                            "Soumettre le signalement via système interne",
+                            "Confirmation de réception sous 7 jours",
+                            "Confidentialité garantie"
                         ]
                     },
                     {
-                        "title": "EnquÃªte",
-                        "description": "ProcÃ©dure d'enquÃªte interne selon HinSchG",
+                        "title": "Enquête",
+                        "description": "Procédure d'enquête interne selon HinSchG",
                         "timeline": "Dans les 3 mois",
                         "steps": [
-                            "EnquÃªte menÃ©e par le dÃ©partement compÃ©tent",
+                            "Enquête menée par le département compétent",
                             "Retour au signalant dans les 3 mois",
-                            "Minimisation des donnÃ©es appliquÃ©e"
+                            "Minimisation des données appliquée"
                         ]
                     },
                     {
                         "title": "Signalement Externe",
-                        "description": "Signalement Ã  l'Office fÃ©dÃ©ral de la justice ou autre autoritÃ© compÃ©tente",
-                        "timeline": "AprÃ¨s procÃ©dure interne ou directement",
+                        "description": "Signalement à l'Office fédéral de la justice ou autre autorité compétente",
+                        "timeline": "Après procédure interne ou directement",
                         "steps": [
-                            "Formulaire en ligne Ã  l'Office fÃ©dÃ©ral de la justice",
+                            "Formulaire en ligne à l'Office fédéral de la justice",
                             "Signalement anonyme possible",
-                            "RÃ¨gles strictes de stockage des donnÃ©es"
+                            "Règles strictes de stockage des données"
                         ]
                     },
                     {
                         "title": "Protection",
-                        "description": "Protection contre les reprÃ©sailles selon HinSchG",
+                        "description": "Protection contre les représailles selon HinSchG",
                         "timeline": "En cours",
                         "steps": [
-                            "Surveillance des reprÃ©sailles",
+                            "Surveillance des représailles",
                             "Soutien juridique",
-                            "ConfidentialitÃ© maintenue"
+                            "Confidentialité maintenue"
                         ]
                     }
                 ]
@@ -768,65 +914,65 @@
                     {
                         "title": "Signalement Interne",
                         "description": "Signalement via canal de signalement interne selon la Loi Sapin II",
-                        "timeline": "PremiÃ¨re Ã©tape (recommandÃ©e)",
+                        "timeline": "Première étape (recommandée)",
                         "steps": [
-                            "Soumettre le signalement via systÃ¨me interne",
-                            "Signalement anonyme doit Ãªtre traitÃ©",
-                            "AccusÃ© de rÃ©ception"
+                            "Soumettre le signalement via système interne",
+                            "Signalement anonyme doit être traité",
+                            "Accusé de réception"
                         ]
                     },
                     {
-                        "title": "EnquÃªte",
-                        "description": "ProcÃ©dure d'enquÃªte interne avec dÃ©lais stricts",
-                        "timeline": "Dans un dÃ©lai raisonnable",
+                        "title": "Enquête",
+                        "description": "Procédure d'enquête interne avec délais stricts",
+                        "timeline": "Dans un délai raisonnable",
                         "steps": [
-                            "EnquÃªte lancÃ©e par le dÃ©partement compÃ©tent",
-                            "Signalant informÃ© de l'avancement",
-                            "ConfidentialitÃ© garantie"
+                            "Enquête lancée par le département compétent",
+                            "Signalant informé de l'avancement",
+                            "Confidentialité garantie"
                         ]
                     },
                     {
                         "title": "Signalement Externe",
-                        "description": "Signalement Ã  l'autoritÃ© compÃ©tente (AFA, ANSSI, ANSES, etc.)",
-                        "timeline": "AprÃ¨s procÃ©dure interne ou directement",
+                        "description": "Signalement à l'autorité compétente (AFA, ANSSI, ANSES, etc.)",
+                        "timeline": "Après procédure interne ou directement",
                         "steps": [
-                            "Choix parmi plusieurs autoritÃ©s compÃ©tentes",
+                            "Choix parmi plusieurs autorités compétentes",
                             "Formulaire en ligne ou par courrier",
                             "Signalement anonyme possible"
                         ]
                     },
                     {
                         "title": "Divulgation Publique",
-                        "description": "Signalement direct Ã  la presse si aucun effet du signalement interne/externe",
-                        "timeline": "Comme derniÃ¨re option",
+                        "description": "Signalement direct à la presse si aucun effet du signalement interne/externe",
+                        "timeline": "Comme dernière option",
                         "steps": [
-                            "Droit Ã  la libertÃ© de la presse",
+                            "Droit à la liberté de la presse",
                             "Protection reste en vigueur",
                             "Soutien juridique disponible"
                         ]
                     },
                     {
                         "title": "Protection",
-                        "description": "Protection Ã©tendue incluant stagiaires et fournisseurs",
+                        "description": "Protection étendue incluant stagiaires et fournisseurs",
                         "timeline": "En cours",
                         "steps": [
-                            "Surveillance des reprÃ©sailles",
+                            "Surveillance des représailles",
                             "Protection pour un large groupe de personnes",
-                            "ConfidentialitÃ© maintenue"
+                            "Confidentialité maintenue"
                         ]
                     }
                 ]
             }
         },
         "contacts": {
-            "title": "RÃ©pertoire de Contacts",
+            "title": "Répertoire de Contacts",
             "visitWebsite": "Visiter le Site Web",
             "onlineForm": "Formulaire en Ligne",
-            "anonymityNote": "Anonymat & ConfidentialitÃ©",
-            "netherlandsAnonymityInfo": "Signalement externe direct possible sans signalement interne prÃ©alable. L'identitÃ© est protÃ©gÃ©e.",
-            "belgiumAnonymityInfo": "Anonymat autorisÃ© via application sÃ©curisÃ©e. Forte insistance sur la confidentialitÃ© de l'identitÃ©.",
-            "germanyAnonymityInfo": "Signalements anonymes autorisÃ©s. RÃ¨gles strictes pour le stockage des donnÃ©es et la minimisation des donnÃ©es.",
-            "franceAnonymityInfo": "Les signalements anonymes doivent Ãªtre traitÃ©s. Signalement direct Ã  la presse possible comme derniÃ¨re option.",
+            "anonymityNote": "Anonymat & Confidentialité",
+            "netherlandsAnonymityInfo": "Signalement externe direct possible sans signalement interne préalable. L'identité est protégée.",
+            "belgiumAnonymityInfo": "Anonymat autorisé via application sécurisée. Forte insistance sur la confidentialité de l'identité.",
+            "germanyAnonymityInfo": "Signalements anonymes autorisés. Règles strictes pour le stockage des données et la minimisation des données.",
+            "franceAnonymityInfo": "Les signalements anonymes doivent être traités. Signalement direct à la presse possible comme dernière option.",
             "netherlands": [
                 {
                     "name": "Danny Das",
@@ -844,7 +990,7 @@
                 },
                 {
                     "name": "Maison des Lanceurs d'Alerte",
-                    "role": "AutoritÃ© Nationale pour les Lanceurs d'Alerte",
+                    "role": "Autorité Nationale pour les Lanceurs d'Alerte",
                     "type": "authority",
                     "email": "contact@huisvoorklokkenluiders.nl",
                     "phone": "088-1331000",
@@ -854,7 +1000,7 @@
             ],
             "belgium": [
                 {
-                    "name": "Ombudsman FÃ©dÃ©ral",
+                    "name": "Ombudsman Fédéral",
                     "role": "Canal de Signalement Externe pour Lanceurs d'Alerte",
                     "type": "authority",
                     "email": "integriteit@federaalombudsman.be",
@@ -864,15 +1010,15 @@
                 },
                 {
                     "name": "SIOD",
-                    "role": "Inspection Sociale - Superviseur CompÃ©tent",
+                    "role": "Inspection Sociale - Superviseur Compétent",
                     "type": "authority",
                     "website": "https://www.siod.belgie.be"
                 }
             ],
             "germany": [
                 {
-                    "name": "Office FÃ©dÃ©ral de la Justice",
-                    "role": "Bureau FÃ©dÃ©ral de Signalement pour Lanceurs d'Alerte",
+                    "name": "Office Fédéral de la Justice",
+                    "role": "Bureau Fédéral de Signalement pour Lanceurs d'Alerte",
                     "type": "authority",
                     "website": "https://www.bundesjustizamt.de",
                     "onlineForm": "https://www.bundesjustizamt.de/DE/MeldestelledesBundes/MeldestelledesBundes_node"
@@ -880,15 +1026,15 @@
             ],
             "france": [
                 {
-                    "name": "Agence FranÃ§aise Anticorruption (AFA)",
-                    "role": "Agence FranÃ§aise Anticorruption",
+                    "name": "Agence Française Anticorruption (AFA)",
+                    "role": "Agence Française Anticorruption",
                     "type": "authority",
                     "website": "https://www.agence-francaise-anticorruption.gouv.fr",
                     "onlineForm": "https://www.agence-francaise-anticorruption.gouv.fr/fr/procedure-recueil-et-traitement-des-signalements"
                 },
                 {
                     "name": "ANSSI",
-                    "role": "Agence Nationale de la SÃ©curitÃ© des SystÃ¨mes d'Information",
+                    "role": "Agence Nationale de la Sécurité des Systèmes d'Information",
                     "type": "authority",
                     "email": "lanceurdalerte@ssi.gouv.fr",
                     "phone": "+33 171758468",
@@ -896,13 +1042,13 @@
                 },
                 {
                     "name": "ANSES",
-                    "role": "Agence Nationale de SÃ©curitÃ© Sanitaire de l'Alimentation, de l'Environnement et du Travail",
+                    "role": "Agence Nationale de Sécurité Sanitaire de l'Alimentation, de l'Environnement et du Travail",
                     "type": "authority",
                     "email": "lanceurdalerte@anses.fr"
                 },
                 {
-                    "name": "AutoritÃ© de la Concurrence",
-                    "role": "AutoritÃ© FranÃ§aise de la Concurrence",
+                    "name": "Autorité de la Concurrence",
+                    "role": "Autorité Française de la Concurrence",
                     "type": "authority",
                     "phone": "+33 155040005",
                     "website": "https://www.autoritedelaconcurrence.fr/fr/page-riche/le-dispositif-lanceur-dalerte",
@@ -910,15 +1056,254 @@
                 },
                 {
                     "name": "IGEDD",
-                    "role": "Inspection GÃ©nÃ©rale de l'Environnement et du DÃ©veloppement Durable",
+                    "role": "Inspection Générale de l'Environnement et du Développement Durable",
                     "type": "authority",
                     "website": "https://www.igedd.developpement-durable.gouv.fr/lanceur-d-alerte-signaler-une-atteinte-a-l-a3965.html"
                 }
             ]
         }
+    },
+    "caseManagementDetail": {
+        "common": {
+            "confirm": "Confirm",
+            "download": "Download",
+            "less": "Less",
+            "more": "More",
+            "new": "New",
+            "optional": "Optional",
+            "preview": "Preview",
+            "remove": "Remove",
+            "send": "Send",
+            "status": "Status",
+            "unknown": "Unknown",
+            "update": "Update"
+        },
+        "header": {
+            "share": "Share"
+        },
+        "details": {
+            "createdClient": "Created (client)",
+            "descriptionPlaceholder": "Describe the incident in detail",
+            "locationPlaceholder": "Where did this happen?",
+            "noContactInfo": "No contact information was provided.",
+            "noMetadata": "No metadata available.",
+            "notProvided": "Not provided",
+            "tabContact": "Contact",
+            "tabLocation": "Location",
+            "tabMeta": "Metadata",
+            "timezone": "Timezone",
+            "unsavedChanges": "You have unsaved changes.",
+            "userAgent": "User agent",
+            "viewport": "Viewport"
+        },
+        "attachments": {
+            "add": "Add file",
+            "attachmentAlt": "Attachment {{name}}",
+            "by": "by",
+            "downloadUnavailableReason": "This attachment has no downloadable URL.",
+            "files": "files",
+            "noDownloadUrl": "No download URL available",
+            "openInNewTab": "Open in new tab",
+            "previewUnavailable": "Preview is not available for this file type."
+        },
+        "notes": {
+            "addHint": "Add an internal note to start the investigation log.",
+            "attachment": "Attach file",
+            "auditReady": "This note is audit-ready",
+            "internalAttachments": "Internal attachments",
+            "internalOnly": "Internal only",
+            "internalOnlyDescription": "Visible to handlers only",
+            "newNoteLabel": "New note",
+            "newNotePlaceholder": "Add an internal investigation note",
+            "none": "No investigation notes yet."
+        },
+        "communication": {
+            "anonymousNoDirect": "Reporter is anonymous. Direct messaging is unavailable.",
+            "encryption": "Encrypted channel",
+            "fullyAnonymous": "Fully anonymous",
+            "messageLabel": "Message",
+            "messagePlaceholder": "Type your message",
+            "noContact": "No contact information",
+            "read": "Read",
+            "replyPrompt": "Reply to keep the reporter informed.",
+            "secureChat": "Secure communication",
+            "secured": "Secured",
+            "startBySending": "Start by sending the first message.",
+            "startPrompt": "Start communication with the reporter.",
+            "write": "Write"
+        },
+        "actionHistory": {
+            "changesAppear": "Changes will appear here once actions are performed.",
+            "defaultAction": "Action",
+            "log": "Activity log",
+            "multipleActions": "actions",
+            "noActions": "No actions yet.",
+            "singleAction": "action"
+        },
+        "management": {
+            "assignDescription": "Assign this case to a handler",
+            "changeStatusCta": "Change status (current: {{status}})",
+            "escalateToManagement": "Escalate to management",
+            "notAssignedDescription": "No handler assigned",
+            "priorityCriticalDesc": "Immediate response required",
+            "priorityDescription": "Set handling priority",
+            "priorityHighDesc": "High urgency",
+            "priorityLevel": "Priority level",
+            "priorityLowDesc": "Low urgency",
+            "priorityMediumDesc": "Normal urgency",
+            "savingChange": "Saving changes...",
+            "statusEmailsDescription": "Reporter receives an email when status changes",
+            "statusEmailsLabel": "Status change emails"
+        },
+        "sla": {
+            "breached": "SLA breached",
+            "contact": "Contact",
+            "contactPerson": "Contact person",
+            "days": "days",
+            "dayShort": "d",
+            "dueBy": "Due by {{date}}",
+            "email": "Email",
+            "expected": "Expected",
+            "expectedBy": "Expected by {{date}}",
+            "firstResponse": "First response",
+            "hourShort": "h",
+            "inProgress": "In progress",
+            "name": "Name",
+            "nextStep": "Next step",
+            "notConfigured": "Not configured",
+            "note": "Note",
+            "overdue": "Overdue",
+            "overdueIn": "Overdue by {{time}}",
+            "phone": "Phone",
+            "received": "Received",
+            "remainingIn": "Remaining {{time}}",
+            "resolve": "Resolution",
+            "respondedAt": "Responded at {{date}}",
+            "slaDays": "{{count}} day SLA",
+            "title": "SLA timeline"
+        },
+        "statusFlow": {
+            "changeStatus": "Change status",
+            "completedHint": "Completed",
+            "currentShort": "Current",
+            "currentStatus": "Current status",
+            "expected": "Expected",
+            "expectedLeadTime": "Expected lead time",
+            "loading": "Loading workflow...",
+            "noStatusesConfigured": "No statuses configured for this workflow.",
+            "noteDescription": "Add context for this status change",
+            "noteLabel": "Update note",
+            "notePlaceholder": "Explain why you are changing this status",
+            "noteRequired": "A note is required.",
+            "pendingHint": "Pending",
+            "workflowLoadError": "Could not load workflow statuses."
+        },
+        "statusModal": {
+            "clickToSelect": "Click a step to select it",
+            "currentStatus": "Current status",
+            "expectedLeadTime": "Expected lead time",
+            "footer": "Status updates are logged in the audit trail.",
+            "lastStep": "This is the last step",
+            "leadTime": "Lead time",
+            "loading": "Loading...",
+            "nextStep": "Next step",
+            "noteDescription": "Required for auditability",
+            "noteLabel": "Status update note",
+            "notePlaceholder": "Add a reason for this status update",
+            "noteRequiredAlert": "Please provide a note before updating status.",
+            "processSteps": "Process steps",
+            "rollbackNotAllowedAlert": "Rollback is not allowed by workflow settings.",
+            "selected": "Selected",
+            "selectStep": "Select a step",
+            "title": "Update case status",
+            "whatNext": "What happens next?",
+            "workflowFallback": "Workflow"
+        },
+        "toasts": {
+            "assignmentRemoved": "Assignment removed",
+            "attachmentAddedAction": "Attachment added",
+            "caseDetailsChanged": "Case details changed",
+            "changedFields": "Changed fields: {{fields}}",
+            "filesUploaded": "Files uploaded successfully",
+            "filesUploadError": "Could not upload all files",
+            "handlerAssigned": "Handler assigned",
+            "messageSentAction": "Message sent",
+            "noteAndAttachmentsSaved": "Note and attachments saved",
+            "statusChangedTo": "Status changed to {{status}}",
+            "statusEmailPreferenceUpdated": "Status email preference updated",
+            "statusEmailPreferenceUpdateError": "Could not update status email preference",
+            "statusEmailsDisabled": "Status emails disabled",
+            "statusEmailsEnabled": "Status emails enabled",
+            "uploadedFile": "Uploaded {{name}}",
+            "uploadingFiles": "Uploading {{count}} file(s)..."
+        }
+    },
+    "ui": {
+        "select": {
+            "placeholder": "Selectionner une option",
+            "selectOption": "Selectionner...",
+            "searchOptions": "Rechercher des options...",
+            "noOptionsFound": "Aucune option trouvee",
+            "noOptionsAvailable": "Aucune option disponible",
+            "clearAll": "Tout effacer",
+            "itemsSelected": "{{count}} elements selectionnes",
+            "maximumSelectionsReached": "Maximum de {{max}} selections atteint"
+        }
+    },
+    "ticketDetailsView": {
+        "unknown": "Inconnu",
+        "common": {
+            "send": "Envoyer",
+            "download": "Télécharger"
+        },
+        "attachments": {
+            "noDownloadUrl": "Aucune URL de téléchargement disponible"
+        },
+        "communication": {
+            "help": "Posez des questions ou ajoutez des informations",
+            "secured": "Sécurisé",
+            "startBySending": "Commencez par envoyer votre premier message",
+            "you": "Vous",
+            "handler": "Gestionnaire",
+            "sending": "Envoi en cours...",
+            "read": "Lu",
+            "messagePlaceholder": "Saisissez votre message",
+            "addAttachment": "Ajouter un fichier",
+            "messageHotkeyHint": "Appuyez sur Entrée pour envoyer, Maj+Entrée pour une nouvelle ligne"
+        },
+        "metadata": {
+            "screenResolution": "Résolution d'écran",
+            "timezone": "Fuseau horaire",
+            "language": "Langue",
+            "platform": "Plateforme",
+            "submissionDetails": "Détails de soumission",
+            "userAgent": "User-Agent"
+        },
+        "activity": {
+            "title": "Historique des actions",
+            "empty": "Aucune action pour le moment",
+            "defaultAction": "Action",
+            "caseCreated": "Dossier créé",
+            "newReportReceived": "Nouveau signalement reçu via le formulaire anonyme",
+            "system": "Système"
+        },
+        "sla": {
+            "title": "Statut SLA",
+            "firstResponse": "Première réponse",
+            "nextStep": "Étape suivante",
+            "resolve": "Résolution",
+            "expected": "Prévu",
+            "overdue": "En retard",
+            "pending": "En attente",
+            "completed": "Terminé",
+            "remainingIn": "Reste {{time}}",
+            "overdueIn": "{{time}} de retard",
+            "dueBy": "Au plus tard le {{date}}",
+            "expectedBy": "Prévu pour le {{date}}",
+            "respondedAt": "Répondu le {{date}}",
+            "notConfigured": "Non configuré",
+            "dayShort": "j",
+            "hourShort": "h"
+        }
     }
 }
-
-
-
-

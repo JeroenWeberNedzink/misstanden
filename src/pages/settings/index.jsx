@@ -150,11 +150,11 @@ const getCategoryMeta = (t) => ({
     iconColor: 'text-yellow-600'
   },
   locations: {
-    label: 'Locations',
+    label: t('settings.categories.locations'),
     icon: 'MapPin',
     isSpecial: true,
     priority: 11,
-    description: 'Manage countries available for incident reporting',
+    description: t('settings.categories.locationsDescription'),
     color: 'from-teal-500 to-emerald-600',
     bgColor: 'bg-gradient-to-br from-teal-50 to-emerald-50',
     iconBg: 'bg-teal-100',
@@ -362,7 +362,7 @@ export default function SystemSettingsAdmin() {
                       pageMode === 'settings' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
-                    Instellingen
+                    {t('settings.tabs.settings')}
                   </button>
                   <button
                     onClick={() => setPageMode('admin')}
@@ -370,7 +370,7 @@ export default function SystemSettingsAdmin() {
                       pageMode === 'admin' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
-                    Admin Center
+                    {t('settings.tabs.adminCenter')}
                   </button>
                 </div>
               </div>
@@ -467,7 +467,7 @@ export default function SystemSettingsAdmin() {
                   size="sm"
                 >
                   <span className="hidden sm:inline">{t('settings.refresh')}</span>
-                  <span className="sm:hidden">Refresh</span>
+                  <span className="sm:hidden">{t('common.refresh')}</span>
                 </Button>
 
                 <Button
@@ -478,8 +478,8 @@ export default function SystemSettingsAdmin() {
                   disabled={isLoading || isSaving || dirtyKeys.length === 0}
                   size="sm"
                 >
-                  <span className="hidden sm:inline">Reset All</span>
-                  <span className="sm:hidden">Reset</span>
+                  <span className="hidden sm:inline">{t('settings.actions.resetAll')}</span>
+                  <span className="sm:hidden">{t('settings.actions.reset')}</span>
                 </Button>
 
                 <Button
@@ -524,7 +524,9 @@ export default function SystemSettingsAdmin() {
               <div className="space-y-4">
                 <div className="text-sm text-muted-foreground mb-4 flex items-center gap-2">
                   <Icon name="Search" size={16} />
-                  <span>Found {filteredRows.length} {filteredRows.length === 1 ? 'result' : 'results'} for "<strong>{searchQuery}</strong>"</span>
+                  <span>
+                    {t(filteredRows.length === 1 ? 'settings.search.result' : 'settings.search.results', { count: filteredRows.length })} {t('settings.search.for')} "<strong>{searchQuery}</strong>"
+                  </span>
                 </div>
                 {filteredCategories.map((category) => {
                   const meta = categoryMeta[category] || { label: category, icon: 'Folder' };
@@ -784,9 +786,9 @@ export default function SystemSettingsAdmin() {
                 {filteredCategories.length === 0 && (
                   <div className="rounded-2xl border border-border bg-card p-16 flex flex-col items-center justify-center gap-3">
                     <Icon name="Search" size={48} className="text-muted-foreground/30" />
-                    <div className="text-sm font-medium text-foreground">No settings found</div>
+                    <div className="text-sm font-medium text-foreground">{t('settings.empty.noSettingsFound')}</div>
                     <div className="text-xs text-muted-foreground">
-                      Try adjusting your search query
+                      {t('settings.empty.tryAdjustSearch')}
                     </div>
                   </div>
                 )}

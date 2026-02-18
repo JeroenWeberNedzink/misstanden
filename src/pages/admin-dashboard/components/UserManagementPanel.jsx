@@ -38,7 +38,7 @@ const StatusBadge = ({ active }) => {
   );
 };
 
-const UserCard = ({ user, onEdit, onDelete }) => {
+const UserCard = ({ user, onEdit, onDelete, disabled = false }) => {
   const name = user.name || user.fullName || user.username || `User #${user.id}`;
   const email = user.email || user.mail || '-';
   const active = Boolean(user.isActive ?? user.active);
@@ -93,13 +93,15 @@ const UserCard = ({ user, onEdit, onDelete }) => {
             <div className="flex items-center gap-1">
               <button
                 onClick={() => onEdit(user)}
+                disabled={disabled}
                 className="p-2 hover:bg-primary/10 rounded-lg transition-colors group/edit"
                 title="Bewerk gebruiker"
               >
                 <Icon name="Pencil" size={16} className="text-muted-foreground group-hover/edit:text-primary" />
               </button>
               <button
-                onClick={() => onDelete(user.id)}
+                onClick={() => onDelete(user)}
+                disabled={disabled}
                 className="p-2 hover:bg-error/10 rounded-lg transition-colors group/delete"
                 title="Verwijder gebruiker"
               >
@@ -131,6 +133,7 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [deleteRetry, setDeleteRetry] = useState(null);
 
   // Filter users
   const filteredUsers = useMemo(() => {
@@ -184,9 +187,13 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
     setShowUserModal(true);
   };
 
-  const handleDeleteUser = async (userId) => {
+  const handleDeleteUser = async (user) => {
+    const userId = user?.id;
+    const userName = user?.name || user?.fullName || user?.username || 'Deze gebruiker';
+    if (!userId) return;
+
     // Use window.confirm to ensure it works
-    const confirmed = window.confirm('Weet je zeker dat je deze gebruiker permanent wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.');
+    const confirmed = window.confirm(`Weet je zeker dat je ${userName} permanent wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.`);
     if (!confirmed) {
       console.log('Delete cancelled by user');
       return;
@@ -196,9 +203,9 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
 
     try {
       setIsBusy(true);
-      // Hard delete - permanently remove from database
       const result = await ticketService.deleteHandler(userId, { hard: true });
       console.log('Delete result:', result);
+      setDeleteRetry(null);
       onShowToast?.('Gebruiker permanent verwijderd');
 
       // Refresh in background
@@ -207,7 +214,47 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
       });
     } catch (err) {
       console.error('Delete error:', err);
-      onShowToast?.(`Fout bij verwijderen: ${err.message || 'Onbekende fout'}`, true);
+      if (err?.code === 'FK_HAS_RELATIONS') {
+        const assignedTickets = Number(err?.assignedTickets || 0);
+        setDeleteRetry({
+          userId,
+          userName,
+          assignedTickets,
+          message: err?.message || 'Verwijderen geblokkeerd door gekoppelde gegevens.',
+        });
+        onShowToast?.(
+          `${userName} kon niet direct worden verwijderd. Gebruik "Opnieuw proberen" om eerst ${assignedTickets} ticket(s) los te koppelen.`,
+          true
+        );
+      } else {
+        onShowToast?.(`Fout bij verwijderen: ${err.message || 'Onbekende fout'}`, true);
+      }
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleRetryDelete = async () => {
+    if (!deleteRetry?.userId) return;
+
+    const { userId, userName } = deleteRetry;
+
+    try {
+      setIsBusy(true);
+      const result = await ticketService.deleteHandler(userId, { hard: true, forceDetach: true });
+      const count = Number(result?.autoUnassignedTickets || 0);
+
+      setDeleteRetry(null);
+      onShowToast?.(
+        `${userName} verwijderd. ${count} ticket(s) automatisch ontkoppeld.`,
+        false
+      );
+      onRefresh?.().catch(err => {
+        console.error('Refresh error after retry delete:', err);
+      });
+    } catch (err) {
+      console.error('Retry delete error:', err);
+      onShowToast?.(`Opnieuw verwijderen mislukt: ${err.message || 'Onbekende fout'}`, true);
     } finally {
       setIsBusy(false);
     }
@@ -332,6 +379,39 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
         </p>
       </div>
 
+      {deleteRetry && (
+        <div className="rounded-xl border border-warning/40 bg-warning/10 p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">Verwijderen geblokkeerd voor {deleteRetry.userName}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {deleteRetry.assignedTickets} ticket(s) zijn nog gekoppeld. Klik op opnieuw proberen om deze eerst automatisch los te koppelen en daarna de handler te verwijderen.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteRetry(null)}
+                disabled={isBusy}
+              >
+                Sluiten
+              </Button>
+              <Button
+                variant="warning"
+                size="sm"
+                iconName="RefreshCw"
+                iconPosition="left"
+                onClick={handleRetryDelete}
+                loading={isBusy}
+              >
+                Opnieuw proberen
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* User Grid */}
       {filteredUsers.length === 0 ? (
         <div className="text-center py-16 bg-white/40 border border-blue-100 rounded-2xl">
@@ -349,6 +429,7 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
               user={user}
               onEdit={handleEditUser}
               onDelete={handleDeleteUser}
+              disabled={isBusy}
             />
           ))}
         </div>

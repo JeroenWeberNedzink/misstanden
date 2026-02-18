@@ -1,4 +1,4 @@
-﻿{
+{
     "common": {
         "loading": "Laden...",
         "error": "Fout",
@@ -353,7 +353,7 @@
         "privacyGDPRDesc": "Volledig conform Nederlandse privacywetgeving en AVG-regelgeving.",
         "privacyNoRepercussions": "Geen Repercussies",
         "privacyNoRepercussionsDesc": "Meldingen worden vertrouwelijk behandeld zonder gevolgen voor de melder.",
-        "privacyNote": "Uw melding is volledig anoniem. Contactgegevens zijn optioneel en worden veilig opgeslagen.",
+        "privacyNote": "Uw privacy is belangrijk voor ons. Alle meldingen worden vertrouwelijk en veilig behandeld.",
         "workflow": "Incidenttype",
         "workflowHelp": "Selecteer de categorie die uw melding het beste beschrijft",
         "workflowRequired": "Workflow is verplicht",
@@ -438,17 +438,14 @@
         "skipStep": "Deze stap overslaan",
         "continue": "Doorgaan",
         "back": "Terug",
-        "supportedFormats": "Ondersteunde formaten",
         "fileRequirements": "Bestandsvereisten",
-        "maxFileSize": "Maximale bestandsgrootte: 10MB per bestand",
         "multipleFilesAllowed": "Meerdere bestanden toegestaan",
         "filesStoredSecurely": "Bestanden worden veilig opgeslagen",
         "filesReady": "bestand(en) klaar",
-        "filesWillBeUploaded": "Uw bestanden worden geÃ¼pload met uw melding",
+        "filesWillBeUploaded": "Uw bestanden worden geï¿½pload met uw melding",
         "incidentType": "Incidenttype",
         "anonymousReport": "Anonieme Melding",
-        "anonymousDescription": "Deze melding wordt anoniem ingediend zonder contactgegevens.",
-        "privacyNote": "Uw privacy is belangrijk voor ons. Alle meldingen worden vertrouwelijk en veilig behandeld."
+        "anonymousDescription": "Deze melding wordt anoniem ingediend zonder contactgegevens."
     },
     "reportConfirmation": {
         "title": "Melding Succesvol Ingediend",
@@ -487,26 +484,26 @@
         }
     },
     "ticketDetails": {
-        "title": "Ticketdetails",
-        "reportDetails": "Rapportdetails",
+        "title": "Meldingsdetails",
+        "reportDetails": "Meldingsoverzicht",
         "workflow": "Workflow",
         "severity": "Ernst",
         "location": "Locatie",
         "locationNotProvided": "Niet opgegeven",
         "description": "Beschrijving",
-        "submittedOn": "Ingediend Op",
+        "submittedOn": "Ingediend op",
         "lastUpdated": "Laatst Bijgewerkt",
-        "statusTimeline": "Statustijdlijn",
+        "statusTimeline": "SLA-tijdlijn",
         "attachments": "Bijlagen",
-        "communication": "Communicatielog",
-        "privacyReminder": "Dit is een anonieme melding. Alle communicatie is vertrouwelijk.",
+        "communication": "Communicatie",
+        "privacyReminder": "End-to-end versleuteld. Uw privacy is beschermd.",
         "noAttachments": "Geen bijlagen",
         "noMessages": "Nog geen berichten",
         "loadingReport": "Melding laden...",
-        "errorLoadingTicket": "Fout bij het laden van ticket gegevens",
+        "errorLoadingTicket": "Fout bij het laden van meldingsgegevens",
         "ticketNotFound": "Melding niet gevonden",
         "ticketNotFoundDescription": "De opgevraagde melding kon niet worden geladen",
-        "backToAccessPortal": "Terug naar Toegangsportaal",
+        "backToAccessPortal": "Terug naar toegangsportaal",
         "reportReceived": "Melding ontvangen en geregistreerd in het systeem"
     },
     "caseManagement": {
@@ -555,7 +552,7 @@
         "to": "naar",
         "reporter": "Melder",
         "handler": "Handler",
-        "uploadedBy": "GeÃ¼pload door",
+        "uploadedBy": "Geüpload door",
         "low": "Laag",
         "medium": "Gemiddeld",
         "high": "Hoog",
@@ -658,7 +655,9 @@
             "retention": "Data Bewaring",
             "retentionDescription": "Hoe lang data bewaard blijft",
             "danger": "Geavanceerd",
-            "dangerDescription": "Geavanceerde systeembeheer"
+            "dangerDescription": "Geavanceerde systeembeheer",
+            "locations": "Locaties",
+            "locationsDescription": "Beheer landen die beschikbaar zijn voor meldingen"
         },
         "fields": {
             "value": "Waarde",
@@ -680,12 +679,12 @@
             "setupInstructions": "Scan de QR-code hieronder met uw authenticator app",
             "scanQR": "Scan QR Code",
             "enterCode": "Voer de 6-cijferige code in van uw authenticator app",
-            "verifyCode": "Code VerifiÃ«ren",
-            "verifying": "VerifiÃ«ren...",
+            "verifyCode": "Code Verifiï¿½ren",
+            "verifying": "Verifiï¿½ren...",
             "backupCodes": "Backup Codes",
             "backupCodesDescription": "Bewaar deze backup codes op een veilige plaats. Elk kan eenmaal gebruikt worden als u de toegang tot uw authenticator verliest.",
             "downloadCodes": "Codes Downloaden",
-            "copyCodes": "Codes KopiÃ«ren",
+            "copyCodes": "Codes Kopiï¿½ren",
             "codesCopied": "Codes gekopieerd naar klembord",
             "regenerateCodes": "Backup Codes Opnieuw Genereren",
             "appRecommendations": "Aanbevolen apps: Google Authenticator, Microsoft Authenticator, Authy",
@@ -709,7 +708,7 @@
             "saveError": "Opslaan mislukt."
         },
         "navigation": {
-            "backToCategories": "Terug naar CategorieÃ«n",
+            "backToCategories": "Terug naar categorie?n",
             "chooseCategory": "Kies een categorie om instellingen te beheren",
             "chooseCategoryDescription": "Klik op een categorie hieronder om de instellingen te bekijken en te bewerken",
             "clickToConfigure": "Klik om te configureren",
@@ -717,11 +716,28 @@
             "setting": "instelling",
             "settings": "instellingen",
             "modified": "gewijzigd"
+        },
+        "tabs": {
+            "settings": "Instellingen",
+            "adminCenter": "Admin Center"
+        },
+        "actions": {
+            "resetAll": "Alles resetten",
+            "reset": "Reset"
+        },
+        "search": {
+            "result": "{{count}} resultaat",
+            "results": "{{count}} resultaten",
+            "for": "voor"
+        },
+        "empty": {
+            "noSettingsFound": "Geen instellingen gevonden",
+            "tryAdjustSearch": "Pas je zoekopdracht aan"
         }
     },
     "adminDashboard": {
         "title": "Admin Center",
-        "subtitle": "EÃ©n plek voor beheer van accounts, toegang en workflows",
+        "subtitle": "Eï¿½n plek voor beheer van accounts, toegang en workflows",
         "backToModules": "Terug naar Modules",
         "modules": {
             "users": {
@@ -764,13 +780,13 @@
                 "languageCodePlaceholder": "bijv. es, it, pt",
                 "languageCodeHelp": "2-letterige ISO code (bijv. es voor Spaans)",
                 "languageName": "Taalnaam",
-                "languageNamePlaceholder": "bijv. EspaÃ±ol, Italiano",
+                "languageNamePlaceholder": "bijv. Espaï¿½ol, Italiano",
                 "cancel": "Annuleren",
                 "add": "Taal Toevoegen"
             },
             "messages": {
                 "saved": "Vertalingen succesvol opgeslagen",
-                "exported": "Vertalingen succesvol geÃ«xporteerd",
+                "exported": "Vertalingen succesvol geï¿½xporteerd",
                 "imported": "Bestand geladen. Klik op Opslaan om wijzigingen toe te passen.",
                 "invalidFile": "Ongeldig JSON bestand",
                 "languageExists": "Taal bestaat al",
@@ -781,12 +797,12 @@
     },
     "legalGuidance": {
         "title": "Juridische Begeleiding voor Klokkenluiders",
-        "subtitle": "Uitgebreide landspecifieke juridische kaders en procedures voor Nederland, BelgiÃ«, Duitsland en Frankrijk",
+        "subtitle": "Uitgebreide landspecifieke juridische kaders en procedures voor Nederland, België, Duitsland en Frankrijk",
         "footer": "Veilig & Vertrouwelijk Melden",
         "searchPlaceholder": "Zoek juridische onderwerpen, procedures of contacten...",
         "countries": {
             "netherlands": "Nederland",
-            "belgium": "BelgiÃ«",
+            "belgium": "België",
             "germany": "Duitsland",
             "france": "Frankrijk"
         },
@@ -836,7 +852,7 @@
                     "Vertrouwelijkheid gewaarborgd"
                 ],
                 "features": [
-                    "Bundesamt fÃ¼r Justiz als extern kanaal",
+                    "Bundesamt für Justiz als extern kanaal",
                     "Anonieme meldingen toegestaan",
                     "Online formulier beschikbaar",
                     "Geen verplicht anoniem systeem"
@@ -985,10 +1001,10 @@
                     },
                     {
                         "title": "Externe Melding",
-                        "description": "Melding bij Bundesamt fÃ¼r Justiz of andere bevoegde autoriteit",
+                        "description": "Melding bij Bundesamt für Justiz of andere bevoegde autoriteit",
                         "timeline": "Na interne procedure of direct",
                         "steps": [
-                            "Online formulier bij Bundesamt fÃ¼r Justiz",
+                            "Online formulier bij Bundesamt für Justiz",
                             "Anonieme melding mogelijk",
                             "Strikte gegevensopslag regels"
                         ]
@@ -1023,7 +1039,7 @@
                         "timeline": "Binnen redelijke termijn",
                         "steps": [
                             "Onderzoek gestart door bevoegde afdeling",
-                            "Melder wordt geÃ¯nformeerd over voortgang",
+                            "Melder wordt geïnformeerd over voortgang",
                             "Vertrouwelijkheid gewaarborgd"
                         ]
                     },
@@ -1113,7 +1129,7 @@
             ],
             "germany": [
                 {
-                    "name": "Bundesamt fÃ¼r Justiz",
+                    "name": "Bundesamt für Justiz",
                     "role": "Federale Meldstelle voor Klokkenluiders",
                     "type": "authority",
                     "website": "https://www.bundesjustizamt.de",
@@ -1122,7 +1138,7 @@
             ],
             "france": [
                 {
-                    "name": "Agence FranÃ§aise Anticorruption (AFA)",
+                    "name": "Agence Française Anticorruption (AFA)",
                     "role": "Franse Anti-Corruptie Agentschap",
                     "type": "authority",
                     "website": "https://www.agence-francaise-anticorruption.gouv.fr",
@@ -1130,7 +1146,7 @@
                 },
                 {
                     "name": "ANSSI",
-                    "role": "Agence Nationale de la SÃ©curitÃ© des SystÃ¨mes d'Information",
+                    "role": "Agence Nationale de la Sécurité des Systèmes d'Information",
                     "type": "authority",
                     "email": "lanceurdalerte@ssi.gouv.fr",
                     "phone": "+33 171758468",
@@ -1138,12 +1154,12 @@
                 },
                 {
                     "name": "ANSES",
-                    "role": "Agence Nationale de SÃ©curitÃ© Sanitaire",
+                    "role": "Agence Nationale de Sécurité Sanitaire",
                     "type": "authority",
                     "email": "lanceurdalerte@anses.fr"
                 },
                 {
-                    "name": "AutoritÃ© de la Concurrence",
+                    "name": "Autorité de la Concurrence",
                     "role": "Franse Mededingingsautoriteit",
                     "type": "authority",
                     "phone": "+33 155040005",
@@ -1152,11 +1168,254 @@
                 },
                 {
                     "name": "IGEDD",
-                    "role": "Inspection GÃ©nÃ©rale de l'Environnement et du DÃ©veloppement Durable",
+                    "role": "Inspection Générale de l'Environnement et du Développement Durable",
                     "type": "authority",
                     "website": "https://www.igedd.developpement-durable.gouv.fr/lanceur-d-alerte-signaler-une-atteinte-a-l-a3965.html"
                 }
             ]
+        }
+    },
+    "caseManagementDetail": {
+        "common": {
+            "confirm": "Confirm",
+            "download": "Download",
+            "less": "Less",
+            "more": "More",
+            "new": "New",
+            "optional": "Optional",
+            "preview": "Preview",
+            "remove": "Remove",
+            "send": "Send",
+            "status": "Status",
+            "unknown": "Unknown",
+            "update": "Update"
+        },
+        "header": {
+            "share": "Share"
+        },
+        "details": {
+            "createdClient": "Created (client)",
+            "descriptionPlaceholder": "Describe the incident in detail",
+            "locationPlaceholder": "Where did this happen?",
+            "noContactInfo": "No contact information was provided.",
+            "noMetadata": "No metadata available.",
+            "notProvided": "Not provided",
+            "tabContact": "Contact",
+            "tabLocation": "Location",
+            "tabMeta": "Metadata",
+            "timezone": "Timezone",
+            "unsavedChanges": "You have unsaved changes.",
+            "userAgent": "User agent",
+            "viewport": "Viewport"
+        },
+        "attachments": {
+            "add": "Add file",
+            "attachmentAlt": "Attachment {{name}}",
+            "by": "by",
+            "downloadUnavailableReason": "This attachment has no downloadable URL.",
+            "files": "files",
+            "noDownloadUrl": "No download URL available",
+            "openInNewTab": "Open in new tab",
+            "previewUnavailable": "Preview is not available for this file type."
+        },
+        "notes": {
+            "addHint": "Add an internal note to start the investigation log.",
+            "attachment": "Attach file",
+            "auditReady": "This note is audit-ready",
+            "internalAttachments": "Internal attachments",
+            "internalOnly": "Internal only",
+            "internalOnlyDescription": "Visible to handlers only",
+            "newNoteLabel": "New note",
+            "newNotePlaceholder": "Add an internal investigation note",
+            "none": "No investigation notes yet."
+        },
+        "communication": {
+            "anonymousNoDirect": "Reporter is anonymous. Direct messaging is unavailable.",
+            "encryption": "Encrypted channel",
+            "fullyAnonymous": "Fully anonymous",
+            "messageLabel": "Message",
+            "messagePlaceholder": "Type your message",
+            "noContact": "No contact information",
+            "read": "Read",
+            "replyPrompt": "Reply to keep the reporter informed.",
+            "secureChat": "Secure communication",
+            "secured": "Secured",
+            "startBySending": "Start by sending the first message.",
+            "startPrompt": "Start communication with the reporter.",
+            "write": "Write"
+        },
+        "actionHistory": {
+            "changesAppear": "Changes will appear here once actions are performed.",
+            "defaultAction": "Action",
+            "log": "Activity log",
+            "multipleActions": "actions",
+            "noActions": "No actions yet.",
+            "singleAction": "action"
+        },
+        "management": {
+            "assignDescription": "Assign this case to a handler",
+            "changeStatusCta": "Change status (current: {{status}})",
+            "escalateToManagement": "Escalate to management",
+            "notAssignedDescription": "No handler assigned",
+            "priorityCriticalDesc": "Immediate response required",
+            "priorityDescription": "Set handling priority",
+            "priorityHighDesc": "High urgency",
+            "priorityLevel": "Priority level",
+            "priorityLowDesc": "Low urgency",
+            "priorityMediumDesc": "Normal urgency",
+            "savingChange": "Saving changes...",
+            "statusEmailsDescription": "Reporter receives an email when status changes",
+            "statusEmailsLabel": "Status change emails"
+        },
+        "sla": {
+            "breached": "SLA breached",
+            "contact": "Contact",
+            "contactPerson": "Contact person",
+            "days": "days",
+            "dayShort": "d",
+            "dueBy": "Due by {{date}}",
+            "email": "Email",
+            "expected": "Expected",
+            "expectedBy": "Expected by {{date}}",
+            "firstResponse": "First response",
+            "hourShort": "h",
+            "inProgress": "In progress",
+            "name": "Name",
+            "nextStep": "Next step",
+            "notConfigured": "Not configured",
+            "note": "Note",
+            "overdue": "Overdue",
+            "overdueIn": "Overdue by {{time}}",
+            "phone": "Phone",
+            "received": "Received",
+            "remainingIn": "Remaining {{time}}",
+            "resolve": "Resolution",
+            "respondedAt": "Responded at {{date}}",
+            "slaDays": "{{count}} day SLA",
+            "title": "SLA timeline"
+        },
+        "statusFlow": {
+            "changeStatus": "Change status",
+            "completedHint": "Completed",
+            "currentShort": "Current",
+            "currentStatus": "Current status",
+            "expected": "Expected",
+            "expectedLeadTime": "Expected lead time",
+            "loading": "Loading workflow...",
+            "noStatusesConfigured": "No statuses configured for this workflow.",
+            "noteDescription": "Add context for this status change",
+            "noteLabel": "Update note",
+            "notePlaceholder": "Explain why you are changing this status",
+            "noteRequired": "A note is required.",
+            "pendingHint": "Pending",
+            "workflowLoadError": "Could not load workflow statuses."
+        },
+        "statusModal": {
+            "clickToSelect": "Click a step to select it",
+            "currentStatus": "Current status",
+            "expectedLeadTime": "Expected lead time",
+            "footer": "Status updates are logged in the audit trail.",
+            "lastStep": "This is the last step",
+            "leadTime": "Lead time",
+            "loading": "Loading...",
+            "nextStep": "Next step",
+            "noteDescription": "Required for auditability",
+            "noteLabel": "Status update note",
+            "notePlaceholder": "Add a reason for this status update",
+            "noteRequiredAlert": "Please provide a note before updating status.",
+            "processSteps": "Process steps",
+            "rollbackNotAllowedAlert": "Rollback is not allowed by workflow settings.",
+            "selected": "Selected",
+            "selectStep": "Select a step",
+            "title": "Update case status",
+            "whatNext": "What happens next?",
+            "workflowFallback": "Workflow"
+        },
+        "toasts": {
+            "assignmentRemoved": "Assignment removed",
+            "attachmentAddedAction": "Attachment added",
+            "caseDetailsChanged": "Case details changed",
+            "changedFields": "Changed fields: {{fields}}",
+            "filesUploaded": "Files uploaded successfully",
+            "filesUploadError": "Could not upload all files",
+            "handlerAssigned": "Handler assigned",
+            "messageSentAction": "Message sent",
+            "noteAndAttachmentsSaved": "Note and attachments saved",
+            "statusChangedTo": "Status changed to {{status}}",
+            "statusEmailPreferenceUpdated": "Status email preference updated",
+            "statusEmailPreferenceUpdateError": "Could not update status email preference",
+            "statusEmailsDisabled": "Status emails disabled",
+            "statusEmailsEnabled": "Status emails enabled",
+            "uploadedFile": "Uploaded {{name}}",
+            "uploadingFiles": "Uploading {{count}} file(s)..."
+        }
+    },
+    "ui": {
+        "select": {
+            "placeholder": "Selecteer een optie",
+            "selectOption": "Selecteer...",
+            "searchOptions": "Zoek opties...",
+            "noOptionsFound": "Geen opties gevonden",
+            "noOptionsAvailable": "Geen opties beschikbaar",
+            "clearAll": "Alles verwijderen",
+            "itemsSelected": "{{count}} items geselecteerd",
+            "maximumSelectionsReached": "Maximum van {{max}} selecties bereikt"
+        }
+    },
+    "ticketDetailsView": {
+        "unknown": "Onbekend",
+        "common": {
+            "send": "Verzenden",
+            "download": "Downloaden"
+        },
+        "attachments": {
+            "noDownloadUrl": "Geen download-URL beschikbaar"
+        },
+        "communication": {
+            "help": "Stel vragen of voeg informatie toe",
+            "secured": "Beveiligd",
+            "startBySending": "Start door uw eerste bericht te sturen",
+            "you": "U",
+            "handler": "Behandelaar",
+            "sending": "Verzenden...",
+            "read": "Gelezen",
+            "messagePlaceholder": "Typ uw bericht",
+            "addAttachment": "Bestand toevoegen",
+            "messageHotkeyHint": "Druk op Enter om te verzenden, Shift+Enter voor een nieuwe regel"
+        },
+        "metadata": {
+            "screenResolution": "Schermresolutie",
+            "timezone": "Tijdzone",
+            "language": "Taal",
+            "platform": "Platform",
+            "submissionDetails": "Indieningsdetails",
+            "userAgent": "User agent"
+        },
+        "activity": {
+            "title": "Actiegeschiedenis",
+            "empty": "Nog geen acties",
+            "defaultAction": "Actie",
+            "caseCreated": "Zaak aangemaakt",
+            "newReportReceived": "Nieuwe melding ontvangen via het anonieme meldformulier",
+            "system": "Systeem"
+        },
+        "sla": {
+            "title": "SLA-status",
+            "firstResponse": "Eerste reactie",
+            "nextStep": "Volgende stap",
+            "resolve": "Oplossen",
+            "expected": "Verwacht",
+            "overdue": "Te laat",
+            "pending": "In afwachting",
+            "completed": "Afgerond",
+            "remainingIn": "Resterend {{time}}",
+            "overdueIn": "{{time}} te laat",
+            "dueBy": "Uiterlijk {{date}}",
+            "expectedBy": "Verwacht voor {{date}}",
+            "respondedAt": "Gereageerd op {{date}}",
+            "notConfigured": "Niet ingesteld",
+            "dayShort": "d",
+            "hourShort": "u"
         }
     }
 }

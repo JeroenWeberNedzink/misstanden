@@ -1,160 +1,206 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
 
-const parseDate = (value) => {
+const toDate = (value) => {
   if (!value) return null;
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
-const formatBadgeDate = (value) => {
-  const d = parseDate(value);
-  if (!d) return '-';
-  return d.toLocaleDateString('nl-NL', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
+const getState = ({ dueAt, doneAt }) => {
+  const doneDate = toDate(doneAt);
+  if (doneDate) return 'completed';
 
-const isOverdue = (value) => {
-  const d = parseDate(value);
-  return d ? d.getTime() < Date.now() : false;
-};
-
-const formatRemaining = (value) => {
-  const d = parseDate(value);
-  if (!d) return null;
-  const diffMs = d.getTime() - Date.now();
-  const isLate = diffMs < 0;
-  const absMs = Math.abs(diffMs);
-  const totalHours = Math.round(absMs / (1000 * 60 * 60));
-  const days = Math.floor(totalHours / 24);
-  const hours = totalHours % 24;
-  const parts = [];
-  if (days) parts.push(`${days}d`);
-  parts.push(`${hours}u`);
-  return { isLate, text: `${isLate ? 'Te laat' : 'Over'} ${parts.join(' ')}` };
+  const dueDate = toDate(dueAt);
+  if (!dueDate) return 'missing';
+  if (dueDate.getTime() < Date.now()) return 'overdue';
+  return 'upcoming';
 };
 
 export default function SLACompactCard({ sla, statusLabel, currentStatusDurationDays }) {
+  const { t, i18n } = useTranslation();
+
   if (!sla) return null;
-  const responseRemaining = formatRemaining(sla?.firstResponseDueAt);
-  const nextStepRemaining = formatRemaining(sla?.nextStepDueAt);
-  const resolutionRemaining = formatRemaining(sla?.resolutionDueAt);
+
+  const formatDate = (value) => {
+    const d = toDate(value);
+    if (!d) return '-';
+    return d.toLocaleString(i18n?.resolvedLanguage || i18n?.language || undefined, {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const formatRelative = (value) => {
+    const d = toDate(value);
+    if (!d) return null;
+
+    const diffMs = d.getTime() - Date.now();
+    const late = diffMs < 0;
+    const totalHours = Math.round(Math.abs(diffMs) / (1000 * 60 * 60));
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+
+    const parts = [];
+    if (days) parts.push(`${days}${t('caseManagementDetail.sla.dayShort')}`);
+    parts.push(`${hours}${t('caseManagementDetail.sla.hourShort')}`);
+
+    return late
+      ? t('caseManagementDetail.sla.overdueIn', { time: parts.join(' ') })
+      : t('caseManagementDetail.sla.remainingIn', { time: parts.join(' ') });
+  };
+
+  const milestones = useMemo(() => {
+    return [
+      {
+        id: 'first-response',
+        label: t('caseManagementDetail.sla.firstResponse'),
+        dueAt: sla?.firstResponseDueAt,
+        doneAt: sla?.firstResponseAt,
+        dateText: sla?.firstResponseAt
+          ? t('caseManagementDetail.sla.respondedAt', { date: formatDate(sla.firstResponseAt) })
+          : t('caseManagementDetail.sla.dueBy', { date: formatDate(sla?.firstResponseDueAt) }),
+      },
+      {
+        id: 'next-step',
+        label: t('caseManagementDetail.sla.nextStep'),
+        dueAt: sla?.nextStepDueAt,
+        doneAt: null,
+        dateText: t('caseManagementDetail.sla.expectedBy', { date: formatDate(sla?.nextStepDueAt) }),
+      },
+      {
+        id: 'resolution',
+        label: t('caseManagementDetail.sla.resolve'),
+        dueAt: sla?.resolutionDueAt,
+        doneAt: null,
+        dateText: t('caseManagementDetail.sla.expectedBy', { date: formatDate(sla?.resolutionDueAt) }),
+      },
+    ].map((item) => {
+      const state = getState(item);
+      return {
+        ...item,
+        state,
+        relativeText: item.dueAt ? formatRelative(item.dueAt) : null,
+      };
+    });
+  }, [sla, t]);
+
+  const hasOverdue = milestones.some((m) => m.state === 'overdue');
+  const activeMilestone = milestones.find((m) => m.state === 'upcoming') || null;
   const hasContact =
     Boolean(sla?.contactPersonName) ||
     Boolean(sla?.contactPersonEmail) ||
     Boolean(sla?.contactPersonPhone) ||
     Boolean(sla?.contactNotes);
-  const hasOverdue =
-    (!sla?.firstResponseAt && sla?.firstResponseDueAt && isOverdue(sla?.firstResponseDueAt)) ||
-    (sla?.nextStepDueAt && isOverdue(sla?.nextStepDueAt)) ||
-    (sla?.resolutionDueAt && isOverdue(sla?.resolutionDueAt));
+
+  const stateMeta = (state, itemId) => {
+    if (state === 'completed') {
+      return {
+        row: 'border-success/25 bg-success/5',
+        badge: 'bg-success/15 text-success',
+        icon: 'CheckCircle',
+        label: t('caseManagementDetail.sla.received'),
+      };
+    }
+
+    if (state === 'overdue') {
+      return {
+        row: 'border-destructive/25 bg-destructive/5',
+        badge: 'bg-destructive/15 text-destructive',
+        icon: 'AlertTriangle',
+        label: t('caseManagementDetail.sla.overdue'),
+      };
+    }
+
+    if (state === 'upcoming') {
+      return {
+        row: 'border-warning/25 bg-warning/10',
+        badge: 'bg-warning/20 text-warning',
+        icon: 'Clock',
+        label: itemId === 'first-response'
+          ? t('caseManagementDetail.sla.inProgress')
+          : t('caseManagementDetail.sla.expected'),
+      };
+    }
+
+    return {
+      row: 'border-border bg-muted/20',
+      badge: 'bg-muted text-muted-foreground',
+      icon: 'Clock',
+      label: '-',
+    };
+  };
 
   return (
-    <div className="bg-sky-50/70 border border-sky-200/60 rounded-2xl p-4 md:p-5">
-      <div className="flex items-center gap-2 mb-3">
-        <div className="w-9 h-9 rounded-xl bg-sky-100 flex items-center justify-center">
-          <Icon name="Clock" size={18} className="text-sky-700" />
-        </div>
-        <div>
-          <h3 className="text-sm font-semibold text-sky-900">SLA per huidige status</h3>
-          <p className="text-xs text-sky-700/80">{statusLabel || 'Onbekend'}</p>
-        </div>
-        {hasOverdue && (
-          <div className="ml-auto inline-flex items-center gap-1 rounded-full bg-sky-200 text-sky-900 px-2 py-1 text-[11px] font-semibold">
-            <Icon name="AlertTriangle" size={12} />
-            SLA overschreden
+    <div className="bg-card border border-border rounded-2xl overflow-hidden">
+      <div className="px-4 py-4 border-b border-border bg-muted/20">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">{t('caseManagementDetail.sla.title')}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">{statusLabel || t('caseManagementDetail.common.unknown')}</p>
           </div>
-        )}
-      </div>
 
-      <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-sky-100 text-sky-800 px-3 py-1 text-[11px] font-semibold">
-        <Icon name="Timer" size={12} />
-        {Number.isFinite(Number(currentStatusDurationDays))
-          ? `SLA: ${Number(currentStatusDurationDays)} dagen`
-          : 'SLA: niet ingesteld'}
+          <div className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${hasOverdue ? 'bg-destructive/15 text-destructive' : 'bg-success/15 text-success'}`}>
+            <Icon name={hasOverdue ? 'AlertTriangle' : 'CheckCircle'} size={12} />
+            {hasOverdue ? t('caseManagementDetail.sla.breached') : t('caseManagementDetail.sla.expected')}
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center gap-1 rounded-full bg-background border border-border px-2.5 py-1 text-[11px] font-semibold text-foreground">
+            <Icon name="Timer" size={12} />
+            {Number.isFinite(Number(currentStatusDurationDays))
+              ? t('caseManagementDetail.sla.slaDays', { count: Number(currentStatusDurationDays) })
+              : t('caseManagementDetail.sla.notConfigured')}
+          </div>
+
+          {activeMilestone?.relativeText && (
+            <div className="inline-flex items-center gap-1 rounded-full bg-warning/15 border border-warning/25 px-2.5 py-1 text-[11px] font-semibold text-warning">
+              <Icon name="Clock" size={12} />
+              {activeMilestone.relativeText}
+            </div>
+          )}
+        </div>
       </div>
 
       {hasContact && (
-        <div className="mb-3 rounded-xl border border-sky-100 bg-white/70 px-3 py-2">
-          <div className="text-[11px] font-semibold text-sky-900">Contactpersoon</div>
-          <div className="mt-1 space-y-0.5 text-[11px] text-sky-700/80">
-            {sla?.contactPersonName && <div>Naam: {sla.contactPersonName}</div>}
-            {sla?.contactPersonEmail && <div>Email: {sla.contactPersonEmail}</div>}
-            {sla?.contactPersonPhone && <div>Telefoon: {sla.contactPersonPhone}</div>}
-            {sla?.contactNotes && <div>Notitie: {sla.contactNotes}</div>}
+        <div className="px-4 py-3 border-b border-border bg-background">
+          <div className="text-[11px] font-semibold text-foreground mb-1">{t('caseManagementDetail.sla.contactPerson')}</div>
+          <div className="space-y-0.5 text-[11px] text-muted-foreground">
+            {sla?.contactPersonName && <div>{t('caseManagementDetail.sla.name')}: {sla.contactPersonName}</div>}
+            {sla?.contactPersonEmail && <div>{t('caseManagementDetail.sla.email')}: {sla.contactPersonEmail}</div>}
+            {sla?.contactPersonPhone && <div>{t('caseManagementDetail.sla.phone')}: {sla.contactPersonPhone}</div>}
+            {sla?.contactNotes && <div>{t('caseManagementDetail.sla.note')}: {sla.contactNotes}</div>}
           </div>
         </div>
       )}
 
-      <div className="space-y-2">
-        <div className="flex items-start justify-between gap-2 bg-white/70 border border-sky-100 rounded-xl px-3 py-2">
-          <div>
-            <div className="text-xs font-semibold text-sky-900">Eerste reactie</div>
-            <div className="text-[11px] text-sky-700/80">
-              {sla?.firstResponseAt
-                ? `Gereageerd op ${formatBadgeDate(sla.firstResponseAt)}`
-                : `Uiterlijk ${formatBadgeDate(sla?.firstResponseDueAt)}`}
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <span className="text-[11px] font-semibold text-sky-800">
-              {sla?.firstResponseAt ? 'Ontvangen' : isOverdue(sla?.firstResponseDueAt) ? 'Te laat' : 'In behandeling'}
-            </span>
-            {!sla?.firstResponseAt && responseRemaining && (
-              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                responseRemaining.isLate ? 'bg-sky-200 text-sky-900' : 'bg-sky-100 text-sky-800'
-              }`}>
-                {responseRemaining.text}
-              </span>
-            )}
-          </div>
-        </div>
+      <div className="p-4 space-y-2.5">
+        {milestones.map((milestone) => {
+          const meta = stateMeta(milestone.state, milestone.id);
+          return (
+            <div key={milestone.id} className={`rounded-xl border px-3 py-2.5 ${meta.row}`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="inline-flex items-center gap-2 min-w-0">
+                  <Icon name={meta.icon} size={14} />
+                  <span className="text-xs font-semibold text-foreground truncate">{milestone.label}</span>
+                </div>
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta.badge}`}>
+                  {meta.label}
+                </span>
+              </div>
 
-        <div className="flex items-start justify-between gap-2 bg-white/70 border border-sky-100 rounded-xl px-3 py-2">
-          <div>
-            <div className="text-xs font-semibold text-sky-900">Volgende stap</div>
-            <div className="text-[11px] text-sky-700/80">
-              Verwacht voor {formatBadgeDate(sla?.nextStepDueAt)}
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <span className="text-[11px] font-semibold text-sky-800">
-              {sla?.nextStepDueAt ? (isOverdue(sla?.nextStepDueAt) ? 'Te laat' : 'Verwacht') : '—'}
-            </span>
-            {nextStepRemaining && (
-              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                nextStepRemaining.isLate ? 'bg-sky-200 text-sky-900' : 'bg-sky-100 text-sky-800'
-              }`}>
-                {nextStepRemaining.text}
-              </span>
-            )}
-          </div>
-        </div>
+              <div className="mt-1 text-[11px] text-muted-foreground">{milestone.dateText}</div>
 
-        <div className="flex items-start justify-between gap-2 bg-white/70 border border-sky-100 rounded-xl px-3 py-2">
-          <div>
-            <div className="text-xs font-semibold text-sky-900">Oplossen</div>
-            <div className="text-[11px] text-sky-700/80">
-              Verwacht voor {formatBadgeDate(sla?.resolutionDueAt)}
+              {milestone.state !== 'completed' && milestone.relativeText && (
+                <div className="mt-1 text-[11px] font-semibold text-foreground">{milestone.relativeText}</div>
+              )}
             </div>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <span className="text-[11px] font-semibold text-sky-800">
-              {sla?.resolutionDueAt ? (isOverdue(sla?.resolutionDueAt) ? 'Te laat' : 'Verwacht') : '—'}
-            </span>
-            {resolutionRemaining && (
-              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                resolutionRemaining.isLate ? 'bg-sky-200 text-sky-900' : 'bg-sky-100 text-sky-800'
-              }`}>
-                {resolutionRemaining.text}
-              </span>
-            )}
-          </div>
-        </div>
+          );
+        })}
       </div>
     </div>
   );

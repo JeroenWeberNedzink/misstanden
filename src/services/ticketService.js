@@ -23,8 +23,8 @@ const friendlyHandlerError = (error, context = 'handlers') => {
     throw e;
   }
   if (isForeignKeyViolation(error)) {
-    const e = new Error('Deze gebruiker heeft nog tickets gekoppeld. Zet de gebruiker op inactief i.p.v. verwijderen.');
-    e.code = 'FK_HAS_TICKETS';
+    const e = new Error('Verwijderen mislukt omdat er nog gekoppelde gegevens bestaan.');
+    e.code = 'FK_HAS_RELATIONS';
     e.original = error;
     throw e;
   }
@@ -95,6 +95,67 @@ const getEndOfDayISO = (dateStr) => {
   const d = new Date(dateStr);
   d.setHours(23, 59, 59, 999);
   return d.toISOString();
+};
+
+const getAssignedTicketCount = async (handlerId) => {
+  const { count, error } = await supabase
+    .from('tickets')
+    .select('id', { count: 'exact', head: true })
+    .eq('handler_id', handlerId);
+
+  if (error) {
+    console.warn('[ticketService] Could not count assigned tickets before delete:', error);
+    return 0;
+  }
+
+  return Number(count || 0);
+};
+
+const detachHandlerReferences = async (handlerId, nowIso) => {
+  const warnings = [];
+  const stats = {
+    autoUnassignedTickets: 0,
+  };
+
+  stats.autoUnassignedTickets = await getAssignedTicketCount(handlerId);
+
+  const ops = [
+    {
+      label: 'tickets.handler_id',
+      run: () =>
+        supabase
+          .from('tickets')
+          .update({ handler_id: null, last_update_at: nowIso })
+          .eq('handler_id', handlerId),
+    },
+    {
+      label: 'handler_workflows',
+      run: () => supabase.from('handler_workflows').delete().eq('handler_id', handlerId),
+    },
+    {
+      label: 'handler_roles',
+      run: () => supabase.from('handler_roles').delete().eq('handler_id', handlerId),
+    },
+    {
+      label: 'messages.handler_id',
+      run: () => supabase.from('messages').update({ handler_id: null }).eq('handler_id', handlerId),
+    },
+    {
+      label: 'ticket_actions.handler_id',
+      run: () => supabase.from('ticket_actions').update({ handler_id: null }).eq('handler_id', handlerId),
+    },
+    {
+      label: 'email_notification_preferences',
+      run: () => supabase.from('email_notification_preferences').delete().eq('handler_id', handlerId),
+    },
+  ];
+
+  for (const op of ops) {
+    const { error } = await op.run();
+    if (error) warnings.push({ label: op.label, error });
+  }
+
+  return { warnings, stats };
 };
 
 const addDaysISO = (dateLike, days) => {
@@ -400,6 +461,11 @@ export const ticketService = {
       ? addDaysISO(nowIso, def.expectedDurationDays)
       : null;
 
+    const reporterLanguage = String(ticketData?.reporterLanguage || '')
+      .trim()
+      .toLowerCase()
+      .split('-')[0];
+
     const payload = {
       ticket_number: ticketNumber,
       access_code: accessCode,
@@ -423,6 +489,7 @@ export const ticketService = {
       metadata: {
         ...(ticketData.metadata || {}),
         status_label: def.label,
+        reporter_language: reporterLanguage || null,
         ...(ticketData?.isAnonymous ? {} : { reporter_meta_client: getClientMeta() }),
       },
 
@@ -730,46 +797,67 @@ async createHandler(handlerData = {}) {
 async deleteHandler(handlerId, options = {}) {
   if (!handlerId) throw new Error('handlerId is required');
 
-  const { hard = false } = options;
+  const { hard = false, forceDetach = false } = options;
 
   if (hard) {
-    // Cascade delete: unassign all tickets and remove workflow assignments first
     try {
-      // Step 1: Unassign all tickets assigned to this handler
-      const { error: unassignError } = await supabase
-        .from('tickets')
-        .update({ assigned_handler_id: null })
-        .eq('assigned_handler_id', handlerId);
+      const nowIso = new Date().toISOString();
+      const assignedTickets = await getAssignedTicketCount(handlerId);
+      let autoUnassignedTickets = 0;
 
-      if (unassignError) {
-        console.warn('Error unassigning tickets:', unassignError);
-        // Continue anyway - deletion might still work
+      if (forceDetach) {
+        // Best-effort detach of known relations before deleting handler.
+        const detachResult = await detachHandlerReferences(handlerId, nowIso);
+        autoUnassignedTickets = Number(detachResult?.stats?.autoUnassignedTickets || 0);
+
+        if (detachResult?.warnings?.length > 0) {
+          console.warn('[ticketService] Detach warnings before handler delete:', detachResult.warnings);
+        }
       }
 
-      // Step 2: Delete workflow assignments
-      const { error: workflowError } = await supabase
-        .from('handler_workflows')
-        .delete()
-        .eq('handler_id', handlerId);
+      let { error: deleteError } = await supabase.from('handlers').delete().eq('id', handlerId);
 
-      if (workflowError) {
-        console.warn('Error deleting workflow assignments:', workflowError);
-        // Continue anyway
+      // Retry once after another detach pass for strict FK environments.
+      if (deleteError && isForeignKeyViolation(deleteError) && forceDetach) {
+        const retryResult = await detachHandlerReferences(handlerId, nowIso);
+        autoUnassignedTickets = Math.max(
+          autoUnassignedTickets,
+          Number(retryResult?.stats?.autoUnassignedTickets || 0)
+        );
+        if (retryResult?.warnings?.length > 0) {
+          console.warn('[ticketService] Detach warnings on retry before handler delete:', retryResult.warnings);
+        }
+        const retry = await supabase.from('handlers').delete().eq('id', handlerId);
+        deleteError = retry.error;
       }
 
-      // Step 3: Delete the handler
-      const { error: deleteError } = await supabase
-        .from('handlers')
-        .delete()
-        .eq('id', handlerId);
-
-      if (deleteError) {
-        throw deleteError; // This is a critical error
+      if (deleteError && isForeignKeyViolation(deleteError) && !forceDetach) {
+        const e = new Error('Deze gebruiker heeft nog gekoppelde gegevens. Gebruik "Opnieuw proberen met auto-ontkoppelen".');
+        e.code = 'FK_HAS_RELATIONS';
+        e.assignedTickets = assignedTickets;
+        e.original = deleteError;
+        throw e;
       }
 
-      return { success: true, mode: 'hard' };
+      if (deleteError) throw deleteError;
+
+      return {
+        success: true,
+        mode: 'hard',
+        forceDetachApplied: Boolean(forceDetach),
+        autoUnassignedTickets: forceDetach ? autoUnassignedTickets : 0,
+      };
     } catch (error) {
-      // Use friendly error for known issues, otherwise rethrow
+      if (error?.code === 'FK_HAS_RELATIONS') {
+        throw error;
+      }
+      if (isForeignKeyViolation(error)) {
+        const e = new Error('Verwijderen mislukt: er zijn nog gekoppelde gegevens. Probeer opnieuw met auto-ontkoppelen.');
+        e.code = 'FK_HAS_RELATIONS';
+        e.assignedTickets = Number(error?.assignedTickets || 0);
+        e.original = error;
+        throw e;
+      }
       friendlyHandlerError(error, 'deleteHandler(hard)');
     }
   }
@@ -806,10 +894,36 @@ async deleteHandler(handlerId, options = {}) {
     if (!ticketId) throw new Error('ticketId is required');
 
     const nowIso = new Date().toISOString();
+    const normalizedHandlerId = handlerId || null;
+    let assignedHandler = null;
+
+    if (normalizedHandlerId) {
+      const { data: handler, error: handlerError } = await supabase
+        .from('handlers')
+        .select('id, name, email, active')
+        .eq('id', normalizedHandlerId)
+        .maybeSingle();
+
+      throwIfError(handlerError, 'assignHandler(fetch handler)');
+
+      if (!handler?.id) {
+        const e = new Error('Geselecteerde handler bestaat niet meer.');
+        e.code = 'HANDLER_NOT_FOUND';
+        throw e;
+      }
+
+      if (handler.active === false) {
+        const e = new Error('Inactieve handlers kunnen niet worden toegewezen.');
+        e.code = 'HANDLER_INACTIVE';
+        throw e;
+      }
+
+      assignedHandler = handler;
+    }
 
     const { data, error } = await supabase
       .from('tickets')
-      .update({ handler_id: handlerId || null, last_update_at: nowIso })
+      .update({ handler_id: normalizedHandlerId, last_update_at: nowIso })
       .eq('id', ticketId)
       .select()
       .single();
@@ -847,17 +961,9 @@ async deleteHandler(handlerId, options = {}) {
     const result = toCamelCase(data);
 
     // Send assignment notification to the newly assigned handler
-    if (handlerId) {
-      const { data: assignedHandler } = await supabase
-        .from('handlers')
-        .select('id, name, email')
-        .eq('id', handlerId)
-        .single();
-
-      if (assignedHandler) {
-        notificationService.notifyHandlerAssignment(result, assignedHandler)
-          .catch(err => console.error('Failed to send handler assignment notification:', err));
-      }
+    if (assignedHandler) {
+      notificationService.notifyHandlerAssignment(result, assignedHandler)
+        .catch(err => console.error('Failed to send handler assignment notification:', err));
     }
 
     return result;
@@ -990,8 +1096,17 @@ async deleteHandler(handlerId, options = {}) {
   },
 
   // ----- Lookups -----
-  async getAllHandlers() {
-    const { data, error } = await supabase.from('handlers').select('*').order('name');
+  async getAllHandlers(options = {}) {
+    const includeInactive = options.includeInactive !== undefined
+      ? Boolean(options.includeInactive)
+      : options.activeOnly !== undefined
+        ? !Boolean(options.activeOnly)
+        : true;
+
+    let query = supabase.from('handlers').select('*').order('name');
+    if (!includeInactive) query = query.eq('active', true);
+
+    const { data, error } = await query;
     throwIfError(error, 'getAllHandlers');
 
     // Enrich handlers with permissions from new RBAC system

@@ -15,7 +15,7 @@ const LocationField = ({ value, onChange, error, rulesByCountry = null }) => {
     // split only on first ":"
     const idx = String(locationString).indexOf(':');
     if (idx === -1) {
-      // if no colon, we treat it as "specific location" unless it matches a country code
+    // If no colon, treat it as specific location unless it matches a country code.
       const v = String(locationString).trim();
       if (/^[A-Z]{2}$/.test(v)) return { country: v, specificLocation: '' };
       return { country: '', specificLocation: v };
@@ -32,7 +32,7 @@ const LocationField = ({ value, onChange, error, rulesByCountry = null }) => {
 
     if (c && s) return `${c}: ${s}`;
     if (c) return c;
-    return s; // allow “custom only”
+    return s; // Allow custom-only input.
   };
 
   // Select components differ: sometimes we get event, value string, or option object
@@ -68,10 +68,10 @@ const LocationField = ({ value, onChange, error, rulesByCountry = null }) => {
         console.error('Error loading countries:', error);
         // Fallback to default countries if database fails
         setCountries([
-          { code: 'NL', name: 'Nederland' },
-          { code: 'BE', name: 'België' },
-          { code: 'FR', name: 'Frankrijk' },
-          { code: 'DE', name: 'Duitsland' },
+          { code: 'NL', name: 'Netherlands' },
+          { code: 'BE', name: 'Belgium' },
+          { code: 'FR', name: 'France' },
+          { code: 'DE', name: 'Germany' },
         ]);
       } finally {
         setIsLoadingCountries(false);
@@ -143,7 +143,7 @@ const LocationField = ({ value, onChange, error, rulesByCountry = null }) => {
           // Keep it editable always, even if country is selected
           description={
             countryRuleHint
-              ? `${t('reportForm.locationDescription')} • ${countryRuleHint}`
+              ? `${t('reportForm.locationDescription')} - ${countryRuleHint}`
               : t('reportForm.locationDescription')
           }
           required
@@ -152,7 +152,7 @@ const LocationField = ({ value, onChange, error, rulesByCountry = null }) => {
 
         {/* Small preview of stored value (optional, can remove) */}
         <div className="text-[11px] text-muted-foreground">
-          {t('reportForm.savedAs')}: <span className="font-mono">{buildLocationString(country, specificLocation) || '—'}</span>
+          {t('reportForm.savedAs')}: <span className="font-mono">{buildLocationString(country, specificLocation) || '-'}</span>
         </div>
       </div>
     </div>

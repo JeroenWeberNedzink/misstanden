@@ -5,6 +5,7 @@
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronDown, faCheck, faSearch, faTimes } from '@fortawesome/free-solid-svg-icons';
 import { cn } from '../../utils/cn';
@@ -14,7 +15,7 @@ const MultiSelect = React.forwardRef(({
   className,
   options = [],
   value = [],
-  placeholder = 'Select options',
+  placeholder,
   disabled = false,
   required = false,
   label,
@@ -27,8 +28,10 @@ const MultiSelect = React.forwardRef(({
   onChange,
   ...props
 }, ref) => {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const resolvedPlaceholder = placeholder || t('ui.select.placeholder', { defaultValue: 'Select an option' });
 
   // Generate unique ID if not provided
   const selectId = id || `multiselect-${Math.random().toString(36).substr(2, 9)}`;
@@ -138,7 +141,7 @@ const MultiSelect = React.forwardRef(({
                 </span>
               ))
             ) : (
-              <span className="text-muted-foreground">{placeholder}</span>
+              <span className="text-muted-foreground">{resolvedPlaceholder}</span>
             )}
           </div>
 
@@ -148,7 +151,7 @@ const MultiSelect = React.forwardRef(({
                 type="button"
                 onClick={handleClearAll}
                 className="hover:bg-accent rounded-full p-1 transition-colors"
-                title="Clear all"
+                title={t('ui.select.clearAll', { defaultValue: 'Clear all' })}
               >
                 <FontAwesomeIcon icon={faTimes} style={{ width: '12px', height: '12px' }} />
               </button>
@@ -172,7 +175,7 @@ const MultiSelect = React.forwardRef(({
           multiple
           required={required}
         >
-          <option value="">Select...</option>
+          <option value="">{t('ui.select.selectOption', { defaultValue: 'Select...' })}</option>
           {options.map((option, index) => (
             <option key={option.value ?? `option-${index}`} value={option.value}>
               {option.label}
@@ -193,7 +196,7 @@ const MultiSelect = React.forwardRef(({
                   />
                   <input
                     type="text"
-                    placeholder="Search options..."
+                    placeholder={t('ui.select.searchOptions', { defaultValue: 'Search options...' })}
                     value={searchTerm}
                     onChange={handleSearchChange}
                     className="w-full pl-8 pr-3 py-2 text-sm border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
@@ -205,14 +208,19 @@ const MultiSelect = React.forwardRef(({
 
             {isMaxReached && (
               <div className="px-3 py-2 text-xs bg-amber-50 text-amber-800 border-b border-amber-200">
-                Maximum {maxSelections} selections reached
+                {t('ui.select.maximumSelectionsReached', {
+                  max: maxSelections,
+                  defaultValue: 'Maximum of {{max}} selections reached',
+                })}
               </div>
             )}
 
             <div className="py-1 max-h-60 overflow-auto">
               {filteredOptions.length === 0 ? (
                 <div className="px-3 py-2 text-sm text-muted-foreground">
-                  {searchTerm ? 'No options found' : 'No options available'}
+                  {searchTerm
+                    ? t('ui.select.noOptionsFound', { defaultValue: 'No options found' })
+                    : t('ui.select.noOptionsAvailable', { defaultValue: 'No options available' })}
                 </div>
               ) : (
                 filteredOptions.map((option, index) => {

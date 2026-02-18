@@ -295,43 +295,45 @@ export const notificationService = {
       // Notify reporter for public comments only
       if (!isInternal && ticket.emailNotify && (ticket.reporterEmail || ticket.reporterEmailEncrypted)) {
         try {
+          const language = emailService.resolveTicketLanguage(ticket);
+          const copy = emailService.getReporterEmailCopy(language);
           const html = `
 ${commentStyles}
-<h2 class="section-title">Nieuwe opmerking</h2>
-<p class="lead">Hallo ${escapeHtml(ticket.reporterName || 'melder')},</p>
-<p class="lead">Er is een nieuwe opmerking toegevoegd aan uw melding.</p>
+<h2 class="section-title">${escapeHtml(copy.commentTitle)}</h2>
+<p class="lead">${escapeHtml(copy.greeting || 'Dear')} ${escapeHtml(ticket.reporterName || copy.reporterFallback)},</p>
+<p class="lead">${escapeHtml(copy.commentIntro)}</p>
 
 <div class="card">
-  <h3 class="section-title">Opmerking</h3>
-  <p><strong>Van:</strong> ${escapeHtml(authorName || 'Onbekend')}</p>
+  <h3 class="section-title">${escapeHtml(copy.comment)}</h3>
+  <p><strong>${escapeHtml(copy.from)}:</strong> ${escapeHtml(authorName || copy.senderHandler || copy.notProvided)}</p>
   <div>${nl2br(comment || '-')}</div>
 </div>
 
 <div class="card">
-  <h3 class="section-title">Melding</h3>
+  <h3 class="section-title">${escapeHtml(copy.reportOverview)}</h3>
   <table class="meta-table" role="presentation">
     <tr>
-      <td class="meta-label">Ticketnummer</td>
+      <td class="meta-label">${escapeHtml(copy.ticketNumber)}</td>
       <td class="meta-value">${escapeHtml(ticket.ticketNumber || '-')}</td>
     </tr>
     <tr>
-      <td class="meta-label">Status</td>
+      <td class="meta-label">${escapeHtml(copy.currentStatus)}</td>
       <td class="meta-value">${escapeHtml(statusLabel)}</td>
     </tr>
     <tr>
-      <td class="meta-label">Locatie</td>
-      <td class="meta-value">${escapeHtml(ticket.location || 'Niet opgegeven')}</td>
+      <td class="meta-label">${escapeHtml(copy.location)}</td>
+      <td class="meta-value">${escapeHtml(ticket.location || copy.notProvided)}</td>
     </tr>
   </table>
 </div>
 
-<p class="muted">Log in op het portaal om de melding te bekijken.</p>
+<p class="muted">${escapeHtml(copy.openPortalComment)}</p>
 `;
 
           results.reporter = await emailService.sendEmail({
             from: 'noreply@nedzink.nl',
             ...(ticket.reporterEmail ? { to: ticket.reporterEmail } : { toEncrypted: ticket.reporterEmailEncrypted }),
-            subject: `Nieuwe opmerking: ${ticket.ticketNumber || ''}`,
+            subject: copy.subjectComment.replace('{{ticket}}', ticket.ticketNumber || '-'),
             html,
             useTemplate: true
           });
@@ -453,7 +455,9 @@ ${commentStyles}
       // If handler sent message -> notify reporter
       if (isFromHandler) {
         if (ticket?.emailNotify && (ticket.reporterEmail || ticket.reporterEmailEncrypted)) {
-          let handlerName = 'Behandelaar';
+          const language = emailService.resolveTicketLanguage(ticket);
+          const copy = emailService.getReporterEmailCopy(language);
+          let handlerName = copy.senderHandler || 'Handler';
           try {
             if (ticket?.handlerId) {
               const handler = await ticketService.getHandlerById(ticket.handlerId);

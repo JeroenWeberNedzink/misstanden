@@ -15,12 +15,12 @@ import SLACompactCard from './components/SLACompactCard';
 import Icon from '../../components/AppIcon';
 import { ticketService } from '../../services/ticketService';
 
-const fmtNL = (value) => {
+const fmtDateTime = (value, locale) => {
   if (!value) return '-';
   try {
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return String(value);
-    return d.toLocaleString('nl-NL');
+    return d.toLocaleString(locale || undefined);
   } catch {
     return String(value);
   }
@@ -80,7 +80,7 @@ export default function CaseManagementDetail() {
 
   const navigate = useNavigate();
   const isMountedRef = useRef(true);
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user } = useAuth0();
 
   useEffect(() => {
@@ -88,7 +88,7 @@ export default function CaseManagementDetail() {
     return () => {
       isMountedRef.current = false;
     };
-  }, []);
+  }, [t]);
 
   const showToast = useCallback((message) => {
     setToastMessage(message);
@@ -179,7 +179,7 @@ export default function CaseManagementDetail() {
       priority: severityToPriorityLabel(fullTicket?.severityCode),
       priorityCode: fullTicket?.severityCode || 'low',
 
-      submittedDate: submissionDateValue ? fmtNL(submissionDateValue) : '-',
+      submittedDate: submissionDateValue ? fmtDateTime(submissionDateValue, i18n?.resolvedLanguage || i18n?.language) : '-',
       assignedTo: fullTicket?.handlers?.name || t('caseManagement.notAssigned'),
       assignedToId: fullTicket?.handlerId,
       statusEmailNotify:
@@ -229,7 +229,7 @@ export default function CaseManagementDetail() {
       {
         id: action?.id || `${Date.now()}_${Math.random()}`,
         actionType: action?.actionType || 'action',
-        action: action?.action || 'Actie',
+        action: action?.action || t('caseManagementDetail.actionHistory.defaultAction'),
         description: action?.description || '',
         timestamp: action?.timestamp || new Date().toISOString(),
         performedBy: action?.performedBy || t('caseManagement.system'),
@@ -254,19 +254,20 @@ export default function CaseManagementDetail() {
 
   const loadHandlers = useCallback(async () => {
     try {
-      const handlers = await ticketService.getAllHandlers();
+      const handlers = await ticketService.getAllHandlers({ includeInactive: true });
       if (!isMountedRef.current) return;
       setAvailableHandlers(
         (handlers ?? []).map((h) => ({
           id: h?.id,
           name: h?.name,
-          role: h?.role || 'Handler',
+          role: h?.role || t('caseManagement.handler'),
+          active: h?.active !== false,
         }))
       );
     } catch (err) {
       console.error('Error loading handlers:', err);
     }
-  }, []);
+  }, [t]);
 
   const loadCaseData = useCallback(async () => {
     setError('');
@@ -314,10 +315,10 @@ export default function CaseManagementDetail() {
           name: att?.fileName,
           type: att?.mimeType?.includes('pdf') ? 'pdf' : 'image',
           size: att?.sizeBytes,
-          uploadedDate: att?.createdAt ? fmtNL(att.createdAt) : '-',
+          uploadedDate: att?.createdAt ? fmtDateTime(att.createdAt, i18n?.resolvedLanguage || i18n?.language) : '-',
           uploadedBy: t('caseManagement.reporter'),
           url: att?.fileUrl,
-          alt: `Attachment ${att?.fileName}`,
+          alt: t('caseManagementDetail.attachments.attachmentAlt', { name: att?.fileName }),
         }))
       );
 
@@ -330,7 +331,7 @@ export default function CaseManagementDetail() {
           name: att?.fileName,
           type: att?.mimeType?.includes('pdf') ? 'pdf' : 'image',
           size: att?.sizeBytes,
-          uploadedDate: att?.createdAt ? fmtNL(att.createdAt) : '-',
+          uploadedDate: att?.createdAt ? fmtDateTime(att.createdAt, i18n?.resolvedLanguage || i18n?.language) : '-',
           url: att?.fileUrl,
         });
         return acc;
@@ -342,7 +343,7 @@ export default function CaseManagementDetail() {
           id: comment?.id,
           author: comment?.authorName || t('caseManagement.handler'),
           role: t('caseManagement.handler'),
-          timestamp: comment?.createdAt ? fmtNL(comment.createdAt) : '-',
+          timestamp: comment?.createdAt ? fmtDateTime(comment.createdAt, i18n?.resolvedLanguage || i18n?.language) : '-',
           content: comment?.comment,
           attachments: attachmentsByNoteId[comment?.id] || [],
         }))
@@ -356,7 +357,7 @@ export default function CaseManagementDetail() {
           senderName: msg?.sender === 'handler'
             ? (msg?.handlerName || fullTicket?.handlers?.name || user?.name || t('caseManagement.handler'))
             : t('caseManagement.reporter'),
-          timestamp: msg?.createdAt ? fmtNL(msg.createdAt) : '-',
+          timestamp: msg?.createdAt ? fmtDateTime(msg.createdAt, i18n?.resolvedLanguage || i18n?.language) : '-',
           content: msg?.body,
           read: msg?.read ?? msg?.isRead ?? false,
         }))
@@ -375,7 +376,7 @@ export default function CaseManagementDetail() {
       const dbActions = (fullTicket?.ticketActions ?? []).map((a) => ({
         id: a?.id,
         actionType: a?.actionType || 'action',
-        action: a?.action || 'Actie',
+        action: a?.action || t('caseManagementDetail.actionHistory.defaultAction'),
         description: a?.description || '',
         timestamp: a?.createdAt || new Date().toISOString(),
         performedBy: a?.performedBy || t('caseManagement.system'),
@@ -399,7 +400,7 @@ export default function CaseManagementDetail() {
   const handleBack = () => navigate('/handler-dashboard');
   const handleStatusChange = () => setShowStatusModal(true);
 
-  // ✅ STATUS UPDATE (supports both modal + FlowBar payload)
+  // Status update supports both modal and FlowBar payloads.
   const handleStatusUpdate = async (payload) => {
     const ticketId = getStoredTicketId();
     if (!ticketId) return navigate('/handler-dashboard');
@@ -409,13 +410,13 @@ export default function CaseManagementDetail() {
       const updatedTicket = await ticketService.updateTicketStatus(
         ticketId,
         payload?.statusLabel,                 // may be undefined (FlowBar)
-        payload?.statusCode,                  // FlowBar sends this ✅
+        payload?.statusCode,                  // FlowBar sends this
         payload?.currentStage ?? null,
         payload?.note ?? null,
         payload?.workflowType ?? caseData?.workflowType ?? null
       );
 
-      // ✅ update caseData from returned ticket (FlowBar updates immediately)
+      // Update caseData from returned ticket so FlowBar reflects status immediately.
       let statusMeta = resolveStatusMeta(updatedTicket);
       if (!statusMeta) {
         try {
@@ -432,11 +433,15 @@ export default function CaseManagementDetail() {
       }
       setCaseData(formatCase(updatedTicket, statusMeta));
 
-      // ✅ add action in UI immediately
+      // Add action in UI immediately.
       pushAction({
         actionType: 'status_update',
-        action: 'Status gewijzigd',
-        description: payload?.note ? payload.note : `Status gewijzigd naar ${updatedTicket?.metadata?.statusLabel || updatedTicket?.status || updatedTicket?.statusCode}`,
+        action: t('caseManagement.statusChanged'),
+        description: payload?.note
+          ? payload.note
+          : t('caseManagementDetail.toasts.statusChangedTo', {
+              status: updatedTicket?.metadata?.statusLabel || updatedTicket?.status || updatedTicket?.statusCode,
+            }),
         timestamp: new Date().toISOString(),
         performedBy: user?.name || user?.email || t('caseManagement.handler'),
       });
@@ -463,36 +468,40 @@ export default function CaseManagementDetail() {
       const created = result?.comment;
       const uploadedAttachments = result?.attachments || [];
 
-      // ✅ update notes list locally
+      // Update notes list locally.
       setInvestigationNotes((prev) => [
         {
           id: created?.id || `${Date.now()}`,
           author: created?.authorName || authorName || t('caseManagement.handler'),
           role: t('caseManagement.handler'),
-          timestamp: created?.createdAt ? fmtNL(created.createdAt) : fmtNL(new Date().toISOString()),
+          timestamp: created?.createdAt
+            ? fmtDateTime(created.createdAt, i18n?.resolvedLanguage || i18n?.language)
+            : fmtDateTime(new Date().toISOString(), i18n?.resolvedLanguage || i18n?.language),
           content: created?.comment || noteContent,
           attachments: uploadedAttachments.map((att) => ({
             id: att?.id,
             name: att?.fileName,
             type: att?.mimeType?.includes('pdf') ? 'pdf' : 'image',
             size: att?.sizeBytes,
-            uploadedDate: att?.createdAt ? fmtNL(att.createdAt) : fmtNL(new Date().toISOString()),
+            uploadedDate: att?.createdAt
+              ? fmtDateTime(att.createdAt, i18n?.resolvedLanguage || i18n?.language)
+              : fmtDateTime(new Date().toISOString(), i18n?.resolvedLanguage || i18n?.language),
             url: att?.fileUrl,
           })),
         },
         ...(prev || []),
       ]);
 
-      // ✅ action history
+      // Update action history.
       pushAction({
         actionType: 'note_added',
-        action: 'Notitie toegevoegd',
+        action: t('caseManagement.addNote'),
         description: String(noteContent).slice(0, 160),
         performedBy: authorName || user?.name || user?.email || t('caseManagement.handler'),
       });
 
       if (uploadedAttachments.length > 0) {
-        showToast('Notitie en bijlagen opgeslagen');
+        showToast(t('caseManagementDetail.toasts.noteAndAttachmentsSaved'));
       } else {
         showToast(t('caseManagement.noteSent'));
       }
@@ -519,7 +528,9 @@ export default function CaseManagementDetail() {
           id: created?.id || `${Date.now()}`,
           sender: 'handler',
           senderName: currentHandlerName || t('caseManagement.handler'),
-          timestamp: created?.createdAt ? fmtNL(created.createdAt) : fmtNL(new Date().toISOString()),
+          timestamp: created?.createdAt
+            ? fmtDateTime(created.createdAt, i18n?.resolvedLanguage || i18n?.language)
+            : fmtDateTime(new Date().toISOString(), i18n?.resolvedLanguage || i18n?.language),
           content: created?.body || messageContent,
           read: false, // New messages are unread until reporter reads them
         },
@@ -528,7 +539,7 @@ export default function CaseManagementDetail() {
 
       pushAction({
         actionType: 'message_sent',
-        action: 'Bericht verstuurd',
+        action: t('caseManagementDetail.toasts.messageSentAction'),
         description: String(messageContent).slice(0, 160),
         performedBy: user?.name || user?.email || t('caseManagement.handler'),
       });
@@ -554,38 +565,40 @@ export default function CaseManagementDetail() {
       if (!files.length) return;
 
       try {
-        showToast(`${files.length} bestand(en) uploaden...`);
+        showToast(t('caseManagementDetail.toasts.uploadingFiles', { count: files.length }));
 
         for (const file of files) {
           const att = await ticketService.uploadAttachment(ticketId, file, { currentHandlerId, notifyReporter: true });
 
-          // ✅ update attachments list locally
+          // Update attachments list locally.
           setAttachments((prev) => [
             {
               id: att?.id || `${Date.now()}`,
               name: att?.fileName || file.name,
               type: (att?.mimeType || file.type || '').includes('pdf') ? 'pdf' : 'image',
               size: att?.sizeBytes || file.size,
-              uploadedDate: att?.createdAt ? fmtNL(att.createdAt) : fmtNL(new Date().toISOString()),
+              uploadedDate: att?.createdAt
+                ? fmtDateTime(att.createdAt, i18n?.resolvedLanguage || i18n?.language)
+                : fmtDateTime(new Date().toISOString(), i18n?.resolvedLanguage || i18n?.language),
               uploadedBy: t('caseManagement.handler'),
               url: att?.fileUrl,
-              alt: `Attachment ${att?.fileName || file.name}`,
+              alt: t('caseManagementDetail.attachments.attachmentAlt', { name: att?.fileName || file.name }),
             },
             ...(prev || []),
           ]);
 
           pushAction({
             actionType: 'attachment_added',
-            action: 'Bijlage toegevoegd',
-            description: `Uploaded file: ${file.name}`,
+            action: t('caseManagementDetail.toasts.attachmentAddedAction'),
+            description: t('caseManagementDetail.toasts.uploadedFile', { name: file.name }),
             performedBy: user?.name || user?.email || t('caseManagement.handler'),
           });
         }
 
-        showToast('Bestanden succesvol geüpload');
+        showToast(t('caseManagementDetail.toasts.filesUploaded'));
       } catch (err) {
         console.error('Error uploading files:', err);
-        showToast('Fout bij uploaden van bestanden');
+        showToast(t('caseManagementDetail.toasts.filesUploadError'));
       }
     };
 
@@ -599,13 +612,15 @@ export default function CaseManagementDetail() {
     try {
       const updatedTicket = await ticketService.assignHandler(ticketId, newHandlerId, null, { currentHandlerId });
 
-      // ✅ update header/panel assignment immediately
+      // Update header and panel assignment immediately.
       setCaseData(formatCase(updatedTicket));
 
       pushAction({
         actionType: 'assignment',
-        action: 'Toewijzing gewijzigd',
-        description: newHandlerId ? `Handler toegewezen` : `Toewijzing verwijderd`,
+        action: t('caseManagement.caseReassigned'),
+        description: newHandlerId
+          ? t('caseManagementDetail.toasts.handlerAssigned')
+          : t('caseManagementDetail.toasts.assignmentRemoved'),
         performedBy: user?.name || user?.email || t('caseManagement.handler'),
       });
 
@@ -617,22 +632,7 @@ export default function CaseManagementDetail() {
   };
 
   const handlePriorityChange = async (newPriority) => {
-    const priorityToSeverityCode = {
-      [t('caseManagement.critical')]: 'critical',
-      [t('caseManagement.high')]: 'high',
-      [t('caseManagement.medium')]: 'medium',
-      [t('caseManagement.low')]: 'low',
-      'Kritiek': 'critical',
-      'Hoog': 'high',
-      'Gemiddeld': 'medium',
-      'Laag': 'low',
-      critical: 'critical',
-      high: 'high',
-      medium: 'medium',
-      low: 'low',
-    };
-
-    const newSeverityCode = priorityToSeverityCode[newPriority];
+    const newSeverityCode = String(newPriority || '').toLowerCase();
     if (!newSeverityCode) return;
 
     const ticketId = getStoredTicketId();
@@ -641,7 +641,7 @@ export default function CaseManagementDetail() {
     try {
       const updatedTicket = await ticketService.updateTicket(ticketId, { severity_code: newSeverityCode });
 
-      // ✅ update priority immediately
+      // Update priority immediately.
       setCaseData((prev) => ({
         ...prev,
         priorityCode: updatedTicket?.severityCode || newSeverityCode,
@@ -650,8 +650,11 @@ export default function CaseManagementDetail() {
 
       pushAction({
         actionType: 'priority_change',
-        action: 'Prioriteit gewijzigd',
-        description: `Prioriteit gewijzigd naar ${newPriority}`,
+        action: t('caseManagement.priorityChanged'),
+        description: t('caseManagement.priorityChangedFrom', {
+          from: caseData?.priority || '-',
+          to: severityToPriorityLabel(newSeverityCode),
+        }),
         performedBy: user?.name || user?.email || t('caseManagement.handler'),
       });
 
@@ -677,16 +680,21 @@ export default function CaseManagementDetail() {
         if (patch.reporterDetails.email !== undefined) backendPayload.reporter_email = patch.reporterDetails.email;
         if (patch.reporterDetails.phone !== undefined) backendPayload.reporter_phone = patch.reporterDetails.phone;
       }
+      if (patch?.reporter_name !== undefined) backendPayload.reporter_name = patch.reporter_name;
+      if (patch?.reporter_email !== undefined) backendPayload.reporter_email = patch.reporter_email;
+      if (patch?.reporter_phone !== undefined) backendPayload.reporter_phone = patch.reporter_phone;
 
       const updatedTicket = await ticketService.updateTicket(ticketId, backendPayload);
 
-      // ✅ update case data immediately
+      // Update case data immediately.
       setCaseData(formatCase(updatedTicket));
 
       pushAction({
         actionType: 'details_updated',
-        action: 'Zaakdetails gewijzigd',
-        description: `Gewijzigd: ${Object.keys(backendPayload).join(', ')}`,
+        action: t('caseManagementDetail.toasts.caseDetailsChanged'),
+        description: t('caseManagementDetail.toasts.changedFields', {
+          fields: Object.keys(backendPayload).join(', '),
+        }),
         performedBy: user?.name || user?.email || t('caseManagement.handler'),
       });
 
@@ -717,15 +725,17 @@ export default function CaseManagementDetail() {
 
       pushAction({
         actionType: 'notification_setting',
-        action: 'Status e-mails',
-        description: `Status e-mails ${nextValue ? 'ingeschakeld' : 'uitgeschakeld'}`,
+        action: t('caseManagementDetail.management.statusEmailsLabel'),
+        description: nextValue
+          ? t('caseManagementDetail.toasts.statusEmailsEnabled')
+          : t('caseManagementDetail.toasts.statusEmailsDisabled'),
         performedBy: user?.name || user?.email || t('caseManagement.handler'),
       });
 
-      showToast('Status e-mail voorkeur bijgewerkt');
+      showToast(t('caseManagementDetail.toasts.statusEmailPreferenceUpdated'));
     } catch (err) {
       console.error('Error updating status email preference:', err);
-      showToast('Fout bij bijwerken status e-mail voorkeur');
+      showToast(t('caseManagementDetail.toasts.statusEmailPreferenceUpdateError'));
     }
   };
 
@@ -764,7 +774,7 @@ export default function CaseManagementDetail() {
             onBack={handleBack}
             onStatusChange={() => setShowStatusModal(true)}
             isWhistleblower={isWhistleblower}
-            onStatusUpdate={handleStatusUpdate} // FlowBar uses this ✅
+            onStatusUpdate={handleStatusUpdate} // FlowBar uses this.
           />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4 lg:gap-5 mt-3 md:mt-4 lg:mt-5">

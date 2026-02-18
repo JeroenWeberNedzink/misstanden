@@ -38,7 +38,10 @@ export default function TicketAccessPortal() {
     // Rate limiting: 5 attempts per minute
     if (!checkRateLimit('ticket_access', 5, 60000)) {
       const resetIn = getRateLimitReset('ticket_access');
-      setError(`Too many attempts. Please try again in ${resetIn} seconds.`);
+      setError(t('ticketAccess.tooManyAttempts', {
+        seconds: resetIn,
+        defaultValue: 'Too many attempts. Please try again in {{seconds}} seconds.'
+      }));
       setIsLoading(false);
       logSecurityEvent('rate_limit_exceeded', { endpoint: 'ticket_access' });
       return;

@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import Image from '../../../components/AppImage';
 
 const AttachmentsPanel = ({ attachments, onAddAttachment }) => {
+  const { t } = useTranslation();
   const [selectedFile, setSelectedFile] = useState(null);
 
   const getFileIcon = (fileType) => {
@@ -18,9 +20,9 @@ const AttachmentsPanel = ({ attachments, onAddAttachment }) => {
 
   const formatFileSize = (bytes) => {
     const n = Number(bytes || 0);
-    if (n < 1024) return n + ' B';
-    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
-    return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   const handleFileView = (file) => setSelectedFile(file);
@@ -43,13 +45,11 @@ const AttachmentsPanel = ({ attachments, onAddAttachment }) => {
   };
 
   const hasValidUrl = useMemo(() => Boolean(getDownloadUrl(selectedFile)), [selectedFile]);
-
   const files = useMemo(() => (Array.isArray(attachments) ? attachments : []), [attachments]);
   const count = files.length;
 
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden">
-      {/* Header (compact) */}
       <div className="px-4 py-3 border-b border-border">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
@@ -58,34 +58,27 @@ const AttachmentsPanel = ({ attachments, onAddAttachment }) => {
             </div>
             <div className="min-w-0">
               <h2 className="text-base md:text-lg font-semibold text-foreground truncate">
-                Bijlagen
+                {t('ticketDetails.attachments')}
               </h2>
               <div className="mt-1 text-[11px] text-muted-foreground">
-                {count} bestand(en)
+                {count} {t('caseManagementDetail.attachments.files')}
               </div>
             </div>
           </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            iconName="Plus"
-            iconPosition="left"
-            onClick={onAddAttachment}
-          >
-            Toevoegen
+          <Button variant="outline" size="sm" iconName="Plus" iconPosition="left" onClick={onAddAttachment}>
+            {t('caseManagementDetail.attachments.add')}
           </Button>
         </div>
       </div>
 
-      {/* Body */}
       <div className="p-4">
         {count === 0 ? (
           <div className="text-center py-8 px-6">
             <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-muted flex items-center justify-center">
               <Icon name="Paperclip" size={22} className="text-muted-foreground" />
             </div>
-            <p className="text-sm text-muted-foreground">Geen bijlagen</p>
+            <p className="text-sm text-muted-foreground">{t('ticketDetails.noAttachments')}</p>
           </div>
         ) : (
           <div className="rounded-lg border border-border bg-background/40 overflow-hidden">
@@ -97,19 +90,9 @@ const AttachmentsPanel = ({ attachments, onAddAttachment }) => {
                   onClick={() => handleFileView(file)}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    {/* Small icon
-                    <div className="w-8 h-8 rounded-md bg-primary/10 border border-primary/10 flex items-center justify-center flex-shrink-0">
-                      <Icon name={getFileIcon(file?.type)} size={16} color="var(--color-primary)" />
-                    </div> */}
-
-                    {/* Name + compact meta */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 min-w-0">
-                        <div className="text-sm font-medium text-foreground truncate">
-                          {file?.name}
-                        </div>
-
-                        {/* tiny type badge (optional) */}
+                        <div className="text-sm font-medium text-foreground truncate">{file?.name}</div>
                         {file?.type && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded border border-border bg-background/60 text-muted-foreground shrink-0">
                             {String(file.type).toUpperCase()}
@@ -119,14 +102,12 @@ const AttachmentsPanel = ({ attachments, onAddAttachment }) => {
 
                       <div className="mt-0.5 text-[11px] text-muted-foreground truncate">
                         {file?.uploadedDate ? file.uploadedDate : null}
-                        {file?.uploadedDate && file?.uploadedBy ? ' · ' : null}
-                        {file?.uploadedBy ? `door ${file.uploadedBy}` : null}
-                        {formatFileSize(file?.size) ? ` ·  ${file.size} kb` : null}
-                        
+                        {file?.uploadedDate && file?.uploadedBy ? ` - ${t('caseManagementDetail.attachments.by')} ` : null}
+                        {file?.uploadedBy ? file.uploadedBy : null}
+                        {file?.size ? ` - ${formatFileSize(file?.size)}` : null}
                       </div>
                     </div>
 
-                    {/* Actions (compact icons) */}
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <Button
                         variant="ghost"
@@ -136,7 +117,7 @@ const AttachmentsPanel = ({ attachments, onAddAttachment }) => {
                           e.stopPropagation();
                           handleFileView(file);
                         }}
-                        title="Preview"
+                        title={t('caseManagementDetail.common.preview')}
                       >
                         <Icon name="Eye" size={16} />
                       </Button>
@@ -148,7 +129,7 @@ const AttachmentsPanel = ({ attachments, onAddAttachment }) => {
                           rel="noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           className="inline-flex"
-                          title="Download"
+                          title={t('caseManagementDetail.common.download')}
                         >
                           <Button variant="ghost" size="icon" className="opacity-80 hover:opacity-100">
                             <Icon name="Download" size={16} />
@@ -159,7 +140,7 @@ const AttachmentsPanel = ({ attachments, onAddAttachment }) => {
                           variant="ghost"
                           size="icon"
                           disabled
-                          title="Geen download URL"
+                          title={t('caseManagementDetail.attachments.noDownloadUrl')}
                           className="opacity-50"
                           onClick={(e) => e.stopPropagation()}
                         >
@@ -175,7 +156,6 @@ const AttachmentsPanel = ({ attachments, onAddAttachment }) => {
         )}
       </div>
 
-      {/* Preview modal (kept, but slightly more compact) */}
       {selectedFile && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-card rounded-xl border border-border max-w-5xl w-full max-h-[90vh] overflow-hidden shadow-xl">
@@ -186,17 +166,15 @@ const AttachmentsPanel = ({ attachments, onAddAttachment }) => {
                 </div>
 
                 <div className="min-w-0">
-                  <h3 className="text-sm md:text-base font-semibold text-foreground truncate">
-                    {selectedFile?.name}
-                  </h3>
+                  <h3 className="text-sm md:text-base font-semibold text-foreground truncate">{selectedFile?.name}</h3>
                   <p className="text-[11px] text-muted-foreground">
                     {formatFileSize(selectedFile?.size)}
-                    {selectedFile?.uploadedDate ? ` · ${selectedFile.uploadedDate}` : ''}
+                    {selectedFile?.uploadedDate ? ` - ${selectedFile.uploadedDate}` : ''}
                   </p>
                 </div>
               </div>
 
-              <Button variant="ghost" size="icon" onClick={handleClosePreview} title="Sluiten">
+              <Button variant="ghost" size="icon" onClick={handleClosePreview} title={t('common.close')}>
                 <Icon name="X" size={18} />
               </Button>
             </div>
@@ -204,11 +182,7 @@ const AttachmentsPanel = ({ attachments, onAddAttachment }) => {
             <div className="p-4 overflow-auto max-h-[calc(90vh-70px)]">
               {selectedFile?.type === 'image' ? (
                 <div className="flex justify-center">
-                  <Image
-                    src={selectedFile?.url}
-                    alt={selectedFile?.alt}
-                    className="max-w-full h-auto rounded-lg"
-                  />
+                  <Image src={selectedFile?.url} alt={selectedFile?.alt || selectedFile?.name} className="max-w-full h-auto rounded-lg" />
                 </div>
               ) : isPreviewablePdf(selectedFile) ? (
                 <div className="space-y-3">
@@ -223,35 +197,29 @@ const AttachmentsPanel = ({ attachments, onAddAttachment }) => {
                   <div className="flex flex-wrap gap-2">
                     <a href={getDownloadUrl(selectedFile)} target="_blank" rel="noreferrer" className="inline-flex">
                       <Button variant="outline" size="sm" iconName="Download" iconPosition="left">
-                        Download
+                        {t('caseManagementDetail.common.download')}
                       </Button>
                     </a>
                     <a href={getDownloadUrl(selectedFile)} target="_blank" rel="noreferrer" className="inline-flex">
                       <Button variant="ghost" size="sm" iconName="ExternalLink" iconPosition="left">
-                        Nieuw tabblad
+                        {t('caseManagementDetail.attachments.openInNewTab')}
                       </Button>
                     </a>
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-10">
-                  <Icon
-                    name={getFileIcon(selectedFile?.type)}
-                    size={48}
-                    className="mx-auto mb-3 text-muted-foreground"
-                  />
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Voorvertoning niet beschikbaar
-                  </p>
+                  <Icon name={getFileIcon(selectedFile?.type)} size={48} className="mx-auto mb-3 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground mb-3">{t('caseManagementDetail.attachments.previewUnavailable')}</p>
 
                   {!hasValidUrl ? (
                     <p className="text-xs text-muted-foreground max-w-xl mx-auto">
-                      Download is niet mogelijk omdat dit bestand geen geldige URL heeft (meestal: storage upload/URL ontbreekt).
+                      {t('caseManagementDetail.attachments.downloadUnavailableReason')}
                     </p>
                   ) : (
                     <a href={getDownloadUrl(selectedFile)} target="_blank" rel="noreferrer" className="inline-flex">
                       <Button variant="outline" size="sm" iconName="Download" iconPosition="left">
-                        Download
+                        {t('caseManagementDetail.common.download')}
                       </Button>
                     </a>
                   )}

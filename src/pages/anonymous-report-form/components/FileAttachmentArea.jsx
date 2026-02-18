@@ -163,7 +163,7 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
         const textContent = await file.text();
         setPreviewText(textContent);
       } catch {
-        setPreviewText('Preview unavailable for this file.');
+        setPreviewText(t('reportForm.previewUnavailable'));
       }
       return;
     }
@@ -264,9 +264,9 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
                     size="sm"
                     iconName="Eye"
                     onClick={() => handlePreview(file)}
-                    aria-label={`Preview ${file?.name}`}
+                    aria-label={`${t('reportForm.preview')} ${file?.name}`}
                   >
-                    Preview
+                    {t('reportForm.preview')}
                   </Button>
                   <Button
                     variant="ghost"
@@ -308,7 +308,7 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
               )}
               {previewType === 'unsupported' && (
                 <div className="text-center py-8 space-y-3">
-                  <p className="text-sm text-muted-foreground">No inline preview available for this file type.</p>
+                  <p className="text-sm text-muted-foreground">{t('reportForm.noInlinePreview')}</p>
                   {previewUrl && (
                     <a
                       href={previewUrl}
@@ -317,7 +317,7 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
                       rel="noreferrer"
                       className="inline-flex items-center justify-center rounded-md border border-input px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
                     >
-                      Open or download file
+                      {t('reportForm.openOrDownloadFile')}
                     </a>
                   )}
                 </div>

@@ -30,13 +30,19 @@ const AccessForm = ({ onSubmit, isLoading }) => {
     const newErrors = {};
 
     if (!ticketNumber?.trim()) {
-      newErrors.ticketNumber = t('ticketAccess.ticketId') + ' is required';
+      newErrors.ticketNumber = t('ticketAccess.requiredField', {
+        field: t('ticketAccess.ticketId'),
+        defaultValue: '{{field}} is required'
+      });
     } else if (!/^[A-Z]{2,4}-\d{4}-\d{6}$/?.test(ticketNumber?.trim())) {
       newErrors.ticketNumber = t('ticketAccess.invalidFormat');
     }
 
     if (!accessCode?.trim()) {
-      newErrors.accessCode = t('ticketAccess.accessCode') + ' is required';
+      newErrors.accessCode = t('ticketAccess.requiredField', {
+        field: t('ticketAccess.accessCode'),
+        defaultValue: '{{field}} is required'
+      });
     } else if (!/^\d{6}$/?.test(accessCode?.trim())) {
       newErrors.accessCode = t('ticketAccess.mustBeSixDigits');
     }
@@ -85,7 +91,7 @@ const AccessForm = ({ onSubmit, isLoading }) => {
       <Input
         label={t('ticketAccess.accessCode')}
         type="password"
-        placeholder="••••••"
+        placeholder="******"
         value={accessCode}
         onChange={handleAccessCodeChange}
         error={errors?.accessCode}

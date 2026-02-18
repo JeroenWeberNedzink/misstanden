@@ -11,6 +11,33 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
+
+const toPositiveNumber = (value: unknown): number | null => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+};
+
+const addDays = (base: Date, days: number): Date => {
+  const d = new Date(base);
+  d.setDate(d.getDate() + days);
+  return d;
+};
+
+const formatDateTimeNL = (value: Date | string | null): string => {
+  if (!value) return "-";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString("nl-NL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 serve(async (req) => {
   // ✅ CORS preflight
   if (req.method === "OPTIONS") {
@@ -68,15 +95,18 @@ serve(async (req) => {
 
     const statusMessage = statusMessages[newStatus] || `De status is gewijzigd naar ${newStatus}`;
 
-    // Lookup status contact person (if configured)
+    // Lookup workflow SLA/status context
     let statusContact = {
       name: null,
       email: null,
       phone: null,
       notes: null
     };
+    let currentStepLabel = newStatus || ticket.status_code || "-";
+    let nextStepLabel = null;
+    let expectedNextUpdateText = "Binnenkort";
 
-    if (ticket.workflow_type && ticket.status_code) {
+    if (ticket.workflow_type) {
       const { data: wf } = await supabase
         .from("workflows")
         .select("id")
@@ -84,19 +114,43 @@ serve(async (req) => {
         .single();
 
       if (wf?.id) {
-        const { data: statusRow } = await supabase
+        const { data: statusRows } = await supabase
           .from("workflow_statuses")
-          .select("contact_person_name, contact_person_email, contact_person_phone, contact_notes")
+          .select("code, label, sort_order, expected_duration_days, contact_person_name, contact_person_email, contact_person_phone, contact_notes")
           .eq("workflow_id", wf.id)
-          .eq("code", ticket.status_code)
-          .single();
+          .order("sort_order", { ascending: true });
 
-        statusContact = {
-          name: statusRow?.contact_person_name || null,
-          email: statusRow?.contact_person_email || null,
-          phone: statusRow?.contact_person_phone || null,
-          notes: statusRow?.contact_notes || null
-        };
+        const rows = Array.isArray(statusRows) ? statusRows : [];
+        if (rows.length > 0) {
+          const statusCode = normalize(ticket.status_code);
+          const statusLabel = normalize(newStatus);
+          const currentStatus =
+            rows.find((s) => normalize(s?.code) === statusCode) ||
+            rows.find((s) => normalize(s?.label) === statusLabel) ||
+            null;
+
+          if (currentStatus) {
+            currentStepLabel = currentStatus.label || currentStatus.code || currentStepLabel;
+            statusContact = {
+              name: currentStatus?.contact_person_name || null,
+              email: currentStatus?.contact_person_email || null,
+              phone: currentStatus?.contact_person_phone || null,
+              notes: currentStatus?.contact_notes || null
+            };
+
+            const currentIndex = rows.findIndex((s) => s?.code === currentStatus.code);
+            const nextStatus = currentIndex >= 0 ? rows[currentIndex + 1] : null;
+            if (nextStatus) {
+              nextStepLabel = nextStatus?.label || nextStatus?.code || null;
+            }
+
+            const expectedDays = toPositiveNumber(currentStatus.expected_duration_days);
+            if (expectedDays !== null) {
+              const dueAt = addDays(new Date(), expectedDays);
+              expectedNextUpdateText = `Binnen ${expectedDays} dag(en), rond ${formatDateTimeNL(dueAt)}`;
+            }
+          }
+        }
       }
     }
 
@@ -137,6 +191,12 @@ serve(async (req) => {
           <span class="status-badge new-status">${newStatus}</span>
         </p>
         <p style="margin:10px 0 0 0;color:#374151;">${statusMessage}</p>
+      </div>
+      <div class="status-box">
+        <p style="margin:0 0 8px 0;font-weight:600;">Volgende stap in het proces (SLA)</p>
+        <p style="margin:6px 0;"><strong>Huidige stap:</strong> ${currentStepLabel}</p>
+        <p style="margin:6px 0;"><strong>Volgende stap:</strong> ${nextStepLabel || "Eindfase / afronding"}</p>
+        <p style="margin:6px 0;"><strong>Verwachte volgende update:</strong> ${expectedNextUpdateText}</p>
       </div>
       ${hasContact ? `
       <div class="status-box">
