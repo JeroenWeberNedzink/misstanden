@@ -30,7 +30,18 @@ export default function HandlerDashboard() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [layout, setLayout] = useState('cards');
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const localeByLanguage = {
+    en: 'en-GB',
+    nl: 'nl-NL',
+    fr: 'fr-FR',
+    de: 'de-DE',
+    pt: 'pt-PT',
+  };
+  const activeLanguage = String(i18n?.resolvedLanguage || i18n?.language || 'en')
+    .toLowerCase()
+    .split('-')[0];
+  const activeLocale = localeByLanguage[activeLanguage] || 'en-GB';
 
   useEffect(() => {
     loadHandlerProfile();
@@ -92,15 +103,15 @@ export default function HandlerDashboard() {
   }, [workflows]);
 
   const severityOptions = useMemo(() => {
-    const base = [{ value: 'all', label: 'Alle prioriteiten' }];
+    const base = [{ value: 'all', label: t('handlerDashboard.filters.allPriorities') }];
     const list = Array.isArray(severities) ? severities : [];
     return base.concat(
       list.map((s) => ({
         value: s?.code || s?.severity_code || s?.id || s?.name || 'medium',
-        label: s?.label || s?.name || s?.code || 'Gemiddeld',
+        label: s?.label || s?.name || s?.code || t('handlerDashboard.severity.medium'),
       }))
     );
-  }, [severities]);
+  }, [severities, t]);
 
   const getStatusMetaForTicket = (ticket) => {
     const wfCode = safeTrim(ticket?.workflowType || ticket?.workflow_type);
@@ -313,15 +324,15 @@ export default function HandlerDashboard() {
   });
 
   const quickViews = [
-    { key: 'all', label: 'Alles', count: stats.total, icon: 'LayoutGrid', tone: 'bg-muted text-muted-foreground' },
-    { key: 'mine', label: 'Mijn Open', count: stats.mineOpen, icon: 'UserCheck', tone: 'bg-sky-50 text-sky-700' },
-    { key: 'unassigned', label: 'Onbehandeld', count: stats.unassigned, icon: 'UserX', tone: 'bg-amber-50 text-amber-700' },
-    { key: 'urgent', label: 'Urgent', count: stats.highPriority, icon: 'AlertTriangle', tone: 'bg-red-50 text-red-700' },
-    { key: 'today', label: 'Vandaag', count: stats.today, icon: 'Calendar', tone: 'bg-emerald-50 text-emerald-700' },
+    { key: 'all', label: t('handlerDashboard.quickViews.all'), count: stats.total, icon: 'LayoutGrid', tone: 'bg-muted text-muted-foreground' },
+    { key: 'mine', label: t('handlerDashboard.quickViews.mine'), count: stats.mineOpen, icon: 'UserCheck', tone: 'bg-sky-50 text-sky-700' },
+    { key: 'unassigned', label: t('handlerDashboard.quickViews.unassigned'), count: stats.unassigned, icon: 'UserX', tone: 'bg-amber-50 text-amber-700' },
+    { key: 'urgent', label: t('handlerDashboard.quickViews.urgent'), count: stats.highPriority, icon: 'AlertTriangle', tone: 'bg-red-50 text-red-700' },
+    { key: 'today', label: t('handlerDashboard.quickViews.today'), count: stats.today, icon: 'Calendar', tone: 'bg-emerald-50 text-emerald-700' },
   ];
 
   const lastUpdatedLabel = lastUpdated
-    ? new Intl.DateTimeFormat('nl-NL', {
+    ? new Intl.DateTimeFormat(activeLocale, {
       hour: '2-digit',
       minute: '2-digit',
       day: '2-digit',
@@ -344,28 +355,28 @@ export default function HandlerDashboard() {
                 <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
                   <div>
                     <div className="text-xs uppercase tracking-[0.2em] text-sky-200 mb-2">
-                      Handler Dashboard
+                      {t('handlerDashboard.title')}
                     </div>
                     <h1 className="text-3xl md:text-4xl font-bold">
-                      {t('handlerDashboard.welcomeMessage')} {user?.name || user?.email || 'User'}
+                      {t('handlerDashboard.welcomeMessage')} {user?.name || user?.email || t('handlerDashboard.fallbackUser')}
                     </h1>
                     <p className="text-sm md:text-base text-slate-200 mt-3 max-w-2xl">
                       {t('handlerDashboard.subtitle')}
                     </p>
                     <div className="flex items-center gap-2 text-xs text-slate-300 mt-4">
                       <Icon name="RefreshCw" size={14} />
-                      <span>Laatste update:</span>
+                      <span>{t('handlerDashboard.lastUpdated')}</span>
                       <span className="font-semibold text-white">
-                        {lastUpdatedLabel || 'Nog niet geladen'}
+                        {lastUpdatedLabel || t('handlerDashboard.notLoaded')}
                       </span>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full xl:w-auto">
                     {[
-                      { label: 'Open', value: stats.open, icon: 'Inbox' },
-                      { label: 'Onbehandeld', value: stats.unassigned, icon: 'UserX' },
-                      { label: 'Urgent', value: stats.highPriority, icon: 'AlertTriangle' },
-                      { label: 'Vandaag', value: stats.today, icon: 'Calendar' },
+                      { label: t('handlerDashboard.summary.open'), value: stats.open, icon: 'Inbox' },
+                      { label: t('handlerDashboard.summary.unassigned'), value: stats.unassigned, icon: 'UserX' },
+                      { label: t('handlerDashboard.summary.urgent'), value: stats.highPriority, icon: 'AlertTriangle' },
+                      { label: t('handlerDashboard.summary.today'), value: stats.today, icon: 'Calendar' },
                     ].map((item) => (
                       <div key={item.label} className="rounded-2xl bg-white/10 border border-white/10 px-4 py-3">
                         <div className="flex items-center justify-between text-xs text-slate-200 mb-2">
@@ -381,11 +392,7 @@ export default function HandlerDashboard() {
             </div>
 
             <div className="space-y-6">
-              <QuickStats
-                tickets={tickets}
-                currentHandlerId={currentHandlerId}
-                workflowStatusMap={workflowStatusMap}
-              />
+
 
               <div className="bg-white rounded-2xl border border-border p-5 shadow-sm space-y-4">
                 <div className="flex flex-col xl:flex-row gap-3 xl:items-center">
@@ -395,7 +402,7 @@ export default function HandlerDashboard() {
                       <input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Zoek op ticketnummer of beschrijving..."
+                        placeholder={t('handlerDashboard.searchPlaceholder')}
                         className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       />
                     </div>
@@ -405,7 +412,7 @@ export default function HandlerDashboard() {
                       value={statusFilter}
                       onChange={(value) => setStatusFilter(value)}
                       options={[
-                        { value: 'all', label: 'Alle statussen' },
+                        { value: 'all', label: t('handlerDashboard.filters.allStatuses') },
                         ...statusOptions.map((o) => ({ value: o.value, label: o.label || o.value })),
                       ]}
                     />
@@ -424,7 +431,7 @@ export default function HandlerDashboard() {
                         layout === 'cards' ? 'bg-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      Kaarten
+                      {t('handlerDashboard.layout.cards')}
                     </button>
                     <button
                       onClick={() => setLayout('table')}
@@ -432,7 +439,7 @@ export default function HandlerDashboard() {
                         layout === 'table' ? 'bg-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      Tabel
+                      {t('handlerDashboard.layout.table')}
                     </button>
                   </div>
                 </div>

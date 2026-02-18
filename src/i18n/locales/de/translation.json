@@ -73,29 +73,89 @@
         "errorInvalidCredentials": "UngÃ¼ltige Ticket-ID oder Zugangscode"
     },
     "handlerDashboard": {
-        "title": "Handler-Dashboard",
+        "title": "Bearbeiter-Dashboard",
+        "welcomeMessage": "Willkommen,",
+        "subtitle": "Uebersicht Ihrer zugewiesenen Faelle und Leistungskennzahlen",
+        "fallbackUser": "Benutzer",
+        "lastUpdated": "Zuletzt aktualisiert",
+        "notLoaded": "Noch nicht geladen",
+        "searchPlaceholder": "Nach Fallnummer oder Beschreibung suchen...",
+        "statusChangeHint": "Waehlen Sie eine Aktion fuer diesen Fall",
         "metrics": {
-            "totalCases": "Gesamte FÃ¤lle",
-            "activeCases": "Aktive FÃ¤lle",
-            "resolvedToday": "Heute GelÃ¶st",
-            "avgResolutionTime": "Durchschn. LÃ¶sungszeit",
-            "hours": "Stunden"
+            "totalCases": "Gesamtfaelle",
+            "activeCases": "Aktive Faelle",
+            "resolvedToday": "Heute geloest",
+            "avgResolutionTime": "Durchschn. Loesungszeit",
+            "hours": "Stunden",
+            "openTickets": "Offene Faelle",
+            "newUnassigned": "Neu nicht zugewiesen",
+            "inProgress": "In Bearbeitung",
+            "completed7Days": "Abgeschlossen (7 Tage)",
+            "pastWeek": "Letzte Woche"
+        },
+        "summary": {
+            "open": "Offen",
+            "unassigned": "Nicht zugewiesen",
+            "urgent": "Dringend",
+            "today": "Heute",
+            "mineOpen": "Meine offenen Faelle"
+        },
+        "quickViews": {
+            "all": "Alle",
+            "mine": "Meine",
+            "unassigned": "Nicht zugewiesen",
+            "urgent": "Dringend",
+            "today": "Heute"
+        },
+        "quickStats": {
+            "totalTickets": "Gesamtfaelle",
+            "highPriority": "Hohe Prioritaet"
+        },
+        "layout": {
+            "cards": "Karten",
+            "table": "Tabelle"
         },
         "filters": {
             "allStatuses": "Alle Status",
-            "allSeverities": "Alle Schweregrade",
-            "allWorkflows": "Alle Workflows"
+            "allSeverities": "Alle Prioritaeten",
+            "allWorkflows": "Alle Workflows",
+            "allPriorities": "Alle Prioritaeten",
+            "scope": "Umfang",
+            "severity": "Prioritaet"
+        },
+        "actions": {
+            "assign": "Zuweisen",
+            "assignHandler": "Bearbeiter zuweisen",
+            "assignToMe": "Mir zuweisen",
+            "clickForDetails": "Fuer Details klicken",
+            "collapse": "Einklappen",
+            "expand": "Ausklappen",
+            "export": "Exportieren",
+            "reset": "Zuruecksetzen",
+            "view": "Ansehen",
+            "viewDetails": "Details ansehen"
         },
         "table": {
-            "ticketId": "Ticket-ID",
-            "severity": "Schweregrad",
+            "ticketId": "Fall-ID",
+            "ticketNumber": "Fallnummer",
+            "severity": "Prioritaet",
             "workflow": "Workflow",
             "status": "Status",
             "created": "Erstellt",
             "lastUpdate": "Letzte Aktualisierung",
             "actions": "Aktionen",
-            "viewDetails": "Details Anzeigen",
-            "noTickets": "Keine Tickets gefunden"
+            "viewDetails": "Details anzeigen",
+            "overview": "Uebersicht",
+            "ticketSingle": "Fall",
+            "ticketPlural": "Faelle",
+            "handler": "Bearbeiter",
+            "unassigned": "Nicht zugewiesen",
+            "noDescription": "Keine Beschreibung",
+            "noHandlersAvailable": "Keine Bearbeiter verfuegbar",
+            "noTickets": "Keine Faelle gefunden",
+            "noTicketsTitle": "Keine Faelle zum Anzeigen",
+            "noTicketsFound": "Keine Faelle gefunden",
+            "noTicketsForFilters": "Keine Faelle fuer die aktiven Filter"
         },
         "severity": {
             "critical": "Kritisch",
@@ -107,11 +167,41 @@
             "new": "Neu",
             "investigating": "In Untersuchung",
             "in_progress": "In Bearbeitung",
-            "resolved": "GelÃ¶st",
+            "resolved": "Geloest",
             "closed": "Geschlossen"
         },
-        "welcomeMessage": "Welcome, ",
-        "subtitle": "Overview of your assigned cases and performance metrics"
+        "pills": {
+            "anonymous": "Anonym",
+            "unassigned": "Nicht zugewiesen",
+            "critical": "Kritisch",
+            "high": "Hoch",
+            "new": "Neu"
+        },
+        "workflowLabels": {
+            "whistleblower": "Hinweisgeber",
+            "itSecurity": "IT-Sicherheit",
+            "hr": "Personal",
+            "safety": "Sicherheit",
+            "report": "Meldung"
+        },
+        "reporterInfo": {
+            "title": "Informationen zur meldenden Person"
+        },
+        "timeline": {
+            "title": "Fristenmonitoring",
+            "legalDeadlines": "Gesetzliche Fristen",
+            "overdue": "Ueberfaellig",
+            "approaching": "Naehert sich der Frist",
+            "approachingTitle": "Bald faellig",
+            "onTrack": "Im Zeitplan",
+            "daysOld": "Alter: {{count}} T",
+            "daysLate": "{{count}} T zu spaet",
+            "daysRemaining": "{{count}} T verbleibend",
+            "allWithinDeadlines": "Alle Faelle sind innerhalb der Fristen"
+        },
+        "common": {
+            "unknown": "Unbekannt"
+        }
     },
     "priorityWorkflow": {
         "title": "PrioritÃ¤ts-Workflow",

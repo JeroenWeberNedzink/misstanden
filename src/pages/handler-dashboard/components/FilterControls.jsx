@@ -1,5 +1,6 @@
 ﻿import React, { useMemo } from 'react';
 import Select from '../../../components/ui/Select';
+import { useTranslation } from 'react-i18next';
 import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 
@@ -23,7 +24,7 @@ const parseStatuses = (raw) => {
   return [];
 };
 
-const normalizeStatusesToOptions = (statusesRaw, { includeAll = true } = {}) => {
+const normalizeStatusesToOptions = (statusesRaw, allStatusesLabel, { includeAll = true } = {}) => {
   const statuses = parseStatuses(statusesRaw);
 
   const opts = statuses
@@ -39,11 +40,11 @@ const normalizeStatusesToOptions = (statusesRaw, { includeAll = true } = {}) => 
     .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
 
   if (!opts.length) {
-    return includeAll ? [{ value: 'all', label: 'Alle statussen' }] : [];
+    return includeAll ? [{ value: 'all', label: allStatusesLabel }] : [];
   }
 
   return includeAll
-    ? [{ value: 'all', label: 'Alle statussen' }, ...opts]
+    ? [{ value: 'all', label: allStatusesLabel }, ...opts]
     : opts;
 };
 
@@ -74,6 +75,8 @@ const FilterControls = ({
    */
   workflows = [],
 }) => {
+  const { t } = useTranslation();
+  const allStatusesLabel = t('handlerDashboard.filters.allStatuses');
   const hasActiveFilters =
     filters?.workflow !== 'all' ||
     filters?.severity !== 'all' ||
@@ -94,22 +97,22 @@ const FilterControls = ({
   // - Else: build a merged list from all workflows (nice UX)
   const statusOptions = useMemo(() => {
     if (selectedWorkflow?.statuses) {
-      return normalizeStatusesToOptions(selectedWorkflow.statuses, { includeAll: true });
+      return normalizeStatusesToOptions(selectedWorkflow.statuses, allStatusesLabel, { includeAll: true });
     }
 
     // No workflow selected -> merged list across workflows
-    const merged = workflows.flatMap((w) => normalizeStatusesToOptions(w?.statuses, { includeAll: false }));
+    const merged = workflows.flatMap((w) => normalizeStatusesToOptions(w?.statuses, allStatusesLabel, { includeAll: false }));
     const uniqueMerged = dedupeOptionsByValue(
       merged.sort((a, b) => (a.order ?? 999) - (b.order ?? 999))
     );
 
     // If still empty: show only "All"
     if (!uniqueMerged.length) {
-      return [{ value: 'all', label: 'Alle statussen' }];
+      return [{ value: 'all', label: allStatusesLabel }];
     }
 
-    return [{ value: 'all', label: 'Alle statussen' }, ...uniqueMerged];
-  }, [selectedWorkflow, workflows]);
+    return [{ value: 'all', label: allStatusesLabel }, ...uniqueMerged];
+  }, [allStatusesLabel, selectedWorkflow, workflows]);
 
   // If user switches workflow, their current status filter might become invalid.
   // This makes UX smoother: if current selected status isn't in the list -> reset to 'all'.
@@ -133,7 +136,7 @@ const FilterControls = ({
         <div className="flex-1 w-full">
           <Input
             type="search"
-            placeholder="Zoek op ticket nummer, beschrijving..."
+            placeholder={t('handlerDashboard.searchPlaceholder')}
             value={filters?.search}
             onChange={(e) => onFilterChange('search', e?.target?.value)}
             className="w-full"
@@ -163,7 +166,7 @@ const FilterControls = ({
               iconName="X"
               onClick={onClearFilters}
             >
-              Reset
+              {t('handlerDashboard.actions.reset')}
             </Button>
           )}
         </div>

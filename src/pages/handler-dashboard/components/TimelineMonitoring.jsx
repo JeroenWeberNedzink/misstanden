@@ -151,9 +151,9 @@ const TimelineMonitoring = () => {
       <div className="bg-card border border-border rounded-lg p-6">
         <div className="flex items-center gap-3 mb-4">
           <Icon name="Clock" size={24} color="var(--color-primary)" />
-          <h2 className="text-xl font-semibold text-foreground">Tijdlijn Monitoring</h2>
+          <h2 className="text-xl font-semibold text-foreground">{t('handlerDashboard.timeline.title')}</h2>
         </div>
-        <p className="text-muted-foreground">Laden...</p>
+        <p className="text-muted-foreground">{t('common.loading')}</p>
       </div>
     );
   }
@@ -161,7 +161,7 @@ const TimelineMonitoring = () => {
   const summaryCards = [
     {
       id: 'overdue',
-      title: 'Verlopen',
+      title: t('handlerDashboard.timeline.overdue'),
       value: timelineData.overdue.length,
       icon: 'AlertTriangle',
       iconColor: 'var(--color-destructive)',
@@ -169,7 +169,7 @@ const TimelineMonitoring = () => {
     },
     {
       id: 'approaching',
-      title: 'Deadline Nabij',
+      title: t('handlerDashboard.timeline.approaching'),
       value: timelineData.approaching.length,
       icon: 'Clock',
       iconColor: 'var(--color-warning)',
@@ -177,7 +177,7 @@ const TimelineMonitoring = () => {
     },
     {
       id: 'onTrack',
-      title: 'Op Schema',
+      title: t('handlerDashboard.timeline.onTrack'),
       value: timelineData.onTrack,
       icon: 'CheckCircle2',
       iconColor: 'var(--color-success)',
@@ -191,7 +191,7 @@ const TimelineMonitoring = () => {
         <div className="flex items-center gap-2">
           <Icon name="Clock" size={18} color="var(--color-primary)" />
           <h3 className="text-sm font-medium text-foreground">
-            Wettelijke Deadlines
+            {t('handlerDashboard.timeline.legalDeadlines')}
           </h3>
         </div>
         <button
@@ -221,7 +221,7 @@ const TimelineMonitoring = () => {
         <div className="mb-3">
           <h4 className="text-xs font-semibold text-destructive mb-2 flex items-center gap-1.5">
             <Icon name="AlertTriangle" size={12} />
-            Verlopen ({timelineData.overdue.length})
+            {t('handlerDashboard.timeline.overdue')} ({timelineData.overdue.length})
           </h4>
           <div className="space-y-1.5">
             {timelineData.overdue.slice(0, 3).map(ticket => (
@@ -237,13 +237,13 @@ const TimelineMonitoring = () => {
                       #{ticket.id.slice(0, 8)} - {ticket.workflowName}
                     </p>
                     <p className="text-[10px] text-muted-foreground">
-                      {ticket.daysElapsed}d oud
+                      {t('handlerDashboard.timeline.daysOld', { count: ticket.daysElapsed })}
                     </p>
                   </div>
                 </div>
                 <div className="text-right ml-2">
                   <p className="text-xs font-bold text-destructive whitespace-nowrap">
-                    {Math.abs(ticket.daysRemaining)}d te laat
+                    {t('handlerDashboard.timeline.daysLate', { count: Math.abs(ticket.daysRemaining) })}
                   </p>
                 </div>
               </div>
@@ -256,7 +256,7 @@ const TimelineMonitoring = () => {
         <div>
           <h4 className="text-xs font-semibold text-warning mb-2 flex items-center gap-1.5">
             <Icon name="Clock" size={12} />
-            Deadline Nadert ({timelineData.approaching.length})
+            {t('handlerDashboard.timeline.approachingTitle')} ({timelineData.approaching.length})
           </h4>
           <div className="space-y-1.5">
             {timelineData.approaching.slice(0, 3).map(ticket => (
@@ -272,13 +272,13 @@ const TimelineMonitoring = () => {
                       #{ticket.id.slice(0, 8)} - {ticket.workflowName}
                     </p>
                     <p className="text-[10px] text-muted-foreground">
-                      {ticket.daysElapsed}d oud
+                      {t('handlerDashboard.timeline.daysOld', { count: ticket.daysElapsed })}
                     </p>
                   </div>
                 </div>
                 <div className="text-right ml-2">
                   <p className="text-xs font-bold text-warning whitespace-nowrap">
-                    {ticket.daysRemaining}d rest
+                    {t('handlerDashboard.timeline.daysRemaining', { count: ticket.daysRemaining })}
                   </p>
                 </div>
               </div>
@@ -291,7 +291,7 @@ const TimelineMonitoring = () => {
         <div className="text-center py-4">
           <Icon name="CheckCircle2" size={24} color="var(--color-success)" className="mx-auto mb-2" />
           <p className="text-xs text-muted-foreground">
-            Alle tickets binnen deadlines
+            {t('handlerDashboard.timeline.allWithinDeadlines')}
           </p>
         </div>
       )}

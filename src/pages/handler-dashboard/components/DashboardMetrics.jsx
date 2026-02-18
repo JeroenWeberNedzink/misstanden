@@ -8,7 +8,7 @@ const DashboardMetrics = ({ metrics }) => {
   const metricCards = [
     {
       id: 'open',
-      title: 'Open Tickets',
+      title: t('handlerDashboard.metrics.openTickets'),
       value: metrics?.open || 0,
       icon: 'Inbox',
       iconColor: 'var(--color-primary)',
@@ -16,7 +16,7 @@ const DashboardMetrics = ({ metrics }) => {
     },
     {
       id: 'newUnassigned',
-      title: 'Nieuw / Ontoegew',
+      title: t('handlerDashboard.metrics.newUnassigned'),
       value: metrics?.newUnassigned || 0,
       icon: 'Bell',
       iconColor: 'var(--color-warning)',
@@ -24,7 +24,7 @@ const DashboardMetrics = ({ metrics }) => {
     },
     {
       id: 'inProgress',
-      title: 'In Behandeling',
+      title: t('handlerDashboard.metrics.inProgress'),
       value: metrics?.inProgress || 0,
       icon: 'RefreshCw',
       iconColor: 'var(--color-accent)',
@@ -32,12 +32,12 @@ const DashboardMetrics = ({ metrics }) => {
     },
     {
       id: 'completedThisWeek',
-      title: 'Afgerond (7 dagen)',
+      title: t('handlerDashboard.metrics.completed7Days'),
       value: metrics?.completedThisWeek || 0,
       icon: 'CheckCircle',
       iconColor: 'var(--color-success)',
       bgColor: 'bg-success/10',
-      subtext: 'Afgelopen week'
+      subtext: t('handlerDashboard.metrics.pastWeek')
     }
   ];
 

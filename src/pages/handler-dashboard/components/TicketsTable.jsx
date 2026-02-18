@@ -1,5 +1,6 @@
 ﻿import React, { useMemo, useState } from 'react';
 import Icon from '../../../components/AppIcon';
+import { useTranslation } from 'react-i18next';
 import Button from '../../../components/ui/Button';
 import TicketTableRow from './TicketTableRow';
 
@@ -45,6 +46,7 @@ const normalizeStatuses = (raw) => {
 };
 
 const TicketsTable = ({ tickets, workflows = [], onStatusChange, onAssignHandler, handlerOptions, userRole }) => {
+  const { t } = useTranslation();
   const [sortConfig, setSortConfig] = useState({ key: 'submitted_at', direction: 'desc' });
 
   const handleSort = (key) => {
@@ -122,9 +124,9 @@ const TicketsTable = ({ tickets, workflows = [], onStatusChange, onAssignHandler
         <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-muted mx-auto mb-4 flex items-center justify-center">
           <Icon name="Inbox" size={32} color="var(--color-muted-foreground)" />
         </div>
-        <h3 className="text-lg md:text-xl font-semibold text-foreground mb-2">Geen Tickets Gevonden</h3>
+        <h3 className="text-lg md:text-xl font-semibold text-foreground mb-2">{t('handlerDashboard.table.noTicketsFound')}</h3>
         <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Er zijn geen tickets die overeenkomen met de geselecteerde filters.
+          {t('handlerDashboard.table.noTicketsForFilters')}
         </p>
       </div>
     );
@@ -134,14 +136,14 @@ const TicketsTable = ({ tickets, workflows = [], onStatusChange, onAssignHandler
     <div className="card overflow-hidden">
       <div className="flex items-center justify-between mb-6 px-4 md:px-0">
         <h2 className="text-xl md:text-2xl font-semibold text-foreground">
-          Tickets Overzicht
+          {t('handlerDashboard.table.overview')}
           <span className="ml-3 text-sm font-normal text-muted-foreground">
-            ({tickets?.length} {tickets?.length === 1 ? 'ticket' : 'tickets'})
+            ({tickets?.length} {tickets?.length === 1 ? t('handlerDashboard.table.ticketSingle') : t('handlerDashboard.table.ticketPlural')})
           </span>
         </h2>
         <div className="hidden md:flex items-center gap-2">
           <Button variant="outline" size="sm" iconName="Download" iconPosition="left">
-            Exporteer
+            {t('handlerDashboard.actions.export')}
           </Button>
         </div>
       </div>
@@ -152,15 +154,15 @@ const TicketsTable = ({ tickets, workflows = [], onStatusChange, onAssignHandler
           <thead className="bg-muted/50 border-b border-border">
             <tr>
               <th className="px-4 py-4 w-12"></th>
-              <SortableHeader label="Ticket #" sortKey="ticket_number" />
-              <SortableHeader label="Datum" sortKey="submitted_at" />
-              <SortableHeader label="Workflow" sortKey="workflow_type" />
-              <SortableHeader label="Ernst" sortKey="severity_code" />
+              <SortableHeader label={t('handlerDashboard.table.ticketNumber')} sortKey="ticket_number" />
+              <SortableHeader label={t('common.date')} sortKey="submitted_at" />
+              <SortableHeader label={t('handlerDashboard.table.workflow')} sortKey="workflow_type" />
+              <SortableHeader label={t('handlerDashboard.table.severity')} sortKey="severity_code" />
               {/* Sort by status_code (still works) */}
-              <SortableHeader label="Status" sortKey="status_code" />
-              <SortableHeader label="Handler" sortKey="handlers" />
+              <SortableHeader label={t('common.status')} sortKey="status_code" />
+              <SortableHeader label={t('handlerDashboard.table.handler')} sortKey="handlers" />
               <th className="px-4 py-4 text-left">
-                <span className="text-sm font-semibold text-foreground">Acties</span>
+                <span className="text-sm font-semibold text-foreground">{t('common.actions')}</span>
               </th>
             </tr>
           </thead>

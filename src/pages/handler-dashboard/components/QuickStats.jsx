@@ -1,5 +1,6 @@
 ﻿import React from 'react';
 import Icon from '../../../components/AppIcon';
+import { useTranslation } from 'react-i18next';
 
 const StatCard = ({ icon, label, value, color, bgColor }) => (
   <div className={`${bgColor} rounded-xl border border-border p-4 hover:shadow-md transition-shadow`}>
@@ -19,6 +20,7 @@ const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
 
 const QuickStats = ({ tickets, currentHandlerId, workflowStatusMap = new Map() }) => {
+  const { t } = useTranslation();
   // Simple, accurate stats
   const getTicketHandlerId = (ticket) =>
     ticket?.handlerId ||
@@ -61,42 +63,42 @@ const QuickStats = ({ tickets, currentHandlerId, workflowStatusMap = new Map() }
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
       <StatCard
         icon="Inbox"
-        label="Totaal Tickets"
+        label={t('handlerDashboard.quickStats.totalTickets')}
         value={stats.total}
         color="text-primary"
         bgColor="bg-primary/5"
       />
       <StatCard
         icon="FolderOpen"
-        label="Open"
+        label={t('handlerDashboard.summary.open')}
         value={stats.open}
         color="text-sky-600"
         bgColor="bg-sky-50"
       />
       <StatCard
         icon="UserX"
-        label="Onbehandeld"
+        label={t('handlerDashboard.summary.unassigned')}
         value={stats.unassigned}
         color="text-amber-600"
         bgColor="bg-amber-50"
       />
       <StatCard
         icon="AlertTriangle"
-        label="Hoge Prioriteit"
+        label={t('handlerDashboard.quickStats.highPriority')}
         value={stats.highPriority}
         color="text-red-600"
         bgColor="bg-red-50"
       />
       <StatCard
         icon="UserCheck"
-        label="Mijn Open"
+        label={t('handlerDashboard.summary.mineOpen')}
         value={stats.mineOpen}
         color="text-indigo-600"
         bgColor="bg-indigo-50"
       />
       <StatCard
         icon="Calendar"
-        label="Vandaag"
+        label={t('handlerDashboard.summary.today')}
         value={stats.today}
         color="text-emerald-600"
         bgColor="bg-emerald-50"

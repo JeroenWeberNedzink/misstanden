@@ -73,45 +73,135 @@
         "errorInvalidCredentials": "ID de ticket ou code d'accÃ¨s invalide"
     },
     "handlerDashboard": {
-        "title": "Tableau de Bord Gestionnaire",
+        "title": "Tableau de bord gestionnaire",
+        "welcomeMessage": "Bienvenue,",
+        "subtitle": "Vue d'ensemble de vos dossiers assignes et indicateurs de performance",
+        "fallbackUser": "Utilisateur",
+        "lastUpdated": "Derniere mise a jour",
+        "notLoaded": "Non charge",
+        "searchPlaceholder": "Rechercher par numero de dossier ou description...",
+        "statusChangeHint": "Selectionnez une action pour ce dossier",
         "metrics": {
-            "totalCases": "Total des Cas",
-            "activeCases": "Cas Actifs",
-            "resolvedToday": "RÃ©solus Aujourd'hui",
-            "avgResolutionTime": "Temps Moy. de RÃ©solution",
-            "hours": "heures"
+            "totalCases": "Total des dossiers",
+            "activeCases": "Dossiers actifs",
+            "resolvedToday": "Resolus aujourd'hui",
+            "avgResolutionTime": "Temps moyen de resolution",
+            "hours": "heures",
+            "openTickets": "Dossiers ouverts",
+            "newUnassigned": "Nouveaux non assignes",
+            "inProgress": "En cours",
+            "completed7Days": "Clotures (7 jours)",
+            "pastWeek": "Semaine passee"
+        },
+        "summary": {
+            "open": "Ouverts",
+            "unassigned": "Non assignes",
+            "urgent": "Urgents",
+            "today": "Aujourd'hui",
+            "mineOpen": "Mes dossiers ouverts"
+        },
+        "quickViews": {
+            "all": "Tous",
+            "mine": "Mes dossiers",
+            "unassigned": "Non assignes",
+            "urgent": "Urgents",
+            "today": "Aujourd'hui"
+        },
+        "quickStats": {
+            "totalTickets": "Total des dossiers",
+            "highPriority": "Priorite elevee"
+        },
+        "layout": {
+            "cards": "Cartes",
+            "table": "Tableau"
         },
         "filters": {
-            "allStatuses": "Tous les Statuts",
-            "allSeverities": "Toutes les GravitÃ©s",
-            "allWorkflows": "Tous les Workflows"
+            "allStatuses": "Tous les statuts",
+            "allSeverities": "Toutes les priorites",
+            "allWorkflows": "Tous les workflows",
+            "allPriorities": "Toutes les priorites",
+            "scope": "Portee",
+            "severity": "Priorite"
+        },
+        "actions": {
+            "assign": "Assigner",
+            "assignHandler": "Assigner un gestionnaire",
+            "assignToMe": "M'assigner",
+            "clickForDetails": "Cliquer pour les details",
+            "collapse": "Reduire",
+            "expand": "Developper",
+            "export": "Exporter",
+            "reset": "Reinitialiser",
+            "view": "Voir",
+            "viewDetails": "Voir les details"
         },
         "table": {
-            "ticketId": "ID Ticket",
-            "severity": "GravitÃ©",
+            "ticketId": "ID dossier",
+            "ticketNumber": "Numero dossier",
+            "severity": "Priorite",
             "workflow": "Workflow",
             "status": "Statut",
-            "created": "CrÃ©Ã©",
-            "lastUpdate": "DerniÃ¨re Mise Ã  Jour",
+            "created": "Cree",
+            "lastUpdate": "Derniere mise a jour",
             "actions": "Actions",
-            "viewDetails": "Voir les DÃ©tails",
-            "noTickets": "Aucun ticket trouvÃ©"
+            "viewDetails": "Voir les details",
+            "overview": "Apercu",
+            "ticketSingle": "dossier",
+            "ticketPlural": "dossiers",
+            "handler": "Gestionnaire",
+            "unassigned": "Non assigne",
+            "noDescription": "Aucune description",
+            "noHandlersAvailable": "Aucun gestionnaire disponible",
+            "noTickets": "Aucun dossier trouve",
+            "noTicketsTitle": "Aucun dossier a afficher",
+            "noTicketsFound": "Aucun dossier trouve",
+            "noTicketsForFilters": "Aucun dossier ne correspond aux filtres actifs"
         },
         "severity": {
             "critical": "Critique",
-            "high": "Ã‰levÃ©e",
+            "high": "Elevee",
             "medium": "Moyenne",
             "low": "Faible"
         },
         "status": {
             "new": "Nouveau",
-            "investigating": "En Investigation",
-            "in_progress": "En Cours",
-            "resolved": "RÃ©solu",
-            "closed": "FermÃ©"
+            "investigating": "En investigation",
+            "in_progress": "En cours",
+            "resolved": "Resolu",
+            "closed": "Ferme"
         },
-        "welcomeMessage": "Welcome, ",
-        "subtitle": "Overview of your assigned cases and performance metrics"
+        "pills": {
+            "anonymous": "Anonyme",
+            "unassigned": "Non assigne",
+            "critical": "Critique",
+            "high": "Priorite haute",
+            "new": "Nouveau"
+        },
+        "workflowLabels": {
+            "whistleblower": "Lanceur d'alerte",
+            "itSecurity": "Securite IT",
+            "hr": "Ressources humaines",
+            "safety": "Securite",
+            "report": "Signalement"
+        },
+        "reporterInfo": {
+            "title": "Informations du declarant"
+        },
+        "timeline": {
+            "title": "Suivi des delais",
+            "legalDeadlines": "Echeances legales",
+            "overdue": "En retard",
+            "approaching": "Proche de l'echeance",
+            "approachingTitle": "A surveiller",
+            "onTrack": "Dans les delais",
+            "daysOld": "Age: {{count}} j",
+            "daysLate": "{{count}} j de retard",
+            "daysRemaining": "{{count}} j restants",
+            "allWithinDeadlines": "Tous les dossiers sont dans les delais"
+        },
+        "common": {
+            "unknown": "Inconnu"
+        }
     },
     "priorityWorkflow": {
         "title": "Workflow Prioritaire",

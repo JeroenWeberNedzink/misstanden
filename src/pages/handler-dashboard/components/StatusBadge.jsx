@@ -1,4 +1,5 @@
-﻿import React from 'react';
+import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 const safeLower = (v) => String(v ?? '').toLowerCase().trim();
 
@@ -24,9 +25,10 @@ const StatusBadge = ({
   label: labelOverride,
   color: colorOverride,
 }) => {
+  const { t } = useTranslation();
   const sizeClasses = size === 'sm' ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm';
 
-  const displayLabel = String(labelOverride ?? '').trim() || (status ? String(status) : 'Onbekend');
+  const displayLabel = String(labelOverride ?? '').trim() || (status ? String(status) : t('handlerDashboard.common.unknown'));
   const dotClass = colorToDotClass(colorOverride);
 
   return (

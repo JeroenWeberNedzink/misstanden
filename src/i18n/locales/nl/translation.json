@@ -73,30 +73,89 @@
         "errorInvalidCredentials": "Ongeldige ticket-ID of toegangscode"
     },
     "handlerDashboard": {
-        "title": "Handler Dashboard",
-        "welcomeMessage": "Welkom terug, ",
+        "title": "Behandelaar Dashboard",
+        "welcomeMessage": "Welkom,",
+        "subtitle": "Overzicht van uw toegewezen dossiers en prestatiecijfers",
+        "fallbackUser": "Gebruiker",
+        "lastUpdated": "Laatst bijgewerkt",
+        "notLoaded": "Nog niet geladen",
+        "searchPlaceholder": "Zoek op dossiernummer of beschrijving...",
+        "statusChangeHint": "Kies een actie voor dit dossier",
         "metrics": {
-            "totalCases": "Totaal Aantal Zaken",
-            "activeCases": "Actieve Zaken",
-            "resolvedToday": "Vandaag Opgelost",
-            "avgResolutionTime": "Gem. Oplostijd",
-            "hours": "uur"
+            "totalCases": "Totaal dossiers",
+            "activeCases": "Actieve dossiers",
+            "resolvedToday": "Vandaag opgelost",
+            "avgResolutionTime": "Gem. oplostijd",
+            "hours": "uur",
+            "openTickets": "Open dossiers",
+            "newUnassigned": "Nieuw niet toegewezen",
+            "inProgress": "In behandeling",
+            "completed7Days": "Afgerond (7 dagen)",
+            "pastWeek": "Afgelopen week"
+        },
+        "summary": {
+            "open": "Open",
+            "unassigned": "Niet toegewezen",
+            "urgent": "Urgent",
+            "today": "Vandaag",
+            "mineOpen": "Mijn open dossiers"
+        },
+        "quickViews": {
+            "all": "Alles",
+            "mine": "Van mij",
+            "unassigned": "Niet toegewezen",
+            "urgent": "Urgent",
+            "today": "Vandaag"
+        },
+        "quickStats": {
+            "totalTickets": "Totaal dossiers",
+            "highPriority": "Hoge prioriteit"
+        },
+        "layout": {
+            "cards": "Kaarten",
+            "table": "Tabel"
         },
         "filters": {
-            "allStatuses": "Alle Statussen",
-            "allSeverities": "Alle Ernstniveaus",
-            "allWorkflows": "Alle Workflows"
+            "allStatuses": "Alle statussen",
+            "allSeverities": "Alle prioriteiten",
+            "allWorkflows": "Alle workflows",
+            "allPriorities": "Alle prioriteiten",
+            "scope": "Scope",
+            "severity": "Prioriteit"
+        },
+        "actions": {
+            "assign": "Toewijzen",
+            "assignHandler": "Behandelaar toewijzen",
+            "assignToMe": "Aan mij toewijzen",
+            "clickForDetails": "Klik voor details",
+            "collapse": "Inklappen",
+            "expand": "Uitklappen",
+            "export": "Exporteren",
+            "reset": "Reset",
+            "view": "Bekijken",
+            "viewDetails": "Details bekijken"
         },
         "table": {
-            "ticketId": "Ticket-ID",
-            "severity": "Ernst",
+            "ticketId": "Dossier-ID",
+            "ticketNumber": "Dossiernummer",
+            "severity": "Prioriteit",
             "workflow": "Workflow",
             "status": "Status",
             "created": "Aangemaakt",
-            "lastUpdate": "Laatste Update",
+            "lastUpdate": "Laatste update",
             "actions": "Acties",
-            "viewDetails": "Details Bekijken",
-            "noTickets": "Geen tickets gevonden"
+            "viewDetails": "Details bekijken",
+            "overview": "Overzicht",
+            "ticketSingle": "dossier",
+            "ticketPlural": "dossiers",
+            "handler": "Behandelaar",
+            "unassigned": "Niet toegewezen",
+            "noDescription": "Geen beschrijving",
+            "noHandlersAvailable": "Geen behandelaars beschikbaar",
+            "noTickets": "Geen dossiers gevonden",
+            "noTicketsTitle": "Geen dossiers om te tonen",
+            "noTicketsFound": "Geen dossiers gevonden",
+            "noTicketsForFilters": "Geen dossiers voor de actieve filters"
         },
         "severity": {
             "critical": "Kritiek",
@@ -107,11 +166,42 @@
         "status": {
             "new": "Nieuw",
             "investigating": "Onderzoek",
-            "in_progress": "In Behandeling",
+            "in_progress": "In behandeling",
             "resolved": "Opgelost",
             "closed": "Gesloten"
         },
-        "subtitle": "Overview of your assigned cases and performance metrics"
+        "pills": {
+            "anonymous": "Anoniem",
+            "unassigned": "Niet toegewezen",
+            "critical": "Kritiek",
+            "high": "Hoog",
+            "new": "Nieuw"
+        },
+        "workflowLabels": {
+            "whistleblower": "Klokkenluider",
+            "itSecurity": "IT-beveiliging",
+            "hr": "HR",
+            "safety": "Veiligheid",
+            "report": "Melding"
+        },
+        "reporterInfo": {
+            "title": "Informatie melder"
+        },
+        "timeline": {
+            "title": "Termijnbewaking",
+            "legalDeadlines": "Wettelijke termijnen",
+            "overdue": "Te laat",
+            "approaching": "Nadert deadline",
+            "approachingTitle": "Nadert",
+            "onTrack": "Op schema",
+            "daysOld": "Leeftijd: {{count}} d",
+            "daysLate": "{{count}} d te laat",
+            "daysRemaining": "{{count}} d resterend",
+            "allWithinDeadlines": "Alle dossiers zijn binnen de termijnen"
+        },
+        "common": {
+            "unknown": "Onbekend"
+        }
     },
     "priorityWorkflow": {
         "title": "Prioriteitsworkflow",

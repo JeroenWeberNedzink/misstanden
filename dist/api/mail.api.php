@@ -57,6 +57,8 @@ function loadEnvFile(string $file, bool $override = true): void {
 
 loadEnvFile(__DIR__ . '/../../.env.local', true);
 loadEnvFile(__DIR__ . '/../../.env', false); // optional: let .env.local win
+
+require_once __DIR__ . '/_crypto.php';
 error_log("MAIL_DEV_SINK getenv=" . var_export(getenv('MAIL_DEV_SINK'), true));
 error_log("MAIL_DEV_SINK _ENV=" . var_export($_ENV['MAIL_DEV_SINK'] ?? null, true));
 // ---------- Preflight ----------
@@ -215,6 +217,7 @@ try {
     // Gather fields (JSON has priority if present)
     $mailfrom = $isJson ? ($jsonInput['from'] ?? MailConfig::defaultFrom()) : (($_POST['mailfrom'] ?? MailConfig::defaultFrom()));
     $mailto   = $isJson ? ($jsonInput['to']   ?? '') : (($_POST['mailto'] ?? ''));
+    $toEncrypted = $isJson ? ($jsonInput['to_encrypted'] ?? '') : (($_POST['to_encrypted'] ?? ($_POST['mailto_encrypted'] ?? '')));
 
     $mailcc   = $isJson ? ($jsonInput['cc']   ?? '') : (($_POST['mailcc'] ?? ''));
     $mailbcc  = $isJson ? ($jsonInput['bcc']  ?? '') : (($_POST['mailbcc'] ?? ''));
@@ -225,6 +228,15 @@ try {
 
     $mailfrom = trim((string)$mailfrom);
     $mailto   = is_array($mailto) ? implode(';', $mailto) : (string)$mailto;
+
+    if ($toEncrypted) {
+        try {
+            $key = get_email_crypto_key();
+            $mailto = decrypt_email((string)$toEncrypted, $key);
+        } catch (Exception $e) {
+            ApiResponse::json(400, false, 'Invalid encrypted recipient', [], $logger->all());
+        }
+    }
 
     $subject  = MailUtil::sanitize((string)$subject);
 
@@ -243,7 +255,7 @@ try {
             $hoursRemaining = (float)($jsonInput['hours_remaining'] ?? 0);
             $subject = "⚠️ SLA Waarschuwing: Ticket {$ticketNumber}";
             $html = "
-              <h2>SLA Waarschuwing</h2>
+              <h2>⚠️ SLA Waarschuwing</h2>
               <p>Hallo " . htmlspecialchars((string)($handler['name'] ?? '')) . ",</p>
               <p>De SLA-deadline nadert. Nog <strong>{$hoursRemaining} uur</strong>.</p>
               <div style=\"background:#fef3c7;border-left:4px solid #f59e0b;padding:14px;border-radius:8px\">
@@ -256,9 +268,9 @@ try {
             ";
         } elseif ($type === 'sla_breach') {
             $hoursOverdue = (float)($jsonInput['hours_overdue'] ?? 0);
-            $subject = "SLA OVERSCHREDEN: Ticket {$ticketNumber}";
+            $subject = "🚨 SLA OVERSCHREDEN: Ticket {$ticketNumber}";
             $html = "
-              <h2>SLA Deadline Overschreden</h2>
+              <h2>🚨 SLA Deadline Overschreden</h2>
               <p>Hallo " . htmlspecialchars((string)($handler['name'] ?? '')) . ",</p>
               <p><strong style=\"color:#dc2626\">De deadline is overschreden</strong> met {$hoursOverdue} uur.</p>
               <div style=\"background:#fee2e2;border-left:4px solid #dc2626;padding:14px;border-radius:8px\">

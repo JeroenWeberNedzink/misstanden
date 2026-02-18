@@ -35,8 +35,35 @@ error_reporting(E_ALL);
 
 // Constants
 define('TRANSLATIONS_DIR', __DIR__ . '/../../src/i18n/locales');
-define('SUPPORTED_LANGUAGES', ['en', 'nl', 'fr', 'de']);
 define('BACKUP_DIR', __DIR__ . '/../../backups/translations');
+
+/**
+ * Get list of supported languages (dynamically from filesystem)
+ */
+function getSupportedLanguages(): array {
+    $dir = TRANSLATIONS_DIR;
+    if (!is_dir($dir)) {
+        return ['en', 'nl', 'fr', 'de']; // fallback
+    }
+
+    $languages = [];
+    $items = scandir($dir);
+
+    foreach ($items as $item) {
+        if ($item === '.' || $item === '..') continue;
+        $path = $dir . '/' . $item;
+        if (is_dir($path) && file_exists($path . '/translation.json')) {
+            $languages[] = $item;
+        }
+    }
+
+    // Always ensure we have at least English
+    if (empty($languages)) {
+        $languages = ['en', 'nl', 'fr', 'de'];
+    }
+
+    return $languages;
+}
 
 // Ensure backup directory exists
 if (!is_dir(BACKUP_DIR)) {
@@ -91,10 +118,6 @@ function unflattenArray(array $array): array {
  * Read translation JSON file
  */
 function readTranslationFile(string $lang): array {
-    if (!in_array($lang, SUPPORTED_LANGUAGES, true)) {
-        throw new Exception("Unsupported language: $lang");
-    }
-
     $filePath = TRANSLATIONS_DIR . "/$lang/translation.json";
 
     if (!file_exists($filePath)) {
@@ -118,13 +141,22 @@ function readTranslationFile(string $lang): array {
  * Write translation JSON file with backup
  */
 function writeTranslationFile(string $lang, array $data): void {
-    if (!in_array($lang, SUPPORTED_LANGUAGES, true)) {
-        throw new Exception("Unsupported language: $lang");
+    // Validate language code format (2-5 lowercase alphanumeric chars)
+    if (!preg_match('/^[a-z]{2,5}(-[a-zA-Z]{2,5})?$/', $lang)) {
+        throw new Exception("Invalid language code format: $lang");
     }
 
-    $filePath = TRANSLATIONS_DIR . "/$lang/translation.json";
+    $langDir = TRANSLATIONS_DIR . "/$lang";
+    $filePath = "$langDir/translation.json";
 
-    // Create backup before writing
+    // Create language directory if it doesn't exist
+    if (!is_dir($langDir)) {
+        if (!mkdir($langDir, 0755, true)) {
+            throw new Exception("Failed to create language directory: $langDir");
+        }
+    }
+
+    // Create backup before writing (if file exists)
     if (file_exists($filePath)) {
         $backupPath = BACKUP_DIR . "/$lang-" . date('Y-m-d-His') . '.json';
         copy($filePath, $backupPath);
@@ -247,11 +279,17 @@ try {
 
         } elseif ($action === 'detect-missing') {
             // Detect missing translations across all languages
+            $supportedLanguages = getSupportedLanguages();
             $allData = [];
 
-            foreach (SUPPORTED_LANGUAGES as $lang) {
-                $data = readTranslationFile($lang);
-                $allData[$lang] = flattenArray($data);
+            foreach ($supportedLanguages as $lang) {
+                try {
+                    $data = readTranslationFile($lang);
+                    $allData[$lang] = flattenArray($data);
+                } catch (Exception $e) {
+                    // Skip languages that can't be read
+                    continue;
+                }
             }
 
             // Find all unique keys
@@ -267,7 +305,7 @@ try {
                 $presentIn = [];
                 $missingIn = [];
 
-                foreach (SUPPORTED_LANGUAGES as $lang) {
+                foreach ($supportedLanguages as $lang) {
                     if (isset($allData[$lang][$key]) && trim($allData[$lang][$key]) !== '') {
                         $presentIn[] = $lang;
                     } else {
@@ -288,7 +326,8 @@ try {
             apiResponse(200, true, 'Missing translations detected', [
                 'totalKeys' => count($allKeys),
                 'missingCount' => count($missing),
-                'missing' => $missing
+                'missing' => $missing,
+                'languages' => $supportedLanguages
             ]);
 
         } else {
@@ -329,16 +368,22 @@ try {
                 apiResponse(409, false, 'Translation key already exists');
             }
 
-            // Add to all languages
-            foreach (SUPPORTED_LANGUAGES as $lang) {
-                $langData = readTranslationFile($lang);
-                $flatData = flattenArray($langData);
+            // Add to all supported languages
+            $supportedLanguages = getSupportedLanguages();
+            foreach ($supportedLanguages as $lang) {
+                try {
+                    $langData = readTranslationFile($lang);
+                    $flatData = flattenArray($langData);
 
-                $value = $translations[$lang] ?? '';
-                $flatData[$keyPath] = $value;
+                    $value = $translations[$lang] ?? '';
+                    $flatData[$keyPath] = $value;
 
-                writeTranslationFile($lang, $flatData);
-                logAuditChange($keyPath, $lang, 'CREATE', null, $value);
+                    writeTranslationFile($lang, $flatData);
+                    logAuditChange($keyPath, $lang, 'CREATE', null, $value);
+                } catch (Exception $e) {
+                    // Skip languages that can't be read/written
+                    error_log("Failed to create translation for $lang: " . $e->getMessage());
+                }
             }
 
             apiResponse(201, true, 'Translation key created successfully', ['keyPath' => $keyPath]);
@@ -352,8 +397,9 @@ try {
                 apiResponse(400, false, 'lang and data are required');
             }
 
-            if (!in_array($lang, SUPPORTED_LANGUAGES, true)) {
-                apiResponse(400, false, 'Unsupported language');
+            // Validate language code format
+            if (!preg_match('/^[a-z]{2,5}(-[a-zA-Z]{2,5})?$/', $lang)) {
+                apiResponse(400, false, 'Invalid language code format');
             }
 
             // Flatten imported data
@@ -409,8 +455,9 @@ try {
             apiResponse(400, false, 'keyPath and lang are required');
         }
 
-        if (!in_array($lang, SUPPORTED_LANGUAGES, true)) {
-            apiResponse(400, false, 'Unsupported language');
+        // Validate language code format
+        if (!preg_match('/^[a-z]{2,5}(-[a-zA-Z]{2,5})?$/', $lang)) {
+            apiResponse(400, false, 'Invalid language code format');
         }
 
         $langData = readTranslationFile($lang);
@@ -446,16 +493,22 @@ try {
         }
 
         // Remove from all languages
-        foreach (SUPPORTED_LANGUAGES as $lang) {
-            $langData = readTranslationFile($lang);
-            $flatData = flattenArray($langData);
+        $supportedLanguages = getSupportedLanguages();
+        foreach ($supportedLanguages as $lang) {
+            try {
+                $langData = readTranslationFile($lang);
+                $flatData = flattenArray($langData);
 
-            if (isset($flatData[$keyPath])) {
-                $oldValue = $flatData[$keyPath];
-                unset($flatData[$keyPath]);
+                if (isset($flatData[$keyPath])) {
+                    $oldValue = $flatData[$keyPath];
+                    unset($flatData[$keyPath]);
 
-                writeTranslationFile($lang, $flatData);
-                logAuditChange($keyPath, $lang, 'DELETE', $oldValue, null);
+                    writeTranslationFile($lang, $flatData);
+                    logAuditChange($keyPath, $lang, 'DELETE', $oldValue, null);
+                }
+            } catch (Exception $e) {
+                // Skip languages that can't be read/written
+                error_log("Failed to delete translation for $lang: " . $e->getMessage());
             }
         }
 

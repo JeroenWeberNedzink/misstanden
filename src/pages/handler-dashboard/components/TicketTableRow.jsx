@@ -1,5 +1,6 @@
 ﻿import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import StatusBadge from './StatusBadge';
@@ -11,7 +12,7 @@ const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
 
 // purely UI, not DB logic:
-const workflowUI = (workflowCode) => {
+const workflowUI = (workflowCode, t) => {
   const w = safeLower(workflowCode);
 
   // Give distinct icons/colors per workflow “type”
@@ -21,7 +22,7 @@ const workflowUI = (workflowCode) => {
       icon: 'Shield',
       chip: 'bg-sky-50 text-sky-700 border-sky-200',
       dot: 'bg-sky-500',
-      label: 'Klokkenluider',
+      label: t('handlerDashboard.workflowLabels.whistleblower'),
     };
   }
   if (w.includes('it') || w.includes('security')) {
@@ -29,7 +30,7 @@ const workflowUI = (workflowCode) => {
       icon: 'ShieldCheck',
       chip: 'bg-sky-50 text-sky-700 border-sky-200',
       dot: 'bg-sky-500',
-      label: 'IT / Security',
+      label: t('handlerDashboard.workflowLabels.itSecurity'),
     };
   }
   if (w.includes('hr')) {
@@ -37,7 +38,7 @@ const workflowUI = (workflowCode) => {
       icon: 'Users',
       chip: 'bg-rose-50 text-rose-700 border-rose-200',
       dot: 'bg-rose-500',
-      label: 'HR',
+      label: t('handlerDashboard.workflowLabels.hr'),
     };
   }
   if (w.includes('safety') || w.includes('hse')) {
@@ -45,14 +46,14 @@ const workflowUI = (workflowCode) => {
       icon: 'HardHat',
       chip: 'bg-amber-50 text-amber-700 border-amber-200',
       dot: 'bg-amber-500',
-      label: 'Safety',
+      label: t('handlerDashboard.workflowLabels.safety'),
     };
   }
   return {
     icon: 'ClipboardList',
     chip: 'bg-slate-50 text-slate-700 border-slate-200',
     dot: 'bg-slate-500',
-    label: 'Melding',
+    label: t('handlerDashboard.workflowLabels.report'),
   };
 };
 
@@ -66,6 +67,18 @@ const TicketTableRow = ({
   workflowStatusMap, // Map(workflowCode -> Map(statusCodeLower -> meta))
 }) => {
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
+  const localeByLanguage = {
+    en: 'en-GB',
+    nl: 'nl-NL',
+    fr: 'fr-FR',
+    de: 'de-DE',
+    pt: 'pt-PT',
+  };
+  const activeLanguage = String(i18n?.resolvedLanguage || i18n?.language || 'en')
+    .toLowerCase()
+    .split('-')[0];
+  const activeLocale = localeByLanguage[activeLanguage] || 'en-GB';
   const [isExpanded, setIsExpanded] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const [showAssignMenu, setShowAssignMenu] = useState(false);
@@ -77,7 +90,7 @@ const TicketTableRow = ({
     try {
       const date = new Date(dateString);
       if (Number.isNaN(date.getTime())) return '-';
-      return date.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      return date.toLocaleDateString(activeLocale, { day: '2-digit', month: '2-digit', year: 'numeric' });
     } catch {
       return '-';
     }
@@ -132,7 +145,7 @@ const TicketTableRow = ({
     return Number(statusMeta.order ?? 999) === minOrder;
   }, [workflowCode, workflowStatusMap, statusCode]);
 
-  const wfUi = useMemo(() => workflowUI(workflowCode), [workflowCode]);
+  const wfUi = useMemo(() => workflowUI(workflowCode, t), [workflowCode, t]);
 
   // Priority “profile” for visuals (UI-only)
   const priorityProfile = useMemo(() => {
@@ -187,27 +200,27 @@ const TicketTableRow = ({
       {isAnonymous && (
         <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 flex items-center gap-1">
           <Icon name="User" size={10} />
-          ANONIEM
+          {t('handlerDashboard.pills.anonymous')}
         </span>
       )}
       {isUnassigned && (
         <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800">
-          UNASSIGNED
+          {t('handlerDashboard.pills.unassigned')}
         </span>
       )}
       {isCritical && (
         <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-800">
-          CRITICAL
+          {t('handlerDashboard.pills.critical')}
         </span>
       )}
       {!isCritical && isHigh && (
         <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-          HIGH
+          {t('handlerDashboard.pills.high')}
         </span>
       )}
       {isNew && (
         <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-          NEW
+          {t('handlerDashboard.pills.new')}
         </span>
       )}
     </div>
@@ -233,7 +246,7 @@ const TicketTableRow = ({
             <button
               onClick={() => setIsExpanded(!isExpanded)}
               className="p-1 hover:bg-muted rounded transition-smooth"
-              aria-label={isExpanded ? 'Inklappen' : 'Uitklappen'}
+              aria-label={isExpanded ? t('handlerDashboard.actions.collapse') : t('handlerDashboard.actions.expand')}
             >
               <Icon name={isExpanded ? 'ChevronDown' : 'ChevronRight'} size={18} />
             </button>
@@ -283,7 +296,7 @@ const TicketTableRow = ({
                 <div className="w-8 h-8 rounded-full bg-warning/20 flex items-center justify-center">
                   <Icon name="AlertTriangle" size={16} color="var(--color-warning)" />
                 </div>
-                <span className="text-sm text-warning font-medium">Niet toegewezen</span>
+                <span className="text-sm text-warning font-medium">{t('handlerDashboard.table.unassigned')}</span>
               </div>
             )}
           </td>
@@ -292,7 +305,7 @@ const TicketTableRow = ({
           <td className="px-4 py-4">
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="sm" iconName="Eye" onClick={handleViewDetails}>
-                Bekijk
+                {t('handlerDashboard.actions.view')}
               </Button>
 
               <div className="relative">
@@ -317,7 +330,7 @@ const TicketTableRow = ({
                           className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-muted transition-smooth text-left"
                         >
                           <Icon name="Eye" size={18} />
-                          <span className="text-sm">Bekijk Details</span>
+                          <span className="text-sm">{t('handlerDashboard.actions.viewDetails')}</span>
                         </button>
 
                         {/* Assign Handler (requires edit permission) */}
@@ -330,14 +343,14 @@ const TicketTableRow = ({
                             className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-muted transition-smooth text-left"
                           >
                             <Icon name="UserPlus" size={18} />
-                            <span className="text-sm">Wijs Toe</span>
+                            <span className="text-sm">{t('handlerDashboard.actions.assign')}</span>
                           </button>
                         )}
 
                         <div className="border-t border-border my-2" />
 
                         <p className="px-4 py-2 text-xs text-muted-foreground font-medium">
-                          Status wijzigen via "Bekijk Details"
+                          {t('handlerDashboard.statusChangeHint')}
                         </p>
                       </div>
                     </div>
@@ -355,7 +368,7 @@ const TicketTableRow = ({
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
                   <Icon name="UserPlus" size={16} />
-                  Handler Toewijzen
+                  {t('handlerDashboard.actions.assignHandler')}
                 </h4>
                 <button
                   onClick={() => setShowAssignMenu(false)}
@@ -388,7 +401,7 @@ const TicketTableRow = ({
                     </button>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground">Geen handlers beschikbaar</p>
+                  <p className="text-sm text-muted-foreground">{t('handlerDashboard.table.noHandlersAvailable')}</p>
                 )}
               </div>
             </td>
@@ -400,7 +413,7 @@ const TicketTableRow = ({
           <tr className="hidden lg:table-row border-b border-border bg-muted/30">
             <td colSpan="8" className="px-4 py-6">
               <div className="max-w-4xl">
-                <h4 className="text-sm font-semibold text-foreground mb-3">Beschrijving</h4>
+                <h4 className="text-sm font-semibold text-foreground mb-3">{t('common.description')}</h4>
                 <p className="text-sm text-muted-foreground mb-4 line-clamp-3">{ticket?.description}</p>
 
                 {ticket?.location && (
@@ -415,14 +428,14 @@ const TicketTableRow = ({
                   <div className="mt-4 pt-4 border-t border-border">
                     <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
                       <Icon name="User" size={16} color="var(--color-primary)" />
-                      Melder Informatie
+                      {t('handlerDashboard.reporterInfo.title')}
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {reporterName && (
                         <div className="flex items-start gap-2">
                           <Icon name="User" size={14} color="var(--color-muted-foreground)" className="mt-0.5" />
                           <div className="min-w-0">
-                            <p className="text-xs text-muted-foreground">Naam</p>
+                            <p className="text-xs text-muted-foreground">{t('common.name')}</p>
                             <p className="text-sm text-foreground font-medium">{reporterName}</p>
                           </div>
                         </div>
@@ -431,7 +444,7 @@ const TicketTableRow = ({
                         <div className="flex items-start gap-2">
                           <Icon name="Mail" size={14} color="var(--color-muted-foreground)" className="mt-0.5" />
                           <div className="min-w-0">
-                            <p className="text-xs text-muted-foreground">Email</p>
+                            <p className="text-xs text-muted-foreground">{t('common.email')}</p>
                             <p className="text-sm text-foreground font-medium truncate">
                               <a href={`mailto:${reporterEmail}`} className="hover:text-primary transition-smooth">
                                 {reporterEmail}
@@ -444,7 +457,7 @@ const TicketTableRow = ({
                         <div className="flex items-start gap-2">
                           <Icon name="Phone" size={14} color="var(--color-muted-foreground)" className="mt-0.5" />
                           <div className="min-w-0">
-                            <p className="text-xs text-muted-foreground">Telefoon</p>
+                            <p className="text-xs text-muted-foreground">{t('common.phone')}</p>
                             <p className="text-sm text-foreground font-medium">
                               <a href={`tel:${ticket?.reporterPhone}`} className="hover:text-primary transition-smooth">
                                 {ticket?.reporterPhone}
@@ -506,7 +519,7 @@ const TicketTableRow = ({
 
       <div className="space-y-3 mb-4">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Workflow:</span>
+          <span className="text-sm text-muted-foreground">{t('handlerDashboard.table.workflow')}:</span>
           <span className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs font-semibold ${wfUi.chip}`}>
             <span className={`w-2 h-2 rounded-full ${wfUi.dot}`} />
             <Icon name={wfUi.icon} size={14} />
@@ -515,23 +528,23 @@ const TicketTableRow = ({
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Ernst:</span>
+          <span className="text-sm text-muted-foreground">{t('handlerDashboard.table.severity')}:</span>
           <SeverityBadge severity={severityCode} size="sm" />
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Status:</span>
+          <span className="text-sm text-muted-foreground">{t('common.status')}:</span>
           <StatusCell />
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Handler:</span>
+          <span className="text-sm text-muted-foreground">{t('handlerDashboard.table.handler')}:</span>
           {ticket?.handlers?.name ? (
             <span className="text-sm font-medium text-foreground">{ticket?.handlers?.name}</span>
           ) : (
             <div className="flex items-center gap-1">
               <Icon name="AlertTriangle" size={14} color="var(--color-warning)" />
-              <span className="text-sm text-warning font-medium">Niet toegewezen</span>
+              <span className="text-sm text-warning font-medium">{t('handlerDashboard.table.unassigned')}</span>
             </div>
           )}
         </div>
@@ -539,7 +552,7 @@ const TicketTableRow = ({
 
       {isExpanded && (
         <div className="border-t border-border pt-4 mb-4">
-          <h4 className="text-sm font-semibold text-foreground mb-2">Beschrijving</h4>
+          <h4 className="text-sm font-semibold text-foreground mb-2">{t('common.description')}</h4>
           <p className="text-sm text-muted-foreground mb-3">{ticket?.description}</p>
 
           {ticket?.location && (
@@ -554,14 +567,14 @@ const TicketTableRow = ({
             <div className="mt-4 pt-4 border-t border-border">
               <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
                 <Icon name="User" size={16} color="var(--color-primary)" />
-                Melder Informatie
+                {t('handlerDashboard.reporterInfo.title')}
               </h4>
               <div className="space-y-3">
                 {reporterName && (
                   <div className="flex items-start gap-2">
                     <Icon name="User" size={14} color="var(--color-muted-foreground)" className="mt-0.5" />
                     <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">Naam</p>
+                      <p className="text-xs text-muted-foreground">{t('common.name')}</p>
                       <p className="text-sm text-foreground font-medium">{reporterName}</p>
                     </div>
                   </div>
@@ -570,7 +583,7 @@ const TicketTableRow = ({
                   <div className="flex items-start gap-2">
                     <Icon name="Mail" size={14} color="var(--color-muted-foreground)" className="mt-0.5" />
                     <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">Email</p>
+                      <p className="text-xs text-muted-foreground">{t('common.email')}</p>
                       <p className="text-sm text-foreground font-medium truncate">
                         <a href={`mailto:${reporterEmail}`} className="hover:text-primary transition-smooth">
                           {reporterEmail}
@@ -583,7 +596,7 @@ const TicketTableRow = ({
                   <div className="flex items-start gap-2">
                     <Icon name="Phone" size={14} color="var(--color-muted-foreground)" className="mt-0.5" />
                     <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">Telefoon</p>
+                      <p className="text-xs text-muted-foreground">{t('common.phone')}</p>
                       <p className="text-sm text-foreground font-medium">
                         <a href={`tel:${ticket?.reporterPhone}`} className="hover:text-primary transition-smooth">
                           {ticket?.reporterPhone}
@@ -600,7 +613,7 @@ const TicketTableRow = ({
 
       <div className="flex gap-2">
         <Button variant="outline" fullWidth iconName="Eye" iconPosition="left" onClick={handleViewDetails}>
-          Bekijk Details
+          {t('handlerDashboard.actions.viewDetails')}
         </Button>
         <Button variant="ghost" size="icon" iconName="MoreVertical" onClick={() => setShowActions(!showActions)} />
       </div>

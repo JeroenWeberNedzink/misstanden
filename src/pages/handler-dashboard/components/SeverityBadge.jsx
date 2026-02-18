@@ -1,5 +1,6 @@
 ﻿import React from 'react';
 import Icon from '../../../components/AppIcon';
+import { useTranslation } from 'react-i18next';
 
 const safeLower = (v) => String(v ?? '').toLowerCase().trim();
 
@@ -30,30 +31,31 @@ const SeverityBadge = ({
   color: colorOverride,
   icon: iconOverride,
 }) => {
+  const { t } = useTranslation();
   const severityConfig = {
     low: {
-      label: 'Laag',
+      label: t('handlerDashboard.severity.low'),
       icon: 'Info',
       bgColor: 'bg-muted',
       textColor: 'text-muted-foreground',
       iconColor: 'var(--color-muted-foreground)',
     },
     medium: {
-      label: 'Gemiddeld',
+      label: t('handlerDashboard.severity.medium'),
       icon: 'AlertTriangle',
       bgColor: 'bg-warning/10',
       textColor: 'text-warning',
       iconColor: 'var(--color-warning)',
     },
     high: {
-      label: 'Hoog',
+      label: t('handlerDashboard.severity.high'),
       icon: 'AlertOctagon',
       bgColor: 'bg-error/10',
       textColor: 'text-error',
       iconColor: 'var(--color-error)',
     },
     critical: {
-      label: 'Kritiek',
+      label: t('handlerDashboard.severity.critical'),
       icon: 'ShieldAlert',
       bgColor: 'bg-destructive/10',
       textColor: 'text-destructive',
@@ -70,7 +72,7 @@ const SeverityBadge = ({
 
   const displayLabel =
     String(labelOverride ?? '').trim() ||
-    (isKnown ? config.label : (severity ? String(severity) : 'Onbekend'));
+    (isKnown ? config.label : (severity ? String(severity) : t('handlerDashboard.common.unknown')));
 
   // If you have DB severity color and it's not one of the standard keys, show neutral + dot
   if (!isKnown && (colorOverride || iconOverride)) {

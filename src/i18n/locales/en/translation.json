@@ -73,30 +73,89 @@
         "errorInvalidCredentials": "Invalid ticket ID or access code"
     },
     "handlerDashboard": {
-        "welcomeMessage": "Welcome, ",
+        "title": "Handler Dashboard",
+        "welcomeMessage": "Welcome,",
         "subtitle": "Overview of your assigned cases and performance metrics",
+        "fallbackUser": "User",
+        "lastUpdated": "Last updated",
+        "notLoaded": "Not loaded",
+        "searchPlaceholder": "Search by case number or description...",
+        "statusChangeHint": "Select an action for this case",
         "metrics": {
             "totalCases": "Total Cases",
             "activeCases": "Active Cases",
             "resolvedToday": "Resolved Today",
             "avgResolutionTime": "Avg Resolution Time",
-            "hours": "hours"
+            "hours": "hours",
+            "openTickets": "Open Tickets",
+            "newUnassigned": "New Unassigned",
+            "inProgress": "In Progress",
+            "completed7Days": "Completed (7 days)",
+            "pastWeek": "Past week"
+        },
+        "summary": {
+            "open": "Open",
+            "unassigned": "Unassigned",
+            "urgent": "Urgent",
+            "today": "Today",
+            "mineOpen": "My Open"
+        },
+        "quickViews": {
+            "all": "All",
+            "mine": "Mine",
+            "unassigned": "Unassigned",
+            "urgent": "Urgent",
+            "today": "Today"
+        },
+        "quickStats": {
+            "totalTickets": "Total Tickets",
+            "highPriority": "High Priority"
+        },
+        "layout": {
+            "cards": "Cards",
+            "table": "Table"
         },
         "filters": {
             "allStatuses": "All Statuses",
-            "allSeverities": "All Severities",
-            "allWorkflows": "All Workflows"
+            "allSeverities": "All Priorities",
+            "allWorkflows": "All Workflows",
+            "allPriorities": "All Priorities",
+            "scope": "Scope",
+            "severity": "Priority"
+        },
+        "actions": {
+            "assign": "Assign",
+            "assignHandler": "Assign Handler",
+            "assignToMe": "Assign to me",
+            "clickForDetails": "Click for details",
+            "collapse": "Collapse",
+            "expand": "Expand",
+            "export": "Export",
+            "reset": "Reset",
+            "view": "View",
+            "viewDetails": "View details"
         },
         "table": {
-            "ticketId": "Ticket ID",
-            "severity": "Severity",
+            "ticketId": "Case ID",
+            "ticketNumber": "Case Number",
+            "severity": "Priority",
             "workflow": "Workflow",
             "status": "Status",
             "created": "Created",
             "lastUpdate": "Last Update",
             "actions": "Actions",
             "viewDetails": "View Details",
-            "noTickets": "No tickets found"
+            "overview": "Overview",
+            "ticketSingle": "case",
+            "ticketPlural": "cases",
+            "handler": "Handler",
+            "unassigned": "Unassigned",
+            "noDescription": "No description",
+            "noHandlersAvailable": "No handlers available",
+            "noTickets": "No cases found",
+            "noTicketsTitle": "No cases to display",
+            "noTicketsFound": "No cases found",
+            "noTicketsForFilters": "No cases match the active filters"
         },
         "severity": {
             "critical": "Critical",
@@ -110,6 +169,38 @@
             "in_progress": "In Progress",
             "resolved": "Resolved",
             "closed": "Closed"
+        },
+        "pills": {
+            "anonymous": "Anonymous",
+            "unassigned": "Unassigned",
+            "critical": "Critical",
+            "high": "High",
+            "new": "New"
+        },
+        "workflowLabels": {
+            "whistleblower": "Whistleblower",
+            "itSecurity": "IT Security",
+            "hr": "HR",
+            "safety": "Safety",
+            "report": "Report"
+        },
+        "reporterInfo": {
+            "title": "Reporter Information"
+        },
+        "timeline": {
+            "title": "Timeline Monitoring",
+            "legalDeadlines": "Legal deadlines",
+            "overdue": "Overdue",
+            "approaching": "Approaching deadline",
+            "approachingTitle": "Approaching",
+            "onTrack": "On track",
+            "daysOld": "Age: {{count}} d",
+            "daysLate": "{{count}} d late",
+            "daysRemaining": "{{count}} d remaining",
+            "allWithinDeadlines": "All cases are within deadlines"
+        },
+        "common": {
+            "unknown": "Unknown"
         }
     },
     "priorityWorkflow": {

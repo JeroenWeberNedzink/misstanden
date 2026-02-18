@@ -1,5 +1,6 @@
 ﻿import React, { useMemo, useEffect, useState } from 'react';
 import Icon from '../../../components/AppIcon';
+import { useTranslation } from 'react-i18next';
 import TicketCard from './TicketCard';
 
 const safeTrim = (v) => String(v ?? '').trim();
@@ -43,6 +44,7 @@ const normalizeStatuses = (raw) => {
 };
 
 const TicketCardGrid = ({ tickets, workflows = [], currentHandlerId, onQuickStatusChange, onAssignToMe }) => {
+  const { t } = useTranslation();
   const workflowStatusMap = useMemo(() => {
     const map = new Map();
     (workflows || []).forEach((wf) => {
@@ -73,9 +75,9 @@ const TicketCardGrid = ({ tickets, workflows = [], currentHandlerId, onQuickStat
         <div className="w-16 h-16 rounded-full bg-muted mx-auto mb-4 flex items-center justify-center">
           <Icon name="Inbox" size={32} className="text-muted-foreground opacity-50" />
         </div>
-        <h3 className="text-lg font-semibold text-foreground mb-2">Geen Tickets</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-2">{t('handlerDashboard.table.noTicketsTitle')}</h3>
         <p className="text-sm text-muted-foreground">
-          Er zijn momenteel geen tickets.
+          {t('handlerDashboard.table.noTickets')}
         </p>
       </div>
     );  

@@ -1,11 +1,24 @@
 ﻿import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
 import { format } from 'date-fns';
-import { nl } from 'date-fns/locale';
+import { de, enUS, fr, nl, pt } from 'date-fns/locale';
 
 const TicketCard = ({ ticket, workflowStatusMap, currentHandlerId, onQuickStatusChange, onAssignToMe }) => {
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
+  const dateFnsLocaleByLanguage = {
+    en: enUS,
+    nl,
+    fr,
+    de,
+    pt,
+  };
+  const activeLanguage = String(i18n?.resolvedLanguage || i18n?.language || 'en')
+    .toLowerCase()
+    .split('-')[0];
+  const activeLocale = dateFnsLocaleByLanguage[activeLanguage] || enUS;
 
   const getStatusMeta = (statusCode, workflowCode) => {
     const inner = workflowStatusMap?.get(workflowCode);
@@ -17,7 +30,7 @@ const TicketCard = ({ ticket, workflowStatusMap, currentHandlerId, onQuickStatus
   const getStatusInfo = (statusCode, workflowCode) => {
     const meta = getStatusMeta(statusCode, workflowCode);
     return {
-      label: meta?.label || statusCode || 'Onbekend',
+      label: meta?.label || statusCode || t('handlerDashboard.common.unknown'),
       color: meta?.color || null,
     };
   };
@@ -25,10 +38,10 @@ const TicketCard = ({ ticket, workflowStatusMap, currentHandlerId, onQuickStatus
   // Get severity info with colors
   const getSeverityInfo = (code) => {
     const severityStyles = {
-      critical: { label: 'Kritiek', bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', icon: 'text-red-600' },
-      high: { label: 'Hoog', bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', icon: 'text-orange-600' },
-      medium: { label: 'Gemiddeld', bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200', icon: 'text-yellow-600' },
-      low: { label: 'Laag', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', icon: 'text-emerald-600' }
+      critical: { label: t('handlerDashboard.severity.critical'), bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', icon: 'text-red-600' },
+      high: { label: t('handlerDashboard.severity.high'), bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', icon: 'text-orange-600' },
+      medium: { label: t('handlerDashboard.severity.medium'), bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200', icon: 'text-yellow-600' },
+      low: { label: t('handlerDashboard.severity.low'), bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', icon: 'text-emerald-600' }
     };
     return severityStyles[code] || severityStyles.medium;
   };
@@ -38,11 +51,11 @@ const TicketCard = ({ ticket, workflowStatusMap, currentHandlerId, onQuickStatus
   const statusAccentStyle = statusInfo.color ? { borderTopColor: statusInfo.color } : undefined;
 
   const submittedDate = ticket?.submittedAt
-    ? format(new Date(ticket.submittedAt), 'dd MMM yyyy', { locale: nl })
+    ? format(new Date(ticket.submittedAt), 'dd MMM yyyy', { locale: activeLocale })
     : '-';
 
   const submittedTime = ticket?.submittedAt
-    ? format(new Date(ticket.submittedAt), 'HH:mm', { locale: nl })
+    ? format(new Date(ticket.submittedAt), 'HH:mm', { locale: activeLocale })
     : '';
 
   const handlerId =
@@ -146,7 +159,7 @@ return (
 
       {/* Description */}
       <p className="flex items-center gap-2 text-sm text-gray-600 mb-4 bg-gray-50 px-3 py-2 rounded-lg">
-        {ticket?.description || 'Geen beschrijving beschikbaar'}
+        {ticket?.description || t('handlerDashboard.table.noDescription')}
       </p>
 
       {/* Location if available */}
@@ -170,7 +183,7 @@ return (
               onClick={handleAssign}
               className="px-4 py-2 rounded-lg text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700 active:bg-sky-800 transition-colors shadow-sm hover:shadow-md"
             >
-              Toewijzen aan mij
+              {t('handlerDashboard.actions.assignToMe')}
             </button>
           )}
           {/* {!isClosed && nextStatusCode && (
@@ -181,7 +194,7 @@ return (
               Naar {nextStatusLabel || 'volgende'}
             </button>
           )} */}
-          <span className="text-xs text-gray-500 font-medium hidden md:inline ml-2">Klik voor details</span>
+          <span className="text-xs text-gray-500 font-medium hidden md:inline ml-2">{t('handlerDashboard.actions.clickForDetails')}</span>
         </div>
       </div>
     </div>
