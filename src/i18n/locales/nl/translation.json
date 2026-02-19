@@ -75,7 +75,7 @@
     "handlerDashboard": {
         "title": "Behandelaar Dashboard",
         "welcomeMessage": "Welkom,",
-        "subtitle": "Overzicht van uw toegewezen dossiers en prestatiecijfers",
+        "subtitle": "Overzicht van uw (toegewezen) dossiers en meldingen.",
         "fallbackUser": "Gebruiker",
         "lastUpdated": "Laatst bijgewerkt",
         "notLoaded": "Nog niet geladen",
@@ -1242,6 +1242,7 @@
             "secured": "Secured",
             "startBySending": "Start by sending the first message.",
             "startPrompt": "Start communication with the reporter.",
+            "discloseIdentity": "Toon mijn naam aan de melder",
             "write": "Write"
         },
         "actionHistory": {
@@ -1255,6 +1256,7 @@
         "management": {
             "assignDescription": "Assign this case to a handler",
             "changeStatusCta": "Change status (current: {{status}})",
+            "assignBeforeStatusChange": "Wijs eerst minimaal een behandelaar toe voordat u de status wijzigt.",
             "escalateToManagement": "Escalate to management",
             "notAssignedDescription": "No handler assigned",
             "priorityCriticalDesc": "Immediate response required",

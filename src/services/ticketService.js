@@ -1,6 +1,8 @@
 // ticketService.js
 import { supabase } from '../lib/supabase';
 import { notificationService } from './notificationService';
+import { workflowService } from './workflowService';
+import { isReceiptConfirmationStatus } from '../utils/slaUtils';
 
 // -----------------------------
 // Case conversion helpers
@@ -18,6 +20,33 @@ const isForeignKeyViolation = (err) =>
 const isMissingRelation = (err) => {
   const msg = String(err?.message || '').toLowerCase();
   return err?.code === '42P01' || (msg.includes('relation') && msg.includes('does not exist'));
+};
+
+const isMissingTicketHandlersRelation = (err) => {
+  const msg = String(err?.message || '').toLowerCase();
+  if (isMissingRelation(err)) return true;
+  if (!msg.includes('ticket_handlers')) return false;
+  return (
+    msg.includes('does not exist') ||
+    msg.includes('not found') ||
+    msg.includes('could not find')
+  );
+};
+
+const TICKET_HANDLERS_RECHECK_MS = 120_000;
+const ticketHandlersRelationState = {
+  available: null, // null = unknown, true = available, false = missing
+  checkedAt: 0,
+};
+
+const shouldProbeTicketHandlersRelation = () => {
+  if (ticketHandlersRelationState.available !== false) return true;
+  return Date.now() - ticketHandlersRelationState.checkedAt > TICKET_HANDLERS_RECHECK_MS;
+};
+
+const markTicketHandlersRelationState = (available) => {
+  ticketHandlersRelationState.available = available;
+  ticketHandlersRelationState.checkedAt = Date.now();
 };
 
 const friendlyHandlerError = (error, context = 'handlers') => {
@@ -135,7 +164,18 @@ const detachHandlerReferences = async (handlerId, nowIso) => {
     },
     {
       label: 'handler_workflows',
-      run: () => supabase.from('handler_workflows').delete().eq('handler_id', handlerId),
+      run: async () => {
+        try {
+          await workflowService.clearHandlerWorkflows(handlerId);
+          return { error: null };
+        } catch (error) {
+          return { error };
+        }
+      },
+    },
+    {
+      label: 'ticket_handlers',
+      run: () => supabase.from('ticket_handlers').delete().eq('handler_id', handlerId),
     },
     {
       label: 'handler_roles',
@@ -166,7 +206,7 @@ const detachHandlerReferences = async (handlerId, nowIso) => {
   for (const op of ops) {
     const { error } = await op.run();
     if (!error) continue;
-    if (isMissingRelation(error)) continue;
+    if (isMissingRelation(error) || isMissingTicketHandlersRelation(error)) continue;
     warnings.push({ label: op.label, error });
   }
 
@@ -179,6 +219,142 @@ const addDaysISO = (dateLike, days) => {
   if (Number.isNaN(d.getTime())) return null;
   d.setDate(d.getDate() + Number(days));
   return d.toISOString();
+};
+
+const normalizeHandlerIds = (handlerIds) => {
+  const source = Array.isArray(handlerIds)
+    ? handlerIds
+    : handlerIds
+      ? [handlerIds]
+      : [];
+
+  const seen = new Set();
+  const out = [];
+  for (const raw of source) {
+    const id = String(raw || '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+};
+
+const getTicketHandlersMap = async (ticketIds = []) => {
+  const ids = Array.from(new Set((ticketIds || []).filter(Boolean)));
+  if (ids.length === 0) {
+    return { map: new Map(), available: true };
+  }
+
+  if (!shouldProbeTicketHandlersRelation()) {
+    return { map: new Map(), available: false };
+  }
+
+  const { data, error } = await supabase
+    .from('ticket_handlers')
+    .select('id, ticket_id, handler_id, created_at, handlers:handler_id ( id, name, email, roles, active )')
+    .in('ticket_id', ids)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    if (isMissingTicketHandlersRelation(error)) {
+      markTicketHandlersRelationState(false);
+      return { map: new Map(), available: false };
+    }
+    throwIfError(error, 'getTicketHandlersMap');
+  }
+
+  markTicketHandlersRelationState(true);
+
+  const map = new Map();
+  for (const row of data || []) {
+    const ticketId = row?.ticket_id;
+    if (!ticketId) continue;
+    const assignment = {
+      id: row?.id,
+      ticketId: row?.ticket_id,
+      handlerId: row?.handler_id,
+      createdAt: row?.created_at,
+      handler: toCamelCase(row?.handlers || null),
+    };
+    if (!map.has(ticketId)) map.set(ticketId, []);
+    map.get(ticketId).push(assignment);
+  }
+  return { map, available: true };
+};
+
+const decorateTicketsWithTicketHandlers = async (tickets = []) => {
+  const list = Array.isArray(tickets) ? tickets : [];
+  if (list.length === 0) return [];
+
+  const ticketIds = list.map((ticket) => ticket?.id).filter(Boolean);
+  const { map } = await getTicketHandlersMap(ticketIds);
+
+  return list.map((ticket) => ({
+    ...ticket,
+    ticketHandlers: map.get(ticket?.id) || [],
+  }));
+};
+
+const decorateTicketWithTicketHandlers = async (ticket) => {
+  if (!ticket) return ticket;
+  const [decorated] = await decorateTicketsWithTicketHandlers([ticket]);
+  return decorated || ticket;
+};
+
+const syncTicketHandlers = async (ticketId, nextHandlerIds = []) => {
+  const normalized = normalizeHandlerIds(nextHandlerIds);
+
+  if (!shouldProbeTicketHandlersRelation()) {
+    return { available: false, addedIds: [], removedIds: [], previousIds: [], nextIds: normalized };
+  }
+
+  const { data: existingRows, error: existingError } = await supabase
+    .from('ticket_handlers')
+    .select('handler_id')
+    .eq('ticket_id', ticketId);
+
+  if (existingError) {
+    if (isMissingTicketHandlersRelation(existingError)) {
+      markTicketHandlersRelationState(false);
+      return { available: false, addedIds: [], removedIds: [], previousIds: [], nextIds: normalized };
+    }
+    throwIfError(existingError, 'syncTicketHandlers(fetch existing)');
+  }
+
+  markTicketHandlersRelationState(true);
+
+  const existingIds = (existingRows || []).map((row) => row?.handler_id).filter(Boolean);
+  const toAdd = normalized.filter((id) => !existingIds.includes(id));
+  const toRemove = existingIds.filter((id) => !normalized.includes(id));
+
+  if (toRemove.length > 0) {
+    const { error: removeError } = await supabase
+      .from('ticket_handlers')
+      .delete()
+      .eq('ticket_id', ticketId)
+      .in('handler_id', toRemove);
+    throwIfError(removeError, 'syncTicketHandlers(remove)');
+  }
+
+  if (toAdd.length > 0) {
+    const rows = toAdd.map((handlerId) => ({
+      ticket_id: ticketId,
+      handler_id: handlerId,
+    }));
+
+    const { error: addError } = await supabase
+      .from('ticket_handlers')
+      .insert(rows);
+    throwIfError(addError, 'syncTicketHandlers(add)');
+  }
+
+  return {
+    available: true,
+    addedIds: toAdd,
+    removedIds: toRemove,
+    previousIds: existingIds,
+    nextIds: normalized,
+  };
 };
 
 // -----------------------------
@@ -362,7 +538,8 @@ export const ticketService = {
 
       const { data, error } = await q;
       throwIfError(error, 'getAllTickets');
-      return toCamelCase(data || []);
+      const tickets = toCamelCase(data || []);
+      return decorateTicketsWithTicketHandlers(tickets);
     }
 
     // Normal flow without handler filter
@@ -382,7 +559,8 @@ export const ticketService = {
 
     const { data, error } = await q;
     throwIfError(error, 'getAllTickets');
-    return toCamelCase(data);
+    const tickets = toCamelCase(data || []);
+    return decorateTicketsWithTicketHandlers(tickets);
   },
 
   async getTicketById(ticketId, options = {}) {
@@ -421,7 +599,8 @@ export const ticketService = {
       }
     }
 
-    return toCamelCase(data);
+    const ticket = toCamelCase(data);
+    return decorateTicketWithTicketHandlers(ticket);
   },
 
   async getTicketByCredentials(ticketInput, accessCode) {
@@ -430,26 +609,51 @@ export const ticketService = {
     const ticket = String(ticketInput).trim();
     const code = String(accessCode).trim().padStart(6, '0');
 
-    const isUuid =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ticket);
+    const resp = await fetch('/api/tickets.api.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'access',
+        ticket_input: ticket,
+        access_code: code,
+      }),
+    });
 
-    let q = supabase
-      .from('tickets')
-      .select(`
-        *,
-        handlers:handler_id ( id, name, email, roles ),
-        attachments (*),
-        messages (*),
-        ticket_actions (*)
-      `)
-      .eq('access_code', code);
+    const json = await resp.json().catch(() => null);
+    if (!resp.ok || !json?.success || !json?.data) {
+      throw new Error(json?.message || 'Ongeldige ticket-ID of toegangscode');
+    }
 
-    q = isUuid ? q.eq('id', ticket) : q.eq('ticket_number', ticket.toUpperCase());
+    return toCamelCase(json.data);
+  },
 
-    const { data, error } = await q.maybeSingle();
-    if (!data) throw new Error('Ongeldige ticket-ID of toegangscode');
-    throwIfError(error, 'getTicketByCredentials');
-    return toCamelCase(data);
+  async addReporterMessageByCredentials(ticketInput, accessCode, body) {
+    if (!ticketInput || !accessCode) throw new Error('Ticket number/ID and access code are required');
+    if (!body || !String(body).trim()) throw new Error('body is required');
+
+    const ticket = String(ticketInput).trim();
+    const code = String(accessCode).trim().padStart(6, '0');
+    const payload = {
+      action: 'message',
+      ticket_input: ticket,
+      access_code: code,
+      body: String(body).trim(),
+    };
+
+    const resp = await fetch('/api/tickets.api.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await resp.json().catch(() => null);
+
+    if (!resp.ok || !json?.success) {
+      throw new Error(json?.message || 'Failed to send reporter message');
+    }
+
+    const message = toCamelCase(json?.data?.message || null);
+    const updatedTicket = toCamelCase(json?.data?.ticket || null);
+    return { message, ticket: updatedTicket };
   },
 
   // ----- Create -----
@@ -533,6 +737,10 @@ export const ticketService = {
         .catch(err => console.error('Failed to send ticket creation email:', err));
     }
 
+    // Notify all active handlers that can access this workflow.
+    notificationService.notifyHandlersNewReport(createdTicket)
+      .catch(err => console.error('Failed to send workflow handler new-report emails:', err));
+
     return createdTicket;
   },
 
@@ -581,14 +789,45 @@ export const ticketService = {
     // Fetch current ticket data (for metadata and old status)
     const { data: cur, error: curErr } = await supabase
       .from('tickets')
-      .select('metadata, status_code')
+      .select('metadata, status_code, handler_id')
       .eq('id', ticketId)
       .single();
     throwIfError(curErr, 'updateTicketProgress(fetch metadata)');
 
+    let hasAssignedHandler = Boolean(cur?.handler_id);
+    if (!hasAssignedHandler && shouldProbeTicketHandlersRelation()) {
+      const { count: linkedHandlersCount, error: linkedHandlersError } = await supabase
+        .from('ticket_handlers')
+        .select('id', { count: 'exact', head: true })
+        .eq('ticket_id', ticketId);
+
+      if (!linkedHandlersError) {
+        markTicketHandlersRelationState(true);
+        hasAssignedHandler = Number(linkedHandlersCount || 0) > 0;
+      } else if (!isMissingTicketHandlersRelation(linkedHandlersError)) {
+        throwIfError(linkedHandlersError, 'updateTicketProgress(check ticket_handlers)');
+      } else {
+        markTicketHandlersRelationState(false);
+      }
+    }
+
+    if (!hasAssignedHandler) {
+      const e = new Error('Wijs eerst een handler toe voordat de status kan worden aangepast.');
+      e.code = 'ASSIGNMENT_REQUIRED_FOR_STATUS_CHANGE';
+      throw e;
+    }
+
     // Get old status label for notification
     const oldStatusObj = findStatusByCodeOrLabel(statuses, cur?.status_code);
     const oldStatusLabel = oldStatusObj?.label || cur?.status_code || 'Unknown';
+
+    const existingFirstResponseAt =
+      cur?.metadata?.first_response_at ||
+      cur?.metadata?.firstResponseAt ||
+      null;
+    const shouldStampFirstResponseAt =
+      !existingFirstResponseAt &&
+      isReceiptConfirmationStatus(resolved?.code, resolved?.label);
 
     update.metadata = {
       ...(cur?.metadata || {}),
@@ -598,6 +837,13 @@ export const ticketService = {
       status_contact_person_email: resolved?.contactPersonEmail || null,
       status_contact_person_phone: resolved?.contactPersonPhone || null,
       status_contact_notes: resolved?.contactNotes || null,
+      ...(shouldStampFirstResponseAt
+        ? {
+            first_response_at: nowIso,
+            first_response_status_code: resolved?.code || null,
+            first_response_status_label: resolved?.label || null,
+          }
+        : {}),
     };
 
     // Optional: only set enum if explicitly provided by DB config
@@ -619,6 +865,7 @@ export const ticketService = {
       const { error: actionError } = await supabase.from('ticket_actions').insert({
         ticket_id: ticketId,
         action_type: 'status_update',
+        action: `Status changed to ${resolved.label}`,
         description: note,
         created_at: nowIso,
       });
@@ -905,45 +1152,63 @@ async deleteHandler(handlerId, options = {}) {
   },
 
   // ----- Assignment -----
-  async assignHandler(ticketId, handlerId, note = null, options = {}) {
+  async setTicketHandlers(ticketId, handlerIds = [], note = null, options = {}) {
     if (!ticketId) throw new Error('ticketId is required');
 
     const nowIso = new Date().toISOString();
-    const normalizedHandlerId = handlerId || null;
-    let assignedHandler = null;
+    const normalizedHandlerIds = normalizeHandlerIds(handlerIds);
+    const primaryHandlerId = normalizedHandlerIds[0] || null;
+    const handlerMap = new Map();
+    const { data: ticketBefore, error: ticketBeforeError } = await supabase
+      .from('tickets')
+      .select('handler_id')
+      .eq('id', ticketId)
+      .single();
+    throwIfError(ticketBeforeError, 'setTicketHandlers(fetch current ticket)');
 
-    if (normalizedHandlerId) {
-      const { data: handler, error: handlerError } = await supabase
+    if (normalizedHandlerIds.length > 0) {
+      const { data: handlers, error: handlerError } = await supabase
         .from('handlers')
         .select('id, name, email, active')
-        .eq('id', normalizedHandlerId)
-        .maybeSingle();
+        .in('id', normalizedHandlerIds);
 
-      throwIfError(handlerError, 'assignHandler(fetch handler)');
+      throwIfError(handlerError, 'setTicketHandlers(fetch handlers)');
 
-      if (!handler?.id) {
-        const e = new Error('Geselecteerde handler bestaat niet meer.');
-        e.code = 'HANDLER_NOT_FOUND';
-        throw e;
+      for (const handler of handlers || []) {
+        handlerMap.set(handler?.id, handler);
       }
 
-      if (handler.active === false) {
-        const e = new Error('Inactieve handlers kunnen niet worden toegewezen.');
-        e.code = 'HANDLER_INACTIVE';
-        throw e;
-      }
+      for (const handlerId of normalizedHandlerIds) {
+        const handler = handlerMap.get(handlerId);
+        if (!handler?.id) {
+          const e = new Error('Geselecteerde handler bestaat niet meer.');
+          e.code = 'HANDLER_NOT_FOUND';
+          throw e;
+        }
 
-      assignedHandler = handler;
+        if (handler.active === false) {
+          const e = new Error('Inactieve handlers kunnen niet worden toegewezen.');
+          e.code = 'HANDLER_INACTIVE';
+          throw e;
+        }
+      }
+    }
+
+    const syncResult = await syncTicketHandlers(ticketId, normalizedHandlerIds);
+    if (!syncResult.available && normalizedHandlerIds.length > 1) {
+      const e = new Error('Multi-handler toewijzing vereist migratie "ticket_handlers".');
+      e.code = 'TICKET_HANDLERS_MIGRATION_REQUIRED';
+      throw e;
     }
 
     const { data, error } = await supabase
       .from('tickets')
-      .update({ handler_id: normalizedHandlerId, last_update_at: nowIso })
+      .update({ handler_id: primaryHandlerId, last_update_at: nowIso })
       .eq('id', ticketId)
       .select()
       .single();
 
-    throwIfError(error, 'assignHandler');
+    throwIfError(error, 'setTicketHandlers');
 
     // Get handler info for logging
     let handlerInfo = null;
@@ -970,18 +1235,49 @@ async deleteHandler(handlerId, options = {}) {
         performed_by: handlerInfo?.name || 'System',
         created_at: nowIso,
       });
-      if (actionError) console.warn('assignHandler: failed to write ticket_actions note:', actionError);
+      if (actionError) console.warn('setTicketHandlers: failed to write ticket_actions note:', actionError);
     }
 
-    const result = toCamelCase(data);
+    let result = toCamelCase(data);
+    result = await decorateTicketWithTicketHandlers(result);
 
-    // Send assignment notification to the newly assigned handler
-    if (assignedHandler) {
-      notificationService.notifyHandlerAssignment(result, assignedHandler)
-        .catch(err => console.error('Failed to send handler assignment notification:', err));
+    // Send assignment notification only to newly added handlers.
+    const addedHandlerIds = syncResult.available
+      ? syncResult.addedIds
+      : primaryHandlerId
+        ? [primaryHandlerId]
+        : [];
+    if (addedHandlerIds.length > 0) {
+      for (const assignedId of addedHandlerIds) {
+        const assignedHandler = handlerMap.get(assignedId);
+        if (!assignedHandler) continue;
+        notificationService.notifyHandlerAssignment(result, assignedHandler)
+          .catch(err => console.error('Failed to send handler assignment notification:', err));
+      }
+    }
+
+    const hadAnyAssignmentBefore = syncResult.available
+      ? (syncResult.previousIds || []).length > 0 || Boolean(ticketBefore?.handler_id)
+      : Boolean(ticketBefore?.handler_id);
+    const hasAnyAssignmentNow = normalizedHandlerIds.length > 0;
+    const firstAssignment = !hadAnyAssignmentBefore && hasAnyAssignmentNow;
+
+    if (firstAssignment) {
+      const assignedHandlersForReporter = normalizedHandlerIds
+        .map((id) => handlerMap.get(id))
+        .filter(Boolean);
+
+      notificationService.notifyReporterAssignmentStarted(result, {
+        assignedHandlers: assignedHandlersForReporter,
+      }).catch((err) => console.error('Failed to send reporter assignment-started notification:', err));
     }
 
     return result;
+  },
+
+  async assignHandler(ticketId, handlerId, note = null, options = {}) {
+    const normalized = handlerId ? [handlerId] : [];
+    return this.setTicketHandlers(ticketId, normalized, note, options);
   },
 
   // ----- Comments & messages -----
@@ -1060,6 +1356,13 @@ async deleteHandler(handlerId, options = {}) {
       handlerInfo = handler;
     }
 
+    const senderKey = String(sender || '').toLowerCase();
+    const isHandlerSender = senderKey === 'handler';
+    const discloseHandlerIdentity = options?.discloseHandlerIdentity === true;
+    const handlerNameForReporter = isHandlerSender && discloseHandlerIdentity
+      ? (handlerInfo?.name || null)
+      : null;
+
     const { data, error } = await supabase
       .from('messages')
       .insert({
@@ -1068,7 +1371,7 @@ async deleteHandler(handlerId, options = {}) {
         body: String(body).trim(),
         is_internal: !!isInternal,
         handler_id: handlerInfo?.id || null,
-        handler_name: handlerInfo?.name || null
+        handler_name: handlerNameForReporter
       })
       .select()
       .single();
@@ -1103,7 +1406,11 @@ async deleteHandler(handlerId, options = {}) {
         toCamelCase(ticket),
         sender,
         String(body).trim(),
-        isInternal
+        isInternal,
+        {
+          discloseHandlerIdentity,
+          senderName: handlerNameForReporter,
+        }
       ).catch(err => console.error('Failed to send message notification:', err));
     }
 

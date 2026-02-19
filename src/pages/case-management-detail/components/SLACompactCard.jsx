@@ -18,6 +18,35 @@ const getState = ({ dueAt, doneAt }) => {
   return 'upcoming';
 };
 
+const isTerminalStatusLabel = (value) => {
+  const normalized = String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_');
+
+  const hints = [
+    'closed',
+    'resolved',
+    'complete',
+    'completed',
+    'afgesloten',
+    'opgelost',
+    'gesloten',
+    'afgerond',
+    'abgeschlossen',
+    'geschlossen',
+    'erledigt',
+    'cloture',
+    'resolu',
+    'encerrado',
+    'resolvido',
+    'finalizado',
+  ];
+
+  return hints.some((hint) => normalized.includes(hint));
+};
+
 export default function SLACompactCard({ sla, statusLabel, currentStatusDurationDays }) {
   const { t, i18n } = useTranslation();
 
@@ -54,6 +83,13 @@ export default function SLACompactCard({ sla, statusLabel, currentStatusDuration
   };
 
   const milestones = useMemo(() => {
+    const isClosed = Boolean(sla?.isClosed) || isTerminalStatusLabel(statusLabel);
+    const closedAt = sla?.closedAt || sla?.statusChangedAt || new Date().toISOString();
+    const completedDateText = t('caseManagementDetail.sla.completedAt', {
+      date: formatDate(closedAt),
+      defaultValue: `Completed at ${formatDate(closedAt)}`,
+    });
+
     return [
       {
         id: 'first-response',
@@ -63,20 +99,31 @@ export default function SLACompactCard({ sla, statusLabel, currentStatusDuration
         dateText: sla?.firstResponseAt
           ? t('caseManagementDetail.sla.respondedAt', { date: formatDate(sla.firstResponseAt) })
           : t('caseManagementDetail.sla.dueBy', { date: formatDate(sla?.firstResponseDueAt) }),
+        secondaryDateText: null,
       },
       {
         id: 'next-step',
         label: t('caseManagementDetail.sla.nextStep'),
         dueAt: sla?.nextStepDueAt,
-        doneAt: null,
-        dateText: t('caseManagementDetail.sla.expectedBy', { date: formatDate(sla?.nextStepDueAt) }),
+        doneAt: isClosed ? closedAt : null,
+        dateText: isClosed
+          ? completedDateText
+          : t('caseManagementDetail.sla.expectedBy', { date: formatDate(sla?.nextStepDueAt) }),
+        secondaryDateText: isClosed
+          ? t('caseManagementDetail.sla.expectedBy', { date: formatDate(sla?.nextStepDueAt) })
+          : null,
       },
       {
         id: 'resolution',
         label: t('caseManagementDetail.sla.resolve'),
         dueAt: sla?.resolutionDueAt,
-        doneAt: null,
-        dateText: t('caseManagementDetail.sla.expectedBy', { date: formatDate(sla?.resolutionDueAt) }),
+        doneAt: isClosed ? closedAt : null,
+        dateText: isClosed
+          ? completedDateText
+          : t('caseManagementDetail.sla.expectedBy', { date: formatDate(sla?.resolutionDueAt) }),
+        secondaryDateText: isClosed
+          ? t('caseManagementDetail.sla.expectedBy', { date: formatDate(sla?.resolutionDueAt) })
+          : null,
       },
     ].map((item) => {
       const state = getState(item);
@@ -88,6 +135,7 @@ export default function SLACompactCard({ sla, statusLabel, currentStatusDuration
     });
   }, [sla, t]);
 
+  const isClosed = Boolean(sla?.isClosed) || isTerminalStatusLabel(statusLabel);
   const hasOverdue = milestones.some((m) => m.state === 'overdue');
   const activeMilestone = milestones.find((m) => m.state === 'upcoming') || null;
   const hasContact =
@@ -99,8 +147,9 @@ export default function SLACompactCard({ sla, statusLabel, currentStatusDuration
   const stateMeta = (state, itemId) => {
     if (state === 'completed') {
       return {
-        row: 'border-success/25 bg-success/5',
-        badge: 'bg-success/15 text-success',
+        row: 'border-emerald-300/70 bg-emerald-50',
+        badge: 'border border-emerald-200 bg-emerald-100 text-emerald-800',
+        iconClass: 'text-emerald-700',
         icon: 'CheckCircle',
         label: t('caseManagementDetail.sla.received'),
       };
@@ -108,8 +157,9 @@ export default function SLACompactCard({ sla, statusLabel, currentStatusDuration
 
     if (state === 'overdue') {
       return {
-        row: 'border-destructive/25 bg-destructive/5',
-        badge: 'bg-destructive/15 text-destructive',
+        row: 'border-red-300/70 bg-red-50',
+        badge: 'border border-red-200 bg-red-100 text-red-800',
+        iconClass: 'text-red-700',
         icon: 'AlertTriangle',
         label: t('caseManagementDetail.sla.overdue'),
       };
@@ -117,8 +167,9 @@ export default function SLACompactCard({ sla, statusLabel, currentStatusDuration
 
     if (state === 'upcoming') {
       return {
-        row: 'border-warning/25 bg-warning/10',
-        badge: 'bg-warning/20 text-warning',
+        row: 'border-amber-300/70 bg-amber-50',
+        badge: 'border border-amber-200 bg-amber-100 text-amber-800',
+        iconClass: 'text-amber-700',
         icon: 'Clock',
         label: itemId === 'first-response'
           ? t('caseManagementDetail.sla.inProgress')
@@ -128,7 +179,8 @@ export default function SLACompactCard({ sla, statusLabel, currentStatusDuration
 
     return {
       row: 'border-border bg-muted/20',
-      badge: 'bg-muted text-muted-foreground',
+      badge: 'border border-border bg-muted text-muted-foreground',
+      iconClass: 'text-muted-foreground',
       icon: 'Clock',
       label: '-',
     };
@@ -145,7 +197,9 @@ export default function SLACompactCard({ sla, statusLabel, currentStatusDuration
 
           <div className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${hasOverdue ? 'bg-destructive/15 text-destructive' : 'bg-success/15 text-success'}`}>
             <Icon name={hasOverdue ? 'AlertTriangle' : 'CheckCircle'} size={12} />
-            {hasOverdue ? t('caseManagementDetail.sla.breached') : t('caseManagementDetail.sla.expected')}
+            {hasOverdue
+              ? t('caseManagementDetail.sla.breached')
+              : (isClosed ? t('caseManagementDetail.sla.received') : t('caseManagementDetail.sla.expected'))}
           </div>
         </div>
 
@@ -157,7 +211,7 @@ export default function SLACompactCard({ sla, statusLabel, currentStatusDuration
               : t('caseManagementDetail.sla.notConfigured')}
           </div>
 
-          {activeMilestone?.relativeText && (
+          {!isClosed && activeMilestone?.relativeText && (
             <div className="inline-flex items-center gap-1 rounded-full bg-warning/15 border border-warning/25 px-2.5 py-1 text-[11px] font-semibold text-warning">
               <Icon name="Clock" size={12} />
               {activeMilestone.relativeText}
@@ -185,15 +239,18 @@ export default function SLACompactCard({ sla, statusLabel, currentStatusDuration
             <div key={milestone.id} className={`rounded-xl border px-3 py-2.5 ${meta.row}`}>
               <div className="flex items-center justify-between gap-2">
                 <div className="inline-flex items-center gap-2 min-w-0">
-                  <Icon name={meta.icon} size={14} />
+                  <Icon name={meta.icon} size={14} className={meta.iconClass} />
                   <span className="text-xs font-semibold text-foreground truncate">{milestone.label}</span>
                 </div>
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta.badge}`}>
+                <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta.badge}`}>
                   {meta.label}
                 </span>
               </div>
 
               <div className="mt-1 text-[11px] text-muted-foreground">{milestone.dateText}</div>
+              {milestone.secondaryDateText && (
+                <div className="mt-1 text-[11px] text-muted-foreground">{milestone.secondaryDateText}</div>
+              )}
 
               {milestone.state !== 'completed' && milestone.relativeText && (
                 <div className="mt-1 text-[11px] font-semibold text-foreground">{milestone.relativeText}</div>

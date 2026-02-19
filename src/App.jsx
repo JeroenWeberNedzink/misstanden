@@ -1,10 +1,33 @@
 import React, { useEffect, useState } from "react";
-import { Auth0Provider } from "@auth0/auth0-react";
+import { Auth0Provider, useAuth0 } from "@auth0/auth0-react";
 import { SettingsProvider } from "./contexts/SettingsContext";
 import Routes from "./Routes";
 import { runMigrations } from "./services/migrationService";
+import { workflowService } from "./services/workflowService";
+import { settingsService } from "./services/SettingsService";
 import "./styles/tailwind.css";
 import "./styles/index.css";
+
+function ServiceTokenBridge() {
+  const { getIdTokenClaims } = useAuth0();
+
+  useEffect(() => {
+    const provider = async () => {
+      const claims = await getIdTokenClaims();
+      return claims?.__raw || null;
+    };
+
+    workflowService.setTokenProvider(provider);
+    settingsService.setTokenProvider(provider);
+
+    return () => {
+      workflowService.setTokenProvider(null);
+      settingsService.setTokenProvider(null);
+    };
+  }, [getIdTokenClaims]);
+
+  return null;
+}
 
 export default function App() {
   const domain = import.meta.env.VITE_AUTH0_DOMAIN;
@@ -62,6 +85,7 @@ export default function App() {
       useRefreshTokens={true}
       cacheLocation="localstorage"
     >
+      <ServiceTokenBridge />
       <SettingsProvider>
         {/* Show migration warning if needed */}
         {migrationStatus === 'needs_setup' && (

@@ -8,6 +8,7 @@ const CommunicationPanel = ({ messages, canContact, onSendMessage }) => {
   const { t } = useTranslation();
   const [isComposing, setIsComposing] = useState(false);
   const [messageText, setMessageText] = useState('');
+  const [discloseHandlerIdentity, setDiscloseHandlerIdentity] = useState(false);
 
   const scrollerRef = useRef(null);
   const safeMessages = useMemo(() => (Array.isArray(messages) ? messages : []), [messages]);
@@ -20,14 +21,16 @@ const CommunicationPanel = ({ messages, canContact, onSendMessage }) => {
 
   const handleSendMessage = () => {
     if (messageText?.trim()) {
-      onSendMessage(messageText);
+      onSendMessage(messageText, { discloseHandlerIdentity });
       setMessageText('');
+      setDiscloseHandlerIdentity(false);
       setIsComposing(false);
     }
   };
 
   const handleCancel = () => {
     setMessageText('');
+    setDiscloseHandlerIdentity(false);
     setIsComposing(false);
   };
 
@@ -167,6 +170,15 @@ const CommunicationPanel = ({ messages, canContact, onSendMessage }) => {
                     onChange={(e) => setMessageText(e?.target?.value)}
                     description=""
                   />
+                  <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5 rounded border-border accent-primary"
+                      checked={discloseHandlerIdentity}
+                      onChange={(e) => setDiscloseHandlerIdentity(Boolean(e?.target?.checked))}
+                    />
+                    <span>{t('caseManagementDetail.communication.discloseIdentity')}</span>
+                  </label>
 
                   <div className="flex items-center gap-2">
                     <Button

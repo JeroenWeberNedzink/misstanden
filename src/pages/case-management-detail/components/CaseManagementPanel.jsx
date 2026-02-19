@@ -33,7 +33,7 @@ const CaseManagementPanel = ({
 
   const handlerOptions = useMemo(() => {
     const inactiveLabel = t('common.inactive', { defaultValue: 'Inactive' });
-    const list = (handlers || [])
+    return (handlers || [])
       .filter((handler) => Boolean(handler?.id))
       .map((handler) => {
         const isActive = handler?.active !== false;
@@ -44,33 +44,41 @@ const CaseManagementPanel = ({
           disabled: !isActive,
         };
       });
-
-    return [
-      {
-        value: '',
-        label: t('caseManagement.notAssigned'),
-        description: t('caseManagementDetail.management.notAssignedDescription'),
-      },
-      ...list,
-    ];
   }, [handlers, t]);
 
+  const assignedToIds = useMemo(() => {
+    if (Array.isArray(caseData?.assignedToIds)) {
+      return caseData.assignedToIds.filter(Boolean);
+    }
+    return caseData?.assignedToId ? [caseData.assignedToId] : [];
+  }, [caseData?.assignedToId, caseData?.assignedToIds]);
+
   const isBusy = savingAssignment || savingPriority || savingStatusEmail;
+  const hasAssignedHandlers = assignedToIds.length > 0;
+  const statusChangeDisabled = isBusy || !hasAssignedHandlers;
   const statusEmailChecked = caseData?.statusEmailNotify !== false;
 
   const handleAssignmentSelect = useCallback(
     async (value) => {
-      const nextHandlerId = value || '';
-      if ((caseData?.assignedToId || '') === nextHandlerId) return;
+      const nextIds = Array.isArray(value)
+        ? value.filter(Boolean)
+        : value
+          ? [value]
+          : [];
+      const prevIds = assignedToIds;
+      const sameSelection =
+        prevIds.length === nextIds.length &&
+        prevIds.every((id) => nextIds.includes(id));
+      if (sameSelection) return;
 
       try {
         setSavingAssignment(true);
-        await onAssignmentChange?.(nextHandlerId || null);
+        await onAssignmentChange?.(nextIds);
       } finally {
         setSavingAssignment(false);
       }
     },
-    [caseData?.assignedToId, onAssignmentChange]
+    [assignedToIds, onAssignmentChange]
   );
 
   const handlePrioritySelect = useCallback(
@@ -108,11 +116,28 @@ const CaseManagementPanel = ({
             <PermissionGuard permission={PERMISSIONS.EDIT_TICKETS}>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground block">{t('caseManagement.updateStatus')}</label>
-                <Button variant="outline" fullWidth iconName="Edit" iconPosition="left" onClick={onStatusChange} disabled={isBusy}>
+                <Button
+                  variant="outline"
+                  fullWidth
+                  iconName="Edit"
+                  iconPosition="left"
+                  onClick={onStatusChange}
+                  disabled={statusChangeDisabled}
+                  title={
+                    !hasAssignedHandlers
+                      ? t('caseManagementDetail.management.assignBeforeStatusChange')
+                      : undefined
+                  }
+                >
                   {t('caseManagementDetail.management.changeStatusCta', {
                     status: caseData?.status || t('caseManagementDetail.common.unknown'),
                   })}
                 </Button>
+                {!hasAssignedHandlers && (
+                  <p className="text-xs text-muted-foreground">
+                    {t('caseManagementDetail.management.assignBeforeStatusChange')}
+                  </p>
+                )}
               </div>
             </PermissionGuard>
           )}
@@ -123,9 +148,11 @@ const CaseManagementPanel = ({
                 label={t('caseManagement.assignTo')}
                 description={t('caseManagementDetail.management.assignDescription')}
                 options={handlerOptions}
-                value={caseData?.assignedToId || ''}
+                value={assignedToIds}
                 onChange={handleAssignmentSelect}
+                placeholder={t('caseManagement.notAssigned')}
                 searchable
+                multiple
                 disabled={savingAssignment}
               />
             </div>

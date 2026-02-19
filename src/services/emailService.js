@@ -83,6 +83,14 @@ const formatDateByLanguage = (value, language = 'en') => {
 
 const formatDateNL = (value) => formatDateByLanguage(value, 'nl');
 
+const addHoursSafe = (value, hours) => {
+  if (!value || !Number.isFinite(Number(hours))) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setHours(d.getHours() + Number(hours));
+  return d.toISOString();
+};
+
 const formatFileSize = (bytes) => {
   const n = Number(bytes || 0);
   if (n < 1024) return `${n} B`;
@@ -169,6 +177,15 @@ const REPORTER_EMAIL_COPY = {
     senderReporter: 'Reporter',
     senderAnonymousReporter: 'Anonymous reporter',
     handlerMessageIntro: 'A new message was posted in this case.',
+    assignmentStartedTitle: 'Your report is now being processed',
+    assignmentStartedIntro: 'A handler has been assigned to your report.',
+    assignmentStartedSlaHint: 'Your report is being processed. You will receive a status update within the SLA timeframes.',
+    processingStartedAt: 'Processing started at',
+    firstResponseBy: 'First response by',
+    resolutionTarget: 'Resolution target',
+    assignedHandlers: 'Assigned handler(s)',
+    assignmentStartedFooter: 'Thank you for your patience. We will keep you informed.',
+    subjectAssignmentStarted: 'Processing started: {{ticket}}',
   },
   nl: {
     greeting: 'Beste',
@@ -232,6 +249,15 @@ const REPORTER_EMAIL_COPY = {
     senderReporter: 'Melder',
     senderAnonymousReporter: 'Anonieme melder',
     handlerMessageIntro: 'Er is een nieuw bericht geplaatst in deze zaak.',
+    assignmentStartedTitle: 'Uw melding wordt nu behandeld',
+    assignmentStartedIntro: 'Er is een behandelaar toegewezen aan uw melding.',
+    assignmentStartedSlaHint: 'Uw melding is in behandeling. U ontvangt binnen de SLA-termijnen een statusupdate.',
+    processingStartedAt: 'Behandeling gestart op',
+    firstResponseBy: 'Eerste reactie uiterlijk',
+    resolutionTarget: 'Streefdatum afronding',
+    assignedHandlers: 'Toegewezen behandelaar(s)',
+    assignmentStartedFooter: 'Dank voor uw geduld. Wij houden u op de hoogte.',
+    subjectAssignmentStarted: 'Behandeling gestart: {{ticket}}',
   },
   de: {
     greeting: 'Hallo',
@@ -295,6 +321,15 @@ const REPORTER_EMAIL_COPY = {
     senderReporter: 'Hinweisgeber',
     senderAnonymousReporter: 'Anonymer Hinweisgeber',
     handlerMessageIntro: 'In diesem Fall wurde eine neue Nachricht veroeffentlicht.',
+    assignmentStartedTitle: 'Ihre Meldung wird jetzt bearbeitet',
+    assignmentStartedIntro: 'Ein Bearbeiter wurde Ihrer Meldung zugewiesen.',
+    assignmentStartedSlaHint: 'Ihre Meldung ist in Bearbeitung. Sie erhalten ein Statusupdate innerhalb der SLA-Fristen.',
+    processingStartedAt: 'Bearbeitung gestartet am',
+    firstResponseBy: 'Erste Rueckmeldung bis',
+    resolutionTarget: 'Zieltermin Loesung',
+    assignedHandlers: 'Zugewiesene Bearbeiter',
+    assignmentStartedFooter: 'Vielen Dank fuer Ihre Geduld. Wir halten Sie auf dem Laufenden.',
+    subjectAssignmentStarted: 'Bearbeitung gestartet: {{ticket}}',
   },
   fr: {
     greeting: 'Bonjour',
@@ -358,6 +393,15 @@ const REPORTER_EMAIL_COPY = {
     senderReporter: 'Declarant',
     senderAnonymousReporter: 'Declarant anonyme',
     handlerMessageIntro: 'Un nouveau message a ete publie dans ce dossier.',
+    assignmentStartedTitle: 'Votre signalement est maintenant en cours de traitement',
+    assignmentStartedIntro: 'Un gestionnaire a ete assigne a votre signalement.',
+    assignmentStartedSlaHint: 'Votre signalement est en traitement. Vous recevrez une mise a jour de statut dans les delais SLA.',
+    processingStartedAt: 'Traitement demarre le',
+    firstResponseBy: 'Premiere reponse avant',
+    resolutionTarget: 'Objectif de resolution',
+    assignedHandlers: 'Gestionnaire(s) assigne(s)',
+    assignmentStartedFooter: 'Merci pour votre patience. Nous vous tiendrons informe.',
+    subjectAssignmentStarted: 'Traitement demarre: {{ticket}}',
   },
   pt: {
     greeting: 'Ola',
@@ -421,6 +465,15 @@ const REPORTER_EMAIL_COPY = {
     senderReporter: 'Reportante',
     senderAnonymousReporter: 'Reportante anonimo',
     handlerMessageIntro: 'Uma nova mensagem foi publicada neste caso.',
+    assignmentStartedTitle: 'Seu reporte esta agora em tratamento',
+    assignmentStartedIntro: 'Um responsavel foi atribuido ao seu reporte.',
+    assignmentStartedSlaHint: 'Seu reporte esta em tratamento. Voce recebera uma atualizacao de status dentro dos prazos de SLA.',
+    processingStartedAt: 'Tratamento iniciado em',
+    firstResponseBy: 'Primeira resposta ate',
+    resolutionTarget: 'Meta de resolucao',
+    assignedHandlers: 'Responsavel(is) atribuido(s)',
+    assignmentStartedFooter: 'Obrigado pela sua paciencia. Manteremos voce informado.',
+    subjectAssignmentStarted: 'Tratamento iniciado: {{ticket}}',
   },
 };
 
@@ -815,6 +868,105 @@ ${baseStyles}
 }
 
 /**
+ * Send reporter notification when the first handler is assigned.
+ * @param {Object} ticket - Ticket object
+ * @param {Object} options - Additional options
+ * @returns {Promise<Object>}
+ */
+export async function sendReporterAssignmentStartedEmail(ticket, options = {}) {
+  const {
+    reporterEmail,
+    reporterEmailEncrypted,
+    reporterName,
+    ticketNumber,
+    description,
+    location,
+    emailNotify,
+    accessCode,
+    severityCode,
+    severityLabel,
+    workflowType,
+    submittedAt,
+    statusLabel,
+    status,
+    statusCode,
+    metadata,
+    slaResponseHours,
+    slaResolutionHours,
+    lastUpdateAt,
+  } = ticket || {};
+
+  const reporterTarget = getReporterEmailTarget({ reporterEmail, reporterEmailEncrypted });
+  if (!emailNotify || !reporterTarget) {
+    return { success: false, message: 'Reporter did not opt-in for email notifications' };
+  }
+
+  const language = resolveTicketLanguage(ticket);
+  const copy = getReporterEmailCopy(language);
+  const safeSeverityLabel = severityLabel || severityLabelFromCode(severityCode, language);
+  const currentStatus = getStatusLabel({ metadata, statusLabel, status, statusCode });
+  const startedAt = lastUpdateAt || new Date().toISOString();
+  const responseHours = Number.isFinite(Number(slaResponseHours)) ? Number(slaResponseHours) : 24;
+  const resolutionHours = Number.isFinite(Number(slaResolutionHours)) ? Number(slaResolutionHours) : null;
+  const firstResponseDueAt = addHoursSafe(submittedAt || startedAt, responseHours);
+  const resolutionDueAt = resolutionHours ? addHoursSafe(submittedAt || startedAt, resolutionHours) : null;
+  const assignedHandlers = Array.isArray(options?.assignedHandlers) ? options.assignedHandlers : [];
+  const assignedHandlerNames = assignedHandlers
+    .map((handler) => String(handler?.name || '').trim())
+    .filter(Boolean)
+    .join(', ');
+
+  const html = `
+${baseStyles}
+<h2 class="section-title">${escapeHtml(copy.assignmentStartedTitle)}</h2>
+<p class="lead">${escapeHtml(copy.greeting || 'Dear')} ${escapeHtml(reporterName || copy.reporterFallback)},</p>
+<p class="lead">${escapeHtml(copy.assignmentStartedIntro)}</p>
+
+<div class="card">
+  <h3 class="section-title">${escapeHtml(copy.reportOverview)}</h3>
+  ${buildMetaTable([
+    [copy.ticketNumber, escapeHtml(ticketNumber || '-')],
+    [copy.currentStatus, escapeHtml(currentStatus || '-')],
+    [copy.severity, `<span class="badge ${severityClassFromCode(severityCode)}">${escapeHtml(safeSeverityLabel)}</span>`],
+    [copy.workflow, escapeHtml(workflowType || '-')],
+    [copy.location, escapeHtml(location || copy.notProvided)],
+    [copy.processingStartedAt, escapeHtml(formatDateByLanguage(startedAt, language))],
+  ])}
+  ${assignedHandlerNames ? `<p class="muted"><strong>${escapeHtml(copy.assignedHandlers)}:</strong> ${escapeHtml(assignedHandlerNames)}</p>` : ''}
+  <div class="section-title" style="margin-top:12px;">${escapeHtml(copy.description)}</div>
+  <div>${nl2br(description || '-')}</div>
+</div>
+
+<div class="card">
+  <h3 class="section-title">${escapeHtml(copy.nextSteps)}</h3>
+  <p class="muted">${escapeHtml(copy.assignmentStartedSlaHint)}</p>
+  ${buildMetaTable([
+    [copy.firstResponseBy, escapeHtml(formatDateByLanguage(firstResponseDueAt, language))],
+    [copy.resolutionTarget, escapeHtml(formatDateByLanguage(resolutionDueAt, language))],
+  ])}
+</div>
+
+${accessCode ? `
+<div class="callout">
+  <strong>${escapeHtml(copy.accessCode)}:</strong> ${escapeHtml(accessCode)}<br/>
+  ${escapeHtml(copy.useAccessCode)}
+</div>
+` : ''}
+
+<p class="muted">${escapeHtml(copy.assignmentStartedFooter)}</p>
+`;
+
+  const result = await sendEmail({
+    from: 'noreply@nedzink.nl',
+    ...reporterTarget,
+    subject: copy.subjectAssignmentStarted.replace('{{ticket}}', ticketNumber || '-'),
+    html,
+    useTemplate: true
+  });
+  return { success: true, result };
+}
+
+/**
  * Send a status change notification email
  * @param {Object} ticket - Ticket object
  * @param {string} oldStatus - Previous status
@@ -982,6 +1134,132 @@ ${baseStyles}
     from: 'noreply@nedzink.nl',
     to: handler.email,
     subject: `Status gewijzigd: ${ticketNumber}`,
+    html,
+    useTemplate: true
+  });
+  return { success: true, result };
+}
+
+const HANDLER_NEW_REPORT_COPY = {
+  en: {
+    title: 'New report available',
+    intro: 'A new report was submitted in a workflow you can handle.',
+    subject: 'New report available: {{ticket}}',
+    details: 'Report details',
+    reporter: 'Reporter (if known)',
+    portalHint: 'Log in to the portal to review and pick up this report.',
+    anonymous: 'Anonymous',
+  },
+  nl: {
+    title: 'Nieuwe melding beschikbaar',
+    intro: 'Er is een nieuwe melding ingediend in een workflow die jij kunt behandelen.',
+    subject: 'Nieuwe melding beschikbaar: {{ticket}}',
+    details: 'Meldingsoverzicht',
+    reporter: 'Melder (indien bekend)',
+    portalHint: 'Log in op het portaal om deze melding te bekijken en op te pakken.',
+    anonymous: 'Anoniem',
+  },
+  de: {
+    title: 'Neue Meldung verfuegbar',
+    intro: 'In einem Workflow, den Sie bearbeiten koennen, wurde eine neue Meldung eingereicht.',
+    subject: 'Neue Meldung verfuegbar: {{ticket}}',
+    details: 'Meldungsuebersicht',
+    reporter: 'Hinweisgeber (falls bekannt)',
+    portalHint: 'Melden Sie sich im Portal an, um diese Meldung zu uebernehmen.',
+    anonymous: 'Anonym',
+  },
+  fr: {
+    title: 'Nouveau signalement disponible',
+    intro: 'Un nouveau signalement a ete soumis dans un workflow que vous pouvez traiter.',
+    subject: 'Nouveau signalement disponible: {{ticket}}',
+    details: 'Apercu du signalement',
+    reporter: 'Declarant (si connu)',
+    portalHint: 'Connectez-vous au portail pour examiner et prendre en charge ce signalement.',
+    anonymous: 'Anonyme',
+  },
+  pt: {
+    title: 'Novo reporte disponivel',
+    intro: 'Um novo reporte foi enviado em um fluxo que voce pode tratar.',
+    subject: 'Novo reporte disponivel: {{ticket}}',
+    details: 'Visao geral do reporte',
+    reporter: 'Reportante (se conhecido)',
+    portalHint: 'Entre no portal para revisar e assumir este reporte.',
+    anonymous: 'Anonimo',
+  },
+};
+
+const getHandlerNewReportCopy = (language) => {
+  const lang = normalizeReporterLanguage(language) || 'en';
+  return HANDLER_NEW_REPORT_COPY[lang] || HANDLER_NEW_REPORT_COPY.en;
+};
+
+/**
+ * Send a handler notification email for a newly submitted report in their workflow
+ * @param {Object} ticket - Ticket object
+ * @param {Object} handler - Handler object
+ * @returns {Promise<Object>}
+ */
+export async function sendHandlerNewReportEmail(ticket, handler) {
+  if (!handler?.email) {
+    return { success: false, skipped: true, reason: 'No handler email' };
+  }
+
+  const {
+    ticketNumber,
+    description,
+    location,
+    severityLabel,
+    reporterEmail,
+    reporterName,
+    reporterPhone,
+    submittedAt,
+    severityCode,
+    workflowType,
+    metadata
+  } = ticket;
+
+  const language = resolveHandlerLanguage(handler, ticket);
+  const copy = getReporterEmailCopy(language);
+  const local = getHandlerNewReportCopy(language);
+  const safeSeverityLabel = severityLabel || severityLabelFromCode(severityCode, language);
+  const statusLabel = getStatusLabel({ metadata, statusLabel: ticket.statusLabel, status: ticket.status, statusCode: ticket.statusCode });
+
+  const html = `
+${baseStyles}
+<h2 class="section-title">${escapeHtml(local.title)}</h2>
+<p class="lead">${escapeHtml(copy.greeting || 'Dear')} ${escapeHtml(handler.name || copy.senderHandler || 'colleague')},</p>
+<p class="lead">${escapeHtml(local.intro)}</p>
+
+<div class="card">
+  <h3 class="section-title">${escapeHtml(local.details)}</h3>
+  ${buildMetaTable([
+    [copy.ticketNumber, escapeHtml(ticketNumber || '-')],
+    [copy.currentStatus, escapeHtml(statusLabel)],
+    [copy.severity, `<span class="badge ${severityClassFromCode(severityCode)}">${escapeHtml(safeSeverityLabel)}</span>`],
+    [copy.workflow, escapeHtml(workflowType || '-')],
+    [copy.location, escapeHtml(location || copy.notProvided)],
+    [copy.submittedOn, escapeHtml(formatDateByLanguage(submittedAt, language))]
+  ])}
+  <div class="section-title" style="margin-top:12px;">${escapeHtml(copy.description)}</div>
+  <div>${nl2br(description || '-')}</div>
+</div>
+
+<div class="card">
+  <h3 class="section-title">${escapeHtml(local.reporter)}</h3>
+  ${buildMetaTable([
+    [copy.name, escapeHtml(reporterName || local.anonymous)],
+    [copy.email, escapeHtml(reporterEmail || copy.notProvided)],
+    [copy.phone, escapeHtml(reporterPhone || copy.notProvided)]
+  ])}
+</div>
+
+<p class="muted">${escapeHtml(local.portalHint)}</p>
+`;
+
+  const result = await sendEmail({
+    from: 'noreply@nedzink.nl',
+    to: handler.email,
+    subject: local.subject.replace('{{ticket}}', ticketNumber || '-'),
     html,
     useTemplate: true
   });
@@ -1202,6 +1480,8 @@ export default {
   sendEmail,
   sendReportConfirmationEmail,
   sendHandlerAssignmentEmail,
+  sendHandlerNewReportEmail,
+  sendReporterAssignmentStartedEmail,
   sendStatusChangeEmail,
   sendHandlerStatusChangeEmail,
   sendAttachmentAddedEmail,

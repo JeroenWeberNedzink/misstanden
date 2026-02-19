@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
 import Icon from '../../../components/AppIcon';
-import { supabase } from '../../../lib/supabase';
+import { workflowService } from '../../../services/workflowService';
 
 const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
@@ -123,13 +123,7 @@ export default function EditWorkflowStatusesModal({
       setLoading(true);
 
       try {
-        const { data, error } = await supabase
-          .from('workflow_statuses')
-          .select('*')
-          .eq('workflow_id', workflowId)
-          .order('sort_order', { ascending: true });
-
-        if (error) throw error;
+        const data = await workflowService.getWorkflowStatusesAdmin(workflowId);
 
         const mapped = (data || []).map((s) => ({
           id: s.id,
@@ -277,37 +271,23 @@ export default function EditWorkflowStatusesModal({
     setSaving(true);
     try {
       const toDelete = rows.filter((r) => r._isDeleted && !r._isNew).map((r) => r.id);
-      if (toDelete.length) {
-        const { error: delErr } = await supabase.from('workflow_statuses').delete().in('id', toDelete);
-        if (delErr) throw delErr;
-      }
+      const upsertPayload = activeRows.map((r) => ({
+        id: r._isNew ? null : r.id,
+        code: safeTrim(r.code),
+        label: safeTrim(r.label),
+        description: safeTrim(r.description) || null,
+        color: safeTrim(r.color) || null,
+        sort_order: Number(r.sortOrder ?? 0),
+        is_terminal: !!r.isTerminal,
+        next_codes: Array.isArray(r.nextCodes) ? r.nextCodes.map(safeTrim).filter(Boolean) : [],
+        expected_duration_days: r.expectedDurationDays ? Number(r.expectedDurationDays) : null,
+        contact_person_name: safeTrim(r.contactPersonName) || null,
+        contact_person_email: safeTrim(r.contactPersonEmail) || null,
+        contact_person_phone: safeTrim(r.contactPersonPhone) || null,
+        contact_notes: safeTrim(r.contactNotes) || null,
+      }));
 
-      const upsertPayload = activeRows.map((r) => {
-        const payload = {
-          workflow_id: workflowId,
-          code: safeTrim(r.code),
-          label: safeTrim(r.label),
-          description: safeTrim(r.description) || null,
-          color: safeTrim(r.color) || null,
-          sort_order: Number(r.sortOrder ?? 0),
-          is_terminal: !!r.isTerminal,
-          next_codes: Array.isArray(r.nextCodes) ? r.nextCodes.map(safeTrim).filter(Boolean) : null,
-          expected_duration_days: r.expectedDurationDays ? Number(r.expectedDurationDays) : null,
-          contact_person_name: safeTrim(r.contactPersonName) || null,
-          contact_person_email: safeTrim(r.contactPersonEmail) || null,
-          contact_person_phone: safeTrim(r.contactPersonPhone) || null,
-          contact_notes: safeTrim(r.contactNotes) || null,
-        };
-
-        if (!r._isNew && r.id && !String(r.id).startsWith('tmp_')) payload.id = r.id;
-        return payload;
-      });
-
-      const { error: upErr } = await supabase
-        .from('workflow_statuses')
-        .upsert(upsertPayload, { onConflict: 'workflow_id,code' });
-
-      if (upErr) throw upErr;
+      await workflowService.saveWorkflowStatuses(workflowId, upsertPayload, toDelete);
 
       onSaved?.();
       onClose?.();
@@ -401,8 +381,8 @@ export default function EditWorkflowStatusesModal({
 
               {/* Flow bar */}
               <div className="w-full overflow-x-auto mt-3">
-                <div className="min-w-max px-2 py-2">
-                  <div className="relative flex items-center gap-3">
+                <div className="w-max min-w-full mx-auto px-2 py-2">
+                  <div className="relative flex items-center justify-center gap-3">
                     {activeRows.map((r, index) => {
                       const isLast = index === activeRows.length - 1;
                       return (

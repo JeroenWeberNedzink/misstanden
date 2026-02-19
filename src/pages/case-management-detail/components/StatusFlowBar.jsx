@@ -31,6 +31,7 @@ export default function StatusFlowBar({
   currentStatus,
   currentStage,
   onStatusUpdate,
+  disabled = false,
 }) {
   const { t } = useTranslation();
   const [workflow, setWorkflow] = useState(null);
@@ -114,6 +115,7 @@ export default function StatusFlowBar({
   };
 
   const handleStatusClick = (status, index) => {
+    if (disabled) return;
     const state = getStatusState(index);
     if (state === 'current') return;
     setSelectedStatus(status);
@@ -246,7 +248,12 @@ export default function StatusFlowBar({
 
   return (
     <>
-      <div className="w-full overflow-x-auto mt-5">
+      <div className={`w-full overflow-x-auto mt-5 ${disabled ? 'opacity-60' : ''}`}>
+        {disabled && (
+          <div className="px-4 pb-2 text-xs text-muted-foreground">
+            {t('caseManagementDetail.management.assignBeforeStatusChange')}
+          </div>
+        )}
         <div className="min-w-max px-4 py-6">
           <div className="relative flex items-center justify-between gap-2">
             {statuses.map((status, index) => {
@@ -271,13 +278,17 @@ export default function StatusFlowBar({
                     <button
                       type="button"
                       onClick={() => handleStatusClick(status, index)}
-                      disabled={isCurrent}
-                      className={[
-                        'relative w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all',
-                        isCompleted && `${blueShade.bg} ${blueShade.border} ${blueShade.text} hover:opacity-80 cursor-pointer`,
-                        isCurrent && `${blueShade.border} bg-background ring-4 ring-blue-500/20 cursor-default`,
-                        isPending && 'border-blue-200 bg-background hover:bg-blue-50 hover:border-blue-300 cursor-pointer',
-                      ].join(' ')}
+                      disabled={disabled || isCurrent}
+                      className={
+                        disabled
+                          ? 'relative w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all border-blue-200 bg-background cursor-not-allowed'
+                          : [
+                              'relative w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all',
+                              isCompleted && `${blueShade.bg} ${blueShade.border} ${blueShade.text} hover:opacity-80 cursor-pointer`,
+                              isCurrent && `${blueShade.border} bg-background ring-4 ring-blue-500/20 cursor-default`,
+                              isPending && 'border-blue-200 bg-background hover:bg-blue-50 hover:border-blue-300 cursor-pointer',
+                            ].join(' ')
+                      }
                     >
                       {isCompleted && <Icon name="Check" size={20} />}
                       {isCurrent && <div className={`w-4 h-4 rounded-full ${blueShade.bg}`} />}

@@ -14,6 +14,7 @@ import CaseManagementPanel from './components/CaseManagementPanel';
 import SLACompactCard from './components/SLACompactCard';
 import Icon from '../../components/AppIcon';
 import { ticketService } from '../../services/ticketService';
+import { addHours, getFirstResponseAt, getFirstResponseHoursForTicket, toDateSafe } from '../../utils/slaUtils';
 
 const fmtDateTime = (value, locale) => {
   if (!value) return '-';
@@ -26,61 +27,93 @@ const fmtDateTime = (value, locale) => {
   }
 };
 
-const toDateSafe = (value) => {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
-};
-
-const addHours = (date, hours) => {
-  if (!date || !Number.isFinite(Number(hours))) return null;
-  const d = new Date(date);
-  d.setHours(d.getHours() + Number(hours));
-  return d;
-};
-
-const getFirstResponseAt = (ticket) => {
-  const actions = ticket?.ticketActions || ticket?.ticket_actions || [];
-  const actionDates = actions
-    .filter((a) => {
-      const t = a?.action_type || a?.actionType;
-      return t === 'status_update' || t === 'status_change';
-    })
-    .map((a) => toDateSafe(a?.created_at || a?.createdAt))
-    .filter(Boolean);
-
-  const messages = ticket?.messages || [];
-  const messageDates = messages
-    .filter((m) => {
-      const sender = String(m?.sender ?? '').toLowerCase();
-      return sender && sender !== 'reporter';
-    })
-    .map((m) => toDateSafe(m?.created_at || m?.createdAt))
-    .filter(Boolean);
-
-  const all = [...actionDates, ...messageDates].filter(Boolean);
-  if (!all.length) return null;
-  return new Date(Math.min(...all.map((d) => d.getTime())));
-};
-
 const resolveAssignedHandler = (ticket, handlers = [], fallbackLabel = '-') => {
-  const assignedToId = ticket?.handlerId ?? ticket?.handler_id ?? null;
-  const directName = String(
-    ticket?.handlers?.name || ticket?.handlerName || ticket?.handler_name || ''
-  ).trim();
+  const primaryAssignedToId = ticket?.handlerId ?? ticket?.handler_id ?? null;
+  const ticketHandlerEntries = Array.isArray(ticket?.ticketHandlers) ? ticket.ticketHandlers : [];
 
-  if (directName) {
-    return { assignedToId, assignedTo: directName };
-  }
+  const map = new Map();
+  const put = (handler) => {
+    if (!handler) return;
+    const id = String(handler?.id || '').trim();
+    const name = String(handler?.name || '').trim();
+    const email = String(handler?.email || '').trim();
+    const key = id || email || name;
+    if (!key) return;
+    if (!map.has(key)) map.set(key, { id: id || null, name: name || null, email: email || null });
+  };
 
-  if (assignedToId) {
-    const match = (handlers || []).find((h) => h?.id === assignedToId);
-    if (match?.name) {
-      return { assignedToId, assignedTo: match.name };
+  for (const entry of ticketHandlerEntries) {
+    put(entry?.handler);
+    if (!entry?.handler && entry?.handlerId) {
+      const match = (handlers || []).find((h) => h?.id === entry?.handlerId);
+      if (match) put(match);
     }
   }
 
-  return { assignedToId, assignedTo: fallbackLabel };
+  put(ticket?.handlers);
+
+  if (map.size === 0 && primaryAssignedToId) {
+    const match = (handlers || []).find((h) => h?.id === primaryAssignedToId);
+    if (match) put(match);
+  }
+
+  const assignedHandlers = Array.from(map.values());
+  const assignedToIds = assignedHandlers.map((handler) => handler?.id).filter(Boolean);
+  const assignedToNames = assignedHandlers
+    .map((handler) => String(handler?.name || '').trim())
+    .filter(Boolean);
+
+  const assignedTo =
+    assignedToNames.length > 0
+      ? assignedToNames.join(', ')
+      : fallbackLabel;
+
+  return {
+    assignedToId: primaryAssignedToId || assignedToIds[0] || null,
+    assignedToIds,
+    assignedHandlers,
+    assignedTo,
+  };
+};
+
+const isTerminalStatusValue = (value) => {
+  const normalized = String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_');
+
+  const hints = [
+    'closed',
+    'resolved',
+    'complete',
+    'completed',
+    'afgesloten',
+    'opgelost',
+    'gesloten',
+    'afgerond',
+    'abgeschlossen',
+    'geschlossen',
+    'erledigt',
+    'cloture',
+    'resolu',
+    'encerrado',
+    'resolvido',
+    'finalizado',
+  ];
+
+  return hints.some((hint) => normalized.includes(hint));
+};
+
+const hasAssignedHandlers = (ticketLike) => {
+  if (!ticketLike) return false;
+  if (Array.isArray(ticketLike?.assignedToIds)) {
+    return ticketLike.assignedToIds.filter(Boolean).length > 0;
+  }
+  if (Array.isArray(ticketLike?.ticketHandlers)) {
+    return ticketLike.ticketHandlers.length > 0;
+  }
+  return Boolean(ticketLike?.assignedToId || ticketLike?.handlerId || ticketLike?.handler_id);
 };
 
 export default function CaseManagementDetail() {
@@ -154,7 +187,7 @@ export default function CaseManagementDetail() {
       fullTicket?.current_stage ||
       fullTicket?.metadata?.workflow_status_code ||
       null;
-    const slaResponseHours = fullTicket?.slaResponseHours || fullTicket?.sla_response_hours || 24;
+    const slaResponseHours = getFirstResponseHoursForTicket(fullTicket);
     const slaResolutionHours = fullTicket?.slaResolutionHours || fullTicket?.sla_resolution_hours || null;
     const nextStepDueAt =
       fullTicket?.nextStepDue ||
@@ -166,7 +199,7 @@ export default function CaseManagementDetail() {
       fullTicket?.expectedResolutionDate ||
       fullTicket?.expected_resolution_date ||
       null;
-    const firstResponseAt = getFirstResponseAt(fullTicket);
+    const firstResponseAt = getFirstResponseAt(fullTicket, { strictReceiptStatus: true });
     const firstResponseDueAt = submittedAtDate ? addHours(submittedAtDate, slaResponseHours) : null;
     const resolutionDueAt = expectedResolutionDate
       ? toDateSafe(expectedResolutionDate)
@@ -184,6 +217,10 @@ export default function CaseManagementDetail() {
       statusCodeValue ||
       fullTicket?.status ||
       '-';
+    const isClosed =
+      Boolean(statusMeta?.isTerminal) ||
+      isTerminalStatusValue(statusCodeValue) ||
+      isTerminalStatusValue(statusLabel);
 
     const assignment = resolveAssignedHandler(
       fullTicket,
@@ -208,6 +245,8 @@ export default function CaseManagementDetail() {
       submittedDate: submissionDateValue ? fmtDateTime(submissionDateValue, i18n?.resolvedLanguage || i18n?.language) : '-',
       assignedTo: assignment.assignedTo,
       assignedToId: assignment.assignedToId,
+      assignedToIds: assignment.assignedToIds || [],
+      assignedHandlers: assignment.assignedHandlers || [],
       statusEmailNotify:
         fullTicket?.statusEmailNotify ??
         fullTicket?.status_email_notify ??
@@ -220,6 +259,9 @@ export default function CaseManagementDetail() {
         firstResponseDueAt,
         nextStepDueAt: nextStepDueAt || computedNextStepDueAt,
         resolutionDueAt,
+        isClosed,
+        closedAt: isClosed ? statusStartAt : null,
+        statusChangedAt: statusStartAt,
         currentStatusDurationDays: statusMeta?.expectedDurationDays ?? null,
         contactPersonName: statusMeta?.contactPersonName || null,
         contactPersonEmail: statusMeta?.contactPersonEmail || null,
@@ -437,6 +479,10 @@ export default function CaseManagementDetail() {
   const handleStatusUpdate = async (payload) => {
     const ticketId = getStoredTicketId();
     if (!ticketId) return navigate('/handler-dashboard');
+    if (!hasAssignedHandlers(caseData)) {
+      showToast(t('caseManagementDetail.management.assignBeforeStatusChange'));
+      return;
+    }
 
     try {
       // IMPORTANT: ticketService.updateTicketStatus returns updated ticket (because updateTicketProgress does select().single())
@@ -544,12 +590,16 @@ export default function CaseManagementDetail() {
     }
   };
 
-  const handleSendMessage = async (messageContent) => {
+  const handleSendMessage = async (messageContent, sendOptions = {}) => {
     const ticketId = getStoredTicketId();
     if (!ticketId) return navigate('/handler-dashboard');
 
     try {
-      const created = await ticketService.addMessage(ticketId, 'handler', messageContent, false, { currentHandlerId });
+      const discloseHandlerIdentity = sendOptions?.discloseHandlerIdentity === true;
+      const created = await ticketService.addMessage(ticketId, 'handler', messageContent, false, {
+        currentHandlerId,
+        discloseHandlerIdentity,
+      });
 
       // Get handler name from availableHandlers or current user
       const currentHandlerName = currentHandlerId
@@ -638,12 +688,18 @@ export default function CaseManagementDetail() {
     input.click();
   };
 
-  const handleAssignmentChange = async (newHandlerId) => {
+  const handleAssignmentChange = async (newHandlerIds) => {
     const ticketId = getStoredTicketId();
     if (!ticketId) return navigate('/handler-dashboard');
 
     try {
-      const updatedTicket = await ticketService.assignHandler(ticketId, newHandlerId, null, { currentHandlerId });
+      const normalizedHandlerIds = Array.isArray(newHandlerIds)
+        ? newHandlerIds
+        : newHandlerIds
+          ? [newHandlerIds]
+          : [];
+
+      const updatedTicket = await ticketService.setTicketHandlers(ticketId, normalizedHandlerIds, null, { currentHandlerId });
 
       // Update header and panel assignment immediately.
       setCaseData(formatCase(updatedTicket, null, availableHandlers));
@@ -651,7 +707,7 @@ export default function CaseManagementDetail() {
       pushAction({
         actionType: 'assignment',
         action: t('caseManagement.caseReassigned'),
-        description: newHandlerId
+        description: normalizedHandlerIds.length > 0
           ? t('caseManagementDetail.toasts.handlerAssigned')
           : t('caseManagementDetail.toasts.assignmentRemoved'),
         performedBy: user?.name || user?.email || t('caseManagement.handler'),
@@ -808,6 +864,7 @@ export default function CaseManagementDetail() {
             onStatusChange={() => setShowStatusModal(true)}
             isWhistleblower={isWhistleblower}
             onStatusUpdate={handleStatusUpdate} // FlowBar uses this.
+            canUpdateStatus={hasAssignedHandlers(caseData)}
           />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4 lg:gap-5 mt-3 md:mt-4 lg:mt-5">

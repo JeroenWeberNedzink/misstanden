@@ -24,13 +24,12 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
 
-  const [filterStatus, setFilterStatus] = useState('all'); // all | active | inactive
+  const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const [showStatusesModal, setShowStatusesModal] = useState(false);
   const [statusesWorkflow, setStatusesWorkflow] = useState(null);
 
-  // UX upgrade: scroll editor into view after selecting a workflow (especially helpful on mobile)
   const editorRef = useRef(null);
 
   const selectedWorkflow = useMemo(
@@ -86,7 +85,6 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
   const handleSelectWorkflow = useCallback((workflow) => {
     setSelectedWorkflowId(workflow?.id ?? null);
 
-    // Scroll after DOM updates/render
     setTimeout(() => {
       editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 0);
@@ -176,7 +174,7 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
 
     const confirmText = `VERWIJDER ${workflow.code}`;
     const input = window.prompt(
-      `⚠️ Dit verwijdert de workflow EN alle tickets + toewijzingen.\n\nTyp exact:\n${confirmText}\n\nom te bevestigen:`
+      `Waarschuwing: dit verwijdert de workflow en gekoppelde tickets/toewijzingen.\n\nTyp exact:\n${confirmText}\n\nom te bevestigen:`
     );
     if (input !== confirmText) return;
 
@@ -214,13 +212,58 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
     });
   }, [workflows, filterStatus, searchQuery]);
 
+  const totalWorkflows = workflows?.length || 0;
+  const activeWorkflows = (workflows || []).filter((w) => w?.active).length;
+  const inactiveWorkflows = totalWorkflows - activeWorkflows;
+
   return (
-    <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
+    <div className="space-y-3">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
+        <div>
+          <h3 className="text-base font-bold text-sky-700">Workflows beheren in 4 stappen</h3>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 font-semibold">
+              <span className="w-5 h-5 rounded-full bg-sky-600 text-white text-xs inline-flex items-center justify-center">
+                1
+              </span>
+              Kies workflow
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-lg border border-border bg-white text-foreground font-medium">
+              <span className="w-5 h-5 rounded-full bg-slate-600 text-white text-xs inline-flex items-center justify-center">
+                2
+              </span>
+              Basisgegevens
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-lg border border-border bg-white text-foreground font-medium">
+              <span className="w-5 h-5 rounded-full bg-slate-600 text-white text-xs inline-flex items-center justify-center">
+                3
+              </span>
+              Beheer stappen
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-lg border border-border bg-white text-foreground font-medium">
+              <span className="w-5 h-5 rounded-full bg-slate-600 text-white text-xs inline-flex items-center justify-center">
+                4
+              </span>
+              Koppel handlers
+            </span>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] px-2 py-0.5 rounded-full border border-border bg-white text-muted-foreground">
+            {totalWorkflows} totaal
+          </span>
+          <span className="text-[11px] px-2 py-0.5 rounded-full border border-sky-300 bg-sky-50 text-sky-700">
+            {activeWorkflows} actief
+          </span>
+          <span className="text-[11px] px-2 py-0.5 rounded-full border border-slate-300 bg-slate-50 text-slate-700">
+            {inactiveWorkflows} inactief
+          </span>
+        </div>
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-2 lg:items-center lg:justify-between">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-          {/* Status filter */}
-          <div className="inline-flex bg-white/60 border border-green-100 rounded-xl p-1">
+          <div className="inline-flex bg-white border border-sky-100 rounded-xl p-1">
             {[
               { id: 'all', label: 'Alles' },
               { id: 'active', label: 'Actief' },
@@ -232,8 +275,8 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
                 className={[
                   'px-3 py-2 rounded-lg text-sm font-medium transition-colors',
                   filterStatus === opt.id
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-green-50',
+                    ? 'bg-sky-100 text-sky-700'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-sky-50',
                 ].join(' ')}
               >
                 {opt.label}
@@ -241,16 +284,15 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
             ))}
           </div>
 
-          {/* Search */}
-          <div className="relative w-full sm:w-[320px]">
+          <div className="relative w-full sm:w-[360px]">
             <div className="absolute left-3 top-1/2 -translate-y-1/2 opacity-70">
               <Icon name="Search" size={16} />
             </div>
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Zoek workflow (naam/code)…"
-              className="w-full pl-9 pr-9 py-2 rounded-xl bg-white/60 border border-green-200 text-sm outline-none focus:ring-2 focus:ring-green-400/30"
+              placeholder="Zoek workflow (naam/code)..."
+              className="w-full pl-9 pr-9 py-2 rounded-xl bg-white border border-sky-200 text-sm outline-none focus:ring-2 focus:ring-sky-300/30"
             />
             {searchQuery && (
               <button
@@ -263,13 +305,11 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
             )}
           </div>
 
-          {/* Count */}
           <div className="text-xs text-muted-foreground">
             {filteredWorkflows.length}/{workflows.length}
           </div>
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-2 justify-end">
           <Button
             variant="outline"
@@ -290,13 +330,12 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
               size="md"
               disabled={isLoading || isBusy}
             >
-              Nieuwe Workflow
+              Nieuwe workflow
             </Button>
           </PermissionGuard>
         </div>
       </div>
 
-      {/* Inline error */}
       {error && (
         <div className="flex items-center gap-2 text-sm text-error">
           <Icon name="AlertCircle" size={18} className="text-error" />
@@ -304,9 +343,7 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
         </div>
       )}
 
-      {/* Main layout: stacked (table on top, editor below) */}
-      <div className="space-y-6">
-        {/* TOP: workflows list */}
+      <div className="space-y-3">
         <div>
           <WorkflowsTable
             workflows={filteredWorkflows}
@@ -314,13 +351,11 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
             onSelectWorkflow={handleSelectWorkflow}
             onToggleStatus={(workflow) => handleToggleStatus(workflow?.id, !workflow?.active)}
             onDuplicate={(workflow) => handleDuplicateWorkflow(workflow?.id)}
-            onDelete={handleDeleteWorkflow}
             isLoading={isLoading}
             isBusy={isBusy}
           />
         </div>
 
-        {/* BOTTOM: selected workflow config */}
         <div ref={editorRef}>
           {selectedWorkflow ? (
             <WorkflowEditorPanel
@@ -336,15 +371,14 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
               isBusy={isBusy}
             />
           ) : (
-            <div className="text-center text-muted-foreground py-10 border border-green-100 rounded-xl bg-white/40">
+            <div className="text-center text-muted-foreground py-10 border border-sky-100 rounded-xl bg-white">
               <Icon name="ArrowUp" size={36} className="mx-auto mb-2 opacity-50" />
-              <p className="text-sm">Selecteer hierboven een workflow om te bewerken.</p>
+              <p className="text-sm">Kies eerst een workflow in stap 1 om instellingen te beheren.</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Modals */}
       {showCreateModal && (
         <WorkflowFormModal
           onClose={() => setShowCreateModal(false)}
@@ -357,7 +391,7 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
         <AssignHandlersModal
           workflow={selectedWorkflow}
           onClose={() => setShowAssignModal(false)}
-          onRefresh={() => loadWorkflows({ keepSelection: true })}
+          onSaved={() => loadWorkflows({ keepSelection: true })}
         />
       )}
 
@@ -368,7 +402,7 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
             setShowStatusesModal(false);
             setStatusesWorkflow(null);
           }}
-          onRefresh={() => loadWorkflows({ keepSelection: true })}
+          onSaved={() => loadWorkflows({ keepSelection: true })}
         />
       )}
     </div>

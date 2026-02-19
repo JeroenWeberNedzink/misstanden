@@ -1,77 +1,108 @@
 // services/settingsService.js
-import { supabase } from '../lib/supabase';
+let tokenProvider = null;
 
-const throwIfError = (error, context = '') => {
-  if (!error) return;
-  const msg = context ? `${context}: ${error.message || error}` : (error.message || String(error));
-  const e = new Error(msg);
-  e.original = error;
-  throw e;
+const API_URL = '/api/settings.api.php';
+
+const setTokenProvider = (provider) => {
+  tokenProvider = typeof provider === 'function' ? provider : null;
+};
+
+const getAuthHeaders = async () => {
+  if (!tokenProvider) return {};
+  try {
+    const token = await tokenProvider();
+    if (!token) return {};
+    return { Authorization: `Bearer ${token}` };
+  } catch {
+    return {};
+  }
+};
+
+const fetchJson = async (url, options = {}) => {
+  const response = await fetch(url, options);
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    throw new Error(json?.message || `Settings API error (${response.status})`);
+  }
+  return json?.data;
+};
+
+const normalizeRows = (rows) => {
+  const list = Array.isArray(rows) ? rows : [];
+  const byKey = {};
+  const byCategory = {};
+
+  for (const r of list) {
+    byKey[r.setting_key] = r;
+    if (!byCategory[r.category]) byCategory[r.category] = [];
+    byCategory[r.category].push(r);
+  }
+
+  return { rows: list, byKey, byCategory };
 };
 
 export const settingsService = {
-  /**
-   * Load all settings (or optionally by category).
-   * Returns: { byKey, byCategory, rows }
-   */
+  setTokenProvider,
+
   async getSettings({ category = null } = {}) {
-    let q = supabase
-      .from('system_settings')
-      .select('id, setting_key, setting_value, category, description, is_sensitive, updated_by, updated_at')
-      .order('category', { ascending: true })
-      .order('setting_key', { ascending: true });
+    const authHeaders = await getAuthHeaders();
+    const params = new URLSearchParams();
+    if (category) params.set('category', category);
+    // If auth header exists, ask for full admin view including sensitive settings.
+    if (authHeaders.Authorization) params.set('include_sensitive', '1');
 
-    if (category) q = q.eq('category', category);
+    const url = `${API_URL}?${params.toString()}`;
 
-    const { data, error } = await q;
-    throwIfError(error, 'getSettings');
-
-    const rows = data || [];
-
-    const byKey = {};
-    const byCategory = {};
-
-    for (const r of rows) {
-      byKey[r.setting_key] = r;
-      if (!byCategory[r.category]) byCategory[r.category] = [];
-      byCategory[r.category].push(r);
+    try {
+      const data = await fetchJson(url, {
+        method: 'GET',
+        headers: {
+          ...authHeaders,
+        },
+      });
+      return normalizeRows(data?.rows || []);
+    } catch (error) {
+      // Graceful fallback for non-admin sessions: retry without sensitive flag.
+      if (authHeaders.Authorization && String(error?.message || '').toLowerCase().includes('admin')) {
+        const retryParams = new URLSearchParams();
+        if (category) retryParams.set('category', category);
+        const retryData = await fetchJson(`${API_URL}?${retryParams.toString()}`, { method: 'GET' });
+        return normalizeRows(retryData?.rows || []);
+      }
+      throw error;
     }
-
-    return { rows, byKey, byCategory };
   },
 
-  /**
-   * Upsert one setting row by setting_key (unique).
-   * updatedBy: your handler id/email/name.
-   */
   async upsertSetting({ settingKey, value, category, description = null, isSensitive = false, updatedBy = null }) {
     if (!settingKey) throw new Error('settingKey is required');
     if (!category) throw new Error('category is required');
 
+    const authHeaders = await getAuthHeaders();
     const payload = {
-      id: settingKey, // keep it deterministic/easy (id is PK)
-      setting_key: settingKey,
-      setting_value: value ?? {},
-      category,
-      description,
-      is_sensitive: !!isSensitive,
-      updated_by: updatedBy || null,
+      action: 'upsert',
+      item: {
+        id: settingKey,
+        setting_key: settingKey,
+        setting_value: value ?? {},
+        category,
+        description,
+        is_sensitive: !!isSensitive,
+        updated_by: updatedBy || null,
+      },
     };
 
-    const { data, error } = await supabase
-      .from('system_settings')
-      .upsert(payload, { onConflict: 'setting_key' })
-      .select()
-      .single();
+    const data = await fetchJson(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
+      body: JSON.stringify(payload),
+    });
 
-    throwIfError(error, 'upsertSetting');
-    return data;
+    return data?.row || null;
   },
 
-  /**
-   * Batch upsert (recommended for saving a whole page).
-   * items: [{ settingKey, value, category, description, isSensitive }]
-   */
   async upsertSettings(items = [], { updatedBy = null } = {}) {
     const payload = (items || [])
       .filter(Boolean)
@@ -86,12 +117,19 @@ export const settingsService = {
       }));
     if (!payload.length) return [];
 
-    const { data, error } = await supabase
-      .from('system_settings')
-      .upsert(payload, { onConflict: 'setting_key' })
-      .select();
+    const authHeaders = await getAuthHeaders();
+    const data = await fetchJson(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
+      body: JSON.stringify({
+        action: 'upsert_many',
+        items: payload,
+      }),
+    });
 
-    throwIfError(error, 'upsertSettings');
-    return data || [];
+    return data?.rows || [];
   },
 };

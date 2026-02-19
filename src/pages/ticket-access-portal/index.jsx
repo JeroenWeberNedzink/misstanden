@@ -50,6 +50,10 @@ export default function TicketAccessPortal() {
     try {
       const ticket = await ticketService?.getTicketByCredentials(ticketNumber, accessCode);
       sessionStorage.setItem('current_ticket', JSON.stringify(ticket));
+      sessionStorage.setItem('current_ticket_access', JSON.stringify({
+        ticketInput: String(ticketNumber || '').trim(),
+        accessCode: String(accessCode || '').trim().padStart(6, '0'),
+      }));
       logSecurityEvent('ticket_access_success');
       navigate('/ticket-details-view');
     } catch (err) {

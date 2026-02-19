@@ -1063,6 +1063,7 @@
             "secured": "Secured",
             "startBySending": "Start by sending the first message.",
             "startPrompt": "Start communication with the reporter.",
+            "discloseIdentity": "Mostrar meu nome ao reportante",
             "write": "Write"
         },
         "actionHistory": {
@@ -1076,6 +1077,7 @@
         "management": {
             "assignDescription": "Assign this case to a handler",
             "changeStatusCta": "Change status (current: {{status}})",
+            "assignBeforeStatusChange": "Atribua pelo menos um responsavel antes de alterar o status.",
             "escalateToManagement": "Escalate to management",
             "notAssignedDescription": "No handler assigned",
             "priorityCriticalDesc": "Immediate response required",

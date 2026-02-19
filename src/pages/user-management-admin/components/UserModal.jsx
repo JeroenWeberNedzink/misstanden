@@ -5,7 +5,7 @@ import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
 
 import { ticketService } from '../../../services/ticketService';
-import { supabase } from '../../../lib/supabase';
+import { workflowService } from '../../../services/workflowService';
 
 const UserModal = ({ user, onClose, onSave }) => {
   const [formData, setFormData] = useState({
@@ -79,13 +79,8 @@ const UserModal = ({ user, onClose, onSave }) => {
         setWorkflows(activeWf);
 
         if (user?.id) {
-          const { data, error } = await supabase
-            .from('handler_workflows')
-            .select('workflow_id')
-            .eq('handler_id', user.id);
-
-          if (error) throw error;
-          setAssignedWorkflowIds((data || []).map((r) => r.workflow_id));
+          const workflowIds = await workflowService.getHandlerWorkflowIds(user.id);
+          setAssignedWorkflowIds(workflowIds || []);
         } else {
           setAssignedWorkflowIds([]);
         }
@@ -150,35 +145,7 @@ const UserModal = ({ user, onClose, onSave }) => {
   // Replace all assignments in handler_workflows
   const persistHandlerWorkflows = async (handlerId, workflowIds) => {
     const safeIds = Array.isArray(workflowIds) ? workflowIds.filter(Boolean) : [];
-
-    const { data: current, error: curErr } = await supabase
-      .from('handler_workflows')
-      .select('id, workflow_id')
-      .eq('handler_id', handlerId);
-
-    if (curErr) throw curErr;
-
-    const currentIds = new Set((current || []).map((r) => r.workflow_id));
-    const nextIds = new Set(safeIds);
-
-    const toDeleteIds = (current || [])
-      .filter((r) => !nextIds.has(r.workflow_id))
-      .map((r) => r.id);
-
-    const toInsert = safeIds
-      .filter((id) => !currentIds.has(id))
-      .map((workflow_id) => ({ handler_id: handlerId, workflow_id }));
-
-    if (toDeleteIds.length > 0) {
-      const { error: delErr } = await supabase.from('handler_workflows').delete().in('id', toDeleteIds);
-      if (delErr) throw delErr;
-    }
-
-    if (toInsert.length > 0) {
-      const { error: insErr } = await supabase.from('handler_workflows').insert(toInsert);
-      if (insErr) throw insErr;
-    }
-
+    await workflowService.setHandlerWorkflows(handlerId, safeIds);
     return true;
   };
 

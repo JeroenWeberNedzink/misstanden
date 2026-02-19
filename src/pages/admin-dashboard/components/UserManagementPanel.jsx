@@ -5,121 +5,166 @@ import Input from '../../../components/ui/Input';
 import UserModal from '../../../pages/user-management-admin/components/UserModal';
 import { ticketService } from '../../../services/ticketService';
 
-const RoleBadge = ({ roles = [] }) => {
-  const normalized = roles.map(r => String(r).toUpperCase());
-  const isAdmin = normalized.includes('ADMIN');
-  const isHandler = normalized.includes('HANDLER');
-  const isUser = normalized.includes('USER');
+const toUpperRoles = (roles = []) => (Array.isArray(roles) ? roles.map((r) => String(r).toUpperCase()) : []);
 
-  const label = isAdmin ? 'Admin' : isHandler ? 'Handler' : isUser ? 'User' : 'Onbekend';
-  const tone = isAdmin
-    ? 'bg-error/10 text-error border-error/20'
-    : isHandler
-      ? 'bg-accent/10 text-accent border-accent/20'
-      : 'bg-muted text-muted-foreground border-border';
+const roleTone = (role) => {
+  if (role === 'ADMIN') return 'border-rose-200 bg-rose-50 text-rose-700';
+  if (role === 'HANDLER') return 'border-sky-200 bg-sky-50 text-sky-700';
+  if (role === 'USER') return 'border-slate-200 bg-slate-50 text-slate-700';
+  return 'border-border bg-muted/40 text-muted-foreground';
+};
+
+const StatusBadge = ({ active }) => (
+  <span
+    className={[
+      'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border',
+      active ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-600',
+    ].join(' ')}
+  >
+    <span className={['w-1.5 h-1.5 rounded-full', active ? 'bg-emerald-600' : 'bg-slate-500'].join(' ')} />
+    {active ? 'Actief' : 'Inactief'}
+  </span>
+);
+
+const ProviderBadge = ({ userId }) => {
+  const raw = String(userId || '');
+  const provider = raw.includes('|') ? raw.split('|')[0] : raw;
+  const label = provider || 'onbekend';
 
   return (
-    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${tone}`}>
-      {label}
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border border-sky-200 bg-sky-50 text-sky-700">
+      <Icon name="ShieldCheck" size={12} />
+      OAuth: {label}
     </span>
   );
 };
 
-const StatusBadge = ({ active }) => {
-  const tone = active
-    ? 'bg-success/10 text-success border-success/20'
-    : 'bg-muted text-muted-foreground border-border';
+const formatLastLogin = (value) => {
+  if (!value) return 'Nooit';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return 'Onbekend';
+  return d.toLocaleString('nl-NL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
 
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${tone}`}>
-      <span className={`inline-block w-1.5 h-1.5 rounded-full ${active ? 'bg-success' : 'bg-muted-foreground'}`} />
-      {active ? 'Actief' : 'Inactief'}
-    </span>
-  );
+const countEnabledPermissions = (permissions) => {
+  if (!permissions || typeof permissions !== 'object') return 0;
+  return Object.values(permissions).filter(Boolean).length;
 };
 
 const UserCard = ({ user, onEdit, onDelete, disabled = false }) => {
-  const name = user.name || user.fullName || user.username || `User #${user.id}`;
-  const email = user.email || user.mail || '-';
-  const active = Boolean(user.isActive ?? user.active);
+  const name = user?.name || user?.fullName || user?.username || `User #${user?.id}`;
+  const email = user?.email || user?.mail || '-';
+  const phone = user?.phone || '-';
+  const active = Boolean(user?.isActive ?? user?.active);
+  const roles = toUpperRoles(user?.roles || []);
+  const permissionsCount = countEnabledPermissions(user?.permissions);
 
-  const initials = name
+  const initials = String(name)
     .split(' ')
-    .map(n => n[0])
+    .map((n) => n?.[0])
+    .filter(Boolean)
     .join('')
     .toUpperCase()
     .slice(0, 2);
 
-  // Extra styling for inactive users
-  const inactiveStyles = !active ? 'opacity-60 grayscale' : '';
-  const cardBorder = !active ? 'border-border/70' : 'border-border';
-
   return (
     <div
-      className={`bg-white/60 border ${cardBorder} rounded-2xl p-5 transition-all group ${
-        active ? 'hover:shadow-lg hover:border-blue-300' : ''
-      } ${inactiveStyles}`}
+      className={[
+        'rounded-2xl border bg-white p-4 transition-all',
+        active ? 'border-sky-100 hover:border-sky-200 hover:shadow-sm' : 'border-border opacity-80',
+      ].join(' ')}
     >
-      <div className="flex items-start gap-4">
-        {/* Avatar */}
-        <div className="w-14 h-14 rounded-xl bg-sky-100 flex items-center justify-center font-bold text-lg shrink-0 text-sky-700">
-          {initials}
-        </div>
+      <div className="flex items-start gap-3">
+        {user?.picture ? (
+          <img
+            src={user.picture}
+            alt={name}
+            className="w-12 h-12 rounded-xl object-cover border border-border"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <div className="w-12 h-12 rounded-xl bg-sky-100 text-sky-700 font-bold flex items-center justify-center">
+            {initials || 'H'}
+          </div>
+        )}
 
-        {/* Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-3 mb-2">
+          <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <h3 className="font-semibold text-foreground truncate text-base">{name}</h3>
-              <p className="text-sm text-muted-foreground truncate mt-0.5">{email}</p>
-
-              {/* Full ID always visible */}
-              <p className="text-xs text-muted-foreground mt-1 break-all">
-                ID: {String(user.id ?? '-')}
-              </p>
+              <h3 className="text-base font-semibold text-foreground truncate">{name}</h3>
+              <p className="text-sm text-muted-foreground truncate">{email}</p>
             </div>
+            <StatusBadge active={active} />
+          </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              <StatusBadge active={active} />
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <ProviderBadge userId={user?.userId || user?.user_id} />
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border border-border bg-slate-50 text-slate-700">
+              <Icon name="Clock3" size={12} />
+              Laatste login: {formatLastLogin(user?.lastLogin || user?.last_login)}
+            </span>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            <div className="rounded-lg border border-border bg-background px-2.5 py-2 text-muted-foreground">
+              <span className="font-medium text-foreground">Telefoon:</span> {phone}
+            </div>
+            <div className="rounded-lg border border-border bg-background px-2.5 py-2 text-muted-foreground">
+              <span className="font-medium text-foreground">Permissies:</span> {permissionsCount}
+            </div>
+            <div className="sm:col-span-2 rounded-lg border border-border bg-background px-2.5 py-2 text-muted-foreground break-all">
+              <span className="font-medium text-foreground">user_id:</span> {user?.userId || user?.user_id || '-'}
+            </div>
+            <div className="sm:col-span-2 rounded-lg border border-border bg-background px-2.5 py-2 text-muted-foreground break-all">
+              <span className="font-medium text-foreground">handler_id:</span> {String(user?.id || '-')}
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-border">
-            <div className="flex items-center gap-2">
-              {/* Role always visible */}
-              <RoleBadge roles={user.roles || []} />
+          <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {roles.length > 0 ? (
+                roles.map((role) => (
+                  <span
+                    key={`${user?.id}-${role}`}
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${roleTone(role)}`}
+                  >
+                    {role}
+                  </span>
+                ))
+              ) : (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border border-border bg-slate-50 text-slate-700">
+                  GEEN ROL
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-1">
               <button
+                type="button"
                 onClick={() => onEdit(user)}
                 disabled={disabled}
-                className="p-2 hover:bg-primary/10 rounded-lg transition-colors group/edit"
-                title="Bewerk gebruiker"
+                className="p-2 rounded-lg hover:bg-sky-50 transition-colors"
+                title="Bewerk handler"
               >
-                <Icon name="Pencil" size={16} className="text-muted-foreground group-hover/edit:text-primary" />
+                <Icon name="Pencil" size={16} className="text-sky-700" />
               </button>
               <button
+                type="button"
                 onClick={() => onDelete(user)}
                 disabled={disabled}
-                className="p-2 hover:bg-error/10 rounded-lg transition-colors group/delete"
-                title="Verwijder gebruiker"
+                className="p-2 rounded-lg hover:bg-rose-50 transition-colors"
+                title="Verwijder handler"
               >
-                <Icon name="Trash2" size={16} className="text-muted-foreground group-hover/delete:text-error" />
+                <Icon name="Trash2" size={16} className="text-rose-600" />
               </button>
             </div>
           </div>
-
-          {/* Inactive strip below */}
-          {!active && (
-            <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/50 px-3 py-2">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground" />
-                <span className="font-medium text-foreground/80">Inactief</span>
-                <span>Deze gebruiker heeft geen toegang.</span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -135,52 +180,32 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
   const [filterStatus, setFilterStatus] = useState('all');
   const [deleteRetry, setDeleteRetry] = useState(null);
 
-  // Filter users
   const filteredUsers = useMemo(() => {
-    return users.filter(user => {
-      const name = (user.name || user.fullName || user.username || '').toLowerCase();
-      const email = (user.email || user.mail || '').toLowerCase();
-      const query = searchQuery.toLowerCase();
+    return (users || []).filter((user) => {
+      const name = String(user?.name || user?.fullName || user?.username || '').toLowerCase();
+      const email = String(user?.email || user?.mail || '').toLowerCase();
+      const phone = String(user?.phone || '').toLowerCase();
+      const userId = String(user?.userId || user?.user_id || '').toLowerCase();
+      const query = searchQuery.toLowerCase().trim();
 
-      // Search filter
-      const matchesSearch = !query || name.includes(query) || email.includes(query);
+      const matchesSearch = !query || name.includes(query) || email.includes(query) || phone.includes(query) || userId.includes(query);
 
-      // Role filter
-      const userRoles = (user.roles || []).map(r => String(r).toUpperCase());
-      const matchesRole = filterRole === 'all' ||
+      const userRoles = toUpperRoles(user?.roles || []);
+      const matchesRole =
+        filterRole === 'all' ||
         (filterRole === 'admin' && userRoles.includes('ADMIN')) ||
         (filterRole === 'handler' && userRoles.includes('HANDLER')) ||
         (filterRole === 'user' && userRoles.includes('USER'));
 
-      // Status filter
-      const active = Boolean(user.isActive ?? user.active);
-      const matchesStatus = filterStatus === 'all' ||
+      const active = Boolean(user?.isActive ?? user?.active);
+      const matchesStatus =
+        filterStatus === 'all' ||
         (filterStatus === 'active' && active) ||
         (filterStatus === 'inactive' && !active);
 
       return matchesSearch && matchesRole && matchesStatus;
     });
   }, [users, searchQuery, filterRole, filterStatus]);
-
-  // Stats
-  const stats = useMemo(() => {
-    const activeUsers = users.filter(u => Boolean(u.isActive ?? u.active)).length;
-    const adminUsers = users.filter(u => {
-      const roles = (u.roles || []).map(r => String(r).toUpperCase());
-      return roles.includes('ADMIN');
-    }).length;
-    const handlerUsers = users.filter(u => {
-      const roles = (u.roles || []).map(r => String(r).toUpperCase());
-      return roles.includes('HANDLER');
-    }).length;
-
-    return { total: users.length, active: activeUsers, admins: adminUsers, handlers: handlerUsers };
-  }, [users]);
-
-  const handleCreateUser = () => {
-    setSelectedUser(null);
-    setShowUserModal(true);
-  };
 
   const handleEditUser = (user) => {
     setSelectedUser(user);
@@ -192,25 +217,18 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
     const userName = user?.name || user?.fullName || user?.username || 'Deze gebruiker';
     if (!userId) return;
 
-    // Use window.confirm to ensure it works
-    const confirmed = window.confirm(`Weet je zeker dat je ${userName} permanent wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.`);
-    if (!confirmed) {
-      console.log('Delete cancelled by user');
-      return;
-    }
-
-    console.log('Permanently deleting user:', userId);
+    const confirmed = window.confirm(
+      `Weet je zeker dat je ${userName} permanent wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.`
+    );
+    if (!confirmed) return;
 
     try {
       setIsBusy(true);
       const result = await ticketService.deleteHandler(userId, { hard: true, forceDetach: true });
-      console.log('Delete result:', result);
       setDeleteRetry(null);
       const count = Number(result?.autoUnassignedTickets || 0);
       onShowToast?.(`Gebruiker permanent verwijderd. ${count} ticket(s) automatisch ontkoppeld.`);
-
-      // Refresh in background
-      onRefresh?.().catch(err => {
+      onRefresh?.().catch((err) => {
         console.error('Refresh error after delete:', err);
       });
     } catch (err) {
@@ -228,7 +246,7 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
           true
         );
       } else {
-        onShowToast?.(`Fout bij verwijderen: ${err.message || 'Onbekende fout'}`, true);
+        onShowToast?.(`Fout bij verwijderen: ${err?.message || 'Onbekende fout'}`, true);
       }
     } finally {
       setIsBusy(false);
@@ -246,47 +264,39 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
       const count = Number(result?.autoUnassignedTickets || 0);
 
       setDeleteRetry(null);
-      onShowToast?.(
-        `${userName} verwijderd. ${count} ticket(s) automatisch ontkoppeld.`,
-        false
-      );
-      onRefresh?.().catch(err => {
+      onShowToast?.(`${userName} verwijderd. ${count} ticket(s) automatisch ontkoppeld.`, false);
+      onRefresh?.().catch((err) => {
         console.error('Refresh error after retry delete:', err);
       });
     } catch (err) {
       console.error('Retry delete error:', err);
-      onShowToast?.(`Opnieuw verwijderen mislukt: ${err.message || 'Onbekende fout'}`, true);
+      onShowToast?.(`Opnieuw verwijderen mislukt: ${err?.message || 'Onbekende fout'}`, true);
     } finally {
       setIsBusy(false);
     }
   };
 
   const handleSaveUser = async (userData) => {
+    if (!selectedUser?.id) {
+      throw new Error('Handmatige gebruiker-aanmaak is uitgeschakeld. Gebruikers komen via OAuth login.');
+    }
+
     try {
       setIsBusy(true);
+      const savedUser = await ticketService.updateHandler(selectedUser.id, userData);
+      onShowToast?.('Gebruiker succesvol bijgewerkt');
 
-      let savedUser;
-      if (selectedUser) {
-        savedUser = await ticketService.updateHandler(selectedUser.id, userData);
-        onShowToast?.('Gebruiker succesvol bijgewerkt');
-      } else {
-        savedUser = await ticketService.createHandler(userData);
-        onShowToast?.('Gebruiker succesvol aangemaakt');
-      }
-
-      // Close modal immediately for better UX
       setShowUserModal(false);
       setSelectedUser(null);
 
-      // Refresh in background (non-blocking)
-      onRefresh?.().catch(err => {
+      onRefresh?.().catch((err) => {
         console.error('Refresh error:', err);
       });
 
       return savedUser;
     } catch (err) {
       console.error('Save error:', err);
-      onShowToast?.(err.message || 'Fout bij opslaan van gebruiker', true);
+      onShowToast?.(err?.message || 'Fout bij opslaan van gebruiker', true);
       throw err;
     } finally {
       setIsBusy(false);
@@ -294,57 +304,29 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Stats */}
-      {/* <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-2">
-            <Icon name="Users" size={24} className="opacity-80" />
-            <div className="text-3xl font-bold">{stats.total}</div>
-          </div>
-          <p className="text-sm opacity-90">Totaal Gebruikers</p>
-        </div>
+    <div className="space-y-4">
+      <div className="rounded-xl border border-sky-100 bg-sky-50/40 p-3 flex items-start gap-2">
+        <Icon name="Info" size={16} className="text-sky-700 mt-0.5" />
+        <p className="text-sm text-sky-800">
+          Gebruikers worden automatisch aangemaakt bij eerste OAuth-login. Gebruik dit scherm voor beheer van
+          status, rollen en workflowtoegang.
+        </p>
+      </div>
 
-        <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-2">
-            <Icon name="CheckCircle" size={24} className="opacity-80" />
-            <div className="text-3xl font-bold">{stats.active}</div>
-          </div>
-          <p className="text-sm opacity-90">Actieve Gebruikers</p>
-        </div>
-
-        <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-2">
-            <Icon name="ShieldCheck" size={24} className="opacity-80" />
-            <div className="text-3xl font-bold">{stats.admins}</div>
-          </div>
-          <p className="text-sm opacity-90">Administrators</p>
-        </div>
-
-        <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-2">
-            <Icon name="UserCheck" size={24} className="opacity-80" />
-            <div className="text-3xl font-bold">{stats.handlers}</div>
-          </div>
-          <p className="text-sm opacity-90">Handlers</p>
-        </div>
-      </div> */}
-
-      {/* Toolbar */}
-      <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+      <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-center justify-between">
         <div className="flex flex-wrap gap-3 flex-1">
           <Input
             type="search"
-            placeholder="Zoek op naam of email..."
+            placeholder="Zoek op naam, email, telefoon of user_id..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full lg:w-80"
+            className="w-full lg:w-[360px]"
           />
 
           <select
             value={filterRole}
             onChange={(e) => setFilterRole(e.target.value)}
-            className="px-4 py-2 border border-blue-200 rounded-xl bg-white/60 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+            className="px-4 py-2 border border-border rounded-xl bg-white text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-sky-300/30"
           >
             <option value="all">Alle rollen</option>
             <option value="admin">Admin</option>
@@ -355,7 +337,7 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-4 py-2 border border-blue-200 rounded-xl bg-white/60 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+            className="px-4 py-2 border border-border rounded-xl bg-white text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-sky-300/30"
           >
             <option value="all">Alle statussen</option>
             <option value="active">Actief</option>
@@ -364,16 +346,16 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
         </div>
 
         <Button
-          variant="primary"
-          iconName="UserPlus"
-          onClick={handleCreateUser}
+          variant="outline"
+          iconName="RefreshCw"
+          iconPosition="left"
+          onClick={() => onRefresh?.()}
           disabled={isBusy}
         >
-          Nieuwe Gebruiker
+          Synchroniseer
         </Button>
       </div>
 
-      {/* Results count */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {filteredUsers.length} {filteredUsers.length === 1 ? 'gebruiker' : 'gebruikers'} gevonden
@@ -386,16 +368,12 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
             <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">Verwijderen geblokkeerd voor {deleteRetry.userName}</p>
               <p className="text-xs text-muted-foreground mt-1">
-                {deleteRetry.assignedTickets} ticket(s) zijn nog gekoppeld. Klik op opnieuw proberen om deze eerst automatisch los te koppelen en daarna de handler te verwijderen.
+                {deleteRetry.assignedTickets} ticket(s) zijn nog gekoppeld. Klik op opnieuw proberen om deze eerst
+                automatisch los te koppelen en daarna de handler te verwijderen.
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setDeleteRetry(null)}
-                disabled={isBusy}
-              >
+              <Button variant="outline" size="sm" onClick={() => setDeleteRetry(null)} disabled={isBusy}>
                 Sluiten
               </Button>
               <Button
@@ -413,18 +391,15 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
         </div>
       )}
 
-      {/* User Grid */}
       {filteredUsers.length === 0 ? (
-        <div className="text-center py-16 bg-white/40 border border-blue-100 rounded-2xl">
-          <Icon name="Search" size={48} className="mx-auto mb-4 text-blue-400 opacity-50" />
+        <div className="text-center py-16 bg-white border border-border rounded-2xl">
+          <Icon name="Search" size={48} className="mx-auto mb-4 text-sky-500/50" />
           <p className="text-lg font-medium text-foreground">Geen gebruikers gevonden</p>
-          <p className="text-sm text-muted-foreground mt-2">
-            Pas je zoek- of filterinstellingen aan
-          </p>
+          <p className="text-sm text-muted-foreground mt-2">Pas je zoek- of filterinstellingen aan</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {filteredUsers.map(user => (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          {filteredUsers.map((user) => (
             <UserCard
               key={user.id}
               user={user}
@@ -436,8 +411,7 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
         </div>
       )}
 
-      {/* User Modal */}
-      {showUserModal && (
+      {showUserModal && selectedUser && (
         <UserModal
           user={selectedUser}
           roles={roles}

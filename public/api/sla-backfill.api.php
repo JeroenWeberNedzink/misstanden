@@ -66,7 +66,6 @@ try {
     $serviceKey =
         getenv('SUPABASE_SERVICE_ROLE_KEY') ?:
         getenv('SUPABASE_SERVICE_KEY') ?:
-        getenv('VITE_SUPABASE_SERVICE_ROLE_KEY') ?:
         null;
     $supabaseAnon = getenv('VITE_SUPABASE_ANON_KEY');
     $supabaseKey = $serviceKey ?: $supabaseAnon;

@@ -44,6 +44,8 @@ API layer:
 - Vite dev proxy forwards `/api/*` to PHP server (`vite.config.js`).
 - PHP APIs:
   - `/api/tickets.api.php`
+  - `/api/settings.api.php`
+  - `/api/workflows.api.php`
   - `/api/mail.api.php`
   - `/api/mfa.api.php`
   - `/api/translations.api.php`
@@ -135,6 +137,10 @@ Frontend-required:
 - `VITE_AUTH0_DOMAIN`
 - `VITE_AUTH0_CLIENT_ID`
 
+Important:
+- Never put secrets in `VITE_*` variables. Vite injects all `VITE_*` values into browser code.
+- Use non-`VITE_` names for server-only secrets (for example `AUTH0_CLIENT_SECRET`).
+
 API/mail/security (optional or environment-specific):
 - `EMAIL_ENC_KEY_PATH` (path to base64 32-byte email encryption key)
 - `MAIL_DEV_SINK` (`true` writes mails to outbox instead of SMTP)
@@ -142,6 +148,7 @@ API/mail/security (optional or environment-specific):
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_AUTH`, `SMTP_USER`, `SMTP_PASS`
 - `MAIL_DEFAULT_FROM`, `MAIL_DEFAULT_FROM_NAME`
 - `SUPABASE_SERVICE_ROLE_KEY` (used by SLA backfill endpoint if present)
+- `SUPABASE_SERVICE_ROLE_KEY` (required for secure server-side settings + reporter ticket access APIs)
 
 ## Database and Migrations
 
@@ -154,6 +161,8 @@ Important migrations include:
 - Translation audit log
 - Reporter email crypto columns
 - Status email notify flags
+- Policy baseline snapshot (`20260219_capture_policy_baseline.sql`)
+- System settings hardening (`20260219_harden_system_settings_access.sql`)
 
 Note:
 - `src/services/migrationService.js` performs a startup check for email notification structures and reports when manual SQL setup is still needed.
@@ -176,6 +185,8 @@ Locale files:
 - Assignment logic blocks inactive handlers from being assigned.
 - Route access is guarded with Auth0 + permission checks.
 - Maintenance mode is controlled via dynamic settings.
+- Browser-visible `VITE_SUPABASE_ANON_KEY` is expected for Supabase frontends; real protection comes from strict RLS/policies.
+- Admin settings writes now go through `public/api/settings.api.php` and require an Auth0 token + admin handler authorization.
 
 ## Build
 

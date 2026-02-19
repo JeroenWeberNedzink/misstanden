@@ -9,49 +9,13 @@ import CommunicationPanel from './components/CommunicationPanel';
 import SLAStatus from './components/SLAStatus';
 import SubmissionMetadata from './components/SubmissionMetadata';
 import { ticketService } from '../../services/ticketService';
-
-const toDateSafe = (value) => {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
-};
-
-const addHours = (date, hours) => {
-  if (!date || !Number.isFinite(Number(hours))) return null;
-  const d = new Date(date);
-  d.setHours(d.getHours() + Number(hours));
-  return d;
-};
+import { addHours, getFirstResponseAt, getFirstResponseHoursForTicket, toDateSafe } from '../../utils/slaUtils';
 
 const formatDateTime = (value, locale, options = {}) => {
   if (!value) return '-';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '-';
   return d.toLocaleDateString(locale || undefined, options);
-};
-
-const getFirstResponseAt = (ticket) => {
-  const actions = ticket?.ticketActions || ticket?.ticket_actions || [];
-  const actionDates = actions
-    .filter((a) => {
-      const t = a?.action_type || a?.actionType;
-      return t === 'status_update' || t === 'status_change';
-    })
-    .map((a) => toDateSafe(a?.created_at || a?.createdAt))
-    .filter(Boolean);
-
-  const messages = ticket?.messages || [];
-  const messageDates = messages
-    .filter((m) => {
-      const sender = String(m?.sender ?? '').toLowerCase();
-      return sender && sender !== 'reporter';
-    })
-    .map((m) => toDateSafe(m?.created_at || m?.createdAt))
-    .filter(Boolean);
-
-  const all = [...actionDates, ...messageDates].filter(Boolean);
-  if (!all.length) return null;
-  return new Date(Math.min(...all.map((d) => d.getTime())));
 };
 
 export default function TicketDetailsView() {
@@ -68,21 +32,45 @@ export default function TicketDetailsView() {
 
   const loadTicketData = async () => {
     try {
+      const storedAccess = sessionStorage.getItem('current_ticket_access');
       const storedTicket = sessionStorage.getItem('current_ticket');
-      if (!storedTicket) {
+
+      if (!storedAccess && !storedTicket) {
         navigate('/ticket-access-portal');
         return;
       }
 
-      const ticket = JSON.parse(storedTicket);
+      let ticket = null;
+
+      if (storedAccess) {
+        try {
+          const access = JSON.parse(storedAccess);
+          if (access?.ticketInput && access?.accessCode) {
+            ticket = await ticketService.getTicketByCredentials(access.ticketInput, access.accessCode);
+            sessionStorage.setItem('current_ticket', JSON.stringify(ticket));
+          }
+        } catch (lookupErr) {
+          console.error('Reporter ticket refresh via API failed:', lookupErr);
+        }
+      }
+
+      if (!ticket && storedTicket) {
+        ticket = JSON.parse(storedTicket);
+      }
+
+      if (!ticket) {
+        navigate('/ticket-access-portal');
+        return;
+      }
+
       const submissionDate = ticket?.submitted_at || ticket?.submittedAt || ticket?.created_at || ticket?.createdAt;
       const submittedAtDate = toDateSafe(submissionDate);
-      const slaResponseHours = ticket?.sla_response_hours || ticket?.slaResponseHours || 24;
+      const slaResponseHours = getFirstResponseHoursForTicket(ticket);
       const slaResolutionHours = ticket?.sla_resolution_hours || ticket?.slaResolutionHours || null;
       const nextStepDueAt = ticket?.next_step_due || ticket?.nextStepDue || ticket?.sla_deadline || ticket?.slaDeadline || null;
       const expectedResolutionDate = ticket?.expected_resolution_date || ticket?.expectedResolutionDate || null;
 
-      const firstResponseAt = getFirstResponseAt(ticket);
+      const firstResponseAt = getFirstResponseAt(ticket, { strictReceiptStatus: true });
       const firstResponseDueAt = submittedAtDate ? addHours(submittedAtDate, slaResponseHours) : null;
       const resolutionDueAt = expectedResolutionDate
         ? toDateSafe(expectedResolutionDate)
@@ -143,7 +131,7 @@ export default function TicketDetailsView() {
         communications: (ticket?.messages || []).map((msg) => ({
           from: msg?.sender,
           senderName: msg?.sender === 'handler'
-            ? (msg?.handler_name || msg?.handlerName || ticket?.handlers?.name || t('ticketDetailsView.communication.handler'))
+            ? (msg?.handler_name || msg?.handlerName || t('ticketDetailsView.communication.handler'))
             : t('ticketDetailsView.communication.you'),
           timestamp: msg?.created_at || msg?.createdAt,
           message: msg?.body,
@@ -162,14 +150,19 @@ export default function TicketDetailsView() {
 
   const handleSendMessage = async (messageContent) => {
     try {
-      const storedTicket = sessionStorage.getItem('current_ticket');
-      if (!storedTicket) throw new Error('No ticket in session');
+      const storedAccess = sessionStorage.getItem('current_ticket_access');
+      if (!storedAccess) throw new Error('No ticket credentials in session');
 
-      const parsed = JSON.parse(storedTicket);
-      const ticketId = parsed?.id;
-      if (!ticketId) throw new Error('Ticket id missing');
+      const access = JSON.parse(storedAccess);
+      const ticketInput = String(access?.ticketInput || '').trim();
+      const accessCode = String(access?.accessCode || '').trim();
+      if (!ticketInput || !accessCode) throw new Error('Missing ticket access credentials');
 
-      const created = await ticketService.addMessage(ticketId, 'reporter', messageContent, false);
+      const { message: created, ticket: updatedTicket } = await ticketService.addReporterMessageByCredentials(
+        ticketInput,
+        accessCode,
+        messageContent,
+      );
       const newMessage = {
         from: 'reporter',
         senderName: t('ticketDetailsView.communication.you'),
@@ -178,8 +171,14 @@ export default function TicketDetailsView() {
         isRead: false,
       };
 
-      const updatedTicket = { ...parsed, messages: [...(parsed?.messages || []), created] };
-      sessionStorage.setItem('current_ticket', JSON.stringify(updatedTicket));
+      if (updatedTicket) {
+        sessionStorage.setItem('current_ticket', JSON.stringify(updatedTicket));
+      } else {
+        const storedTicket = sessionStorage.getItem('current_ticket');
+        const parsed = storedTicket ? JSON.parse(storedTicket) : {};
+        const fallbackTicket = { ...parsed, messages: [...(parsed?.messages || []), created] };
+        sessionStorage.setItem('current_ticket', JSON.stringify(fallbackTicket));
+      }
 
       setTicketData((prev) => ({
         ...prev,

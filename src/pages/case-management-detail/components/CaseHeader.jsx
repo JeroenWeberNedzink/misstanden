@@ -4,7 +4,7 @@ import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import StatusFlowBar from './StatusFlowBar';
 
-const CaseHeader = ({ caseData, onBack, isWhistleblower, onStatusUpdate }) => {
+const CaseHeader = ({ caseData, onBack, isWhistleblower, onStatusUpdate, canUpdateStatus = true }) => {
   const { t } = useTranslation();
 
   const getPriorityStyles = (priorityCode) => {
@@ -78,6 +78,7 @@ const CaseHeader = ({ caseData, onBack, isWhistleblower, onStatusUpdate }) => {
             currentStatus={caseData?.status}
             currentStage={caseData?.currentStage}
             onStatusUpdate={onStatusUpdate}
+            disabled={!canUpdateStatus}
           />
         </div>
       )}

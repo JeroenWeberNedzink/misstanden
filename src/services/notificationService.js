@@ -7,6 +7,7 @@
 import * as emailService from './emailService';
 import { handlerProfileService } from './handlerProfileService';
 import { ticketService } from './ticketService';
+import { supabase } from '../lib/supabase';
 
 const escapeHtml = (value) =>
   String(value ?? '')
@@ -137,6 +138,7 @@ function shouldNotifyHandler(settings, notificationType, ticketSeverity = 'mediu
   // Check specific notification type settings
   const typeCheckMap = {
     'newAssignment': settings.notifyNewAssignments ?? true,
+    'newReport': settings.notifyNewAssignments ?? true,
     'statusUpdate': settings.notifyStatusUpdates ?? true,
     'escalation': settings.notifyEscalations ?? true,
     'deadline': settings.notifyDeadlineReminders ?? true,
@@ -170,6 +172,121 @@ export const notificationService = {
     } catch (error) {
       console.error('[Notification] Error sending reporter confirmation:', error);
       // Don't throw - email failure shouldn't break ticket creation
+      return { success: false, error: error.message };
+    }
+  },
+
+  /**
+   * Notify all active handlers that are allowed to access this ticket workflow.
+   * @param {Object} ticket - Newly created ticket
+   * @returns {Promise<Object>}
+   */
+  async notifyHandlersNewReport(ticket) {
+    const workflowCode = String(ticket?.workflowType || ticket?.workflow_type || '').trim();
+    const severityCode = ticket?.severityCode || ticket?.severity_code || 'medium';
+
+    if (!workflowCode) {
+      return { success: false, skipped: true, reason: 'Missing workflow type' };
+    }
+
+    try {
+      const { data: workflow, error: workflowError } = await supabase
+        .from('workflows')
+        .select('id, code')
+        .eq('code', workflowCode)
+        .maybeSingle();
+
+      if (workflowError) {
+        console.error('[Notification] Failed to load workflow for new report notifications:', workflowError);
+        return { success: false, error: workflowError.message };
+      }
+
+      if (!workflow?.id) {
+        return { success: false, skipped: true, reason: 'Workflow not found' };
+      }
+
+      const { data: routingRows, error: routingError } = await supabase
+        .from('handler_workflows')
+        .select('handler_id')
+        .eq('workflow_id', workflow.id);
+
+      if (routingError) {
+        console.error('[Notification] Failed to load workflow handlers:', routingError);
+        return { success: false, error: routingError.message };
+      }
+
+      const handlerIds = Array.from(new Set((routingRows || []).map((r) => r?.handler_id).filter(Boolean)));
+      if (handlerIds.length === 0) {
+        return { success: true, skipped: true, reason: 'No handlers assigned to workflow', totalCandidates: 0, sent: 0 };
+      }
+
+      const { data: handlers, error: handlerError } = await supabase
+        .from('handlers')
+        .select('id, name, email, active, language, preferred_language, locale')
+        .in('id', handlerIds)
+        .eq('active', true);
+
+      if (handlerError) {
+        console.error('[Notification] Failed to load active handlers for workflow:', handlerError);
+        return { success: false, error: handlerError.message };
+      }
+
+      const recipients = (handlers || []).filter((h) => Boolean(h?.email));
+      if (recipients.length === 0) {
+        return { success: true, skipped: true, reason: 'No active handler recipients', totalCandidates: 0, sent: 0 };
+      }
+
+      const settled = await Promise.allSettled(
+        recipients.map(async (handler) => {
+          const settings = await handlerProfileService.getNotificationSettings(handler.id);
+          if (!shouldNotifyHandler(settings, 'newReport', severityCode)) {
+            return { handlerId: handler.id, skipped: true, reason: 'Handler preferences' };
+          }
+
+          const result = await emailService.sendHandlerNewReportEmail(ticket, handler);
+          return { handlerId: handler.id, skipped: false, result };
+        })
+      );
+
+      let sent = 0;
+      let skipped = 0;
+      const errors = [];
+
+      for (const item of settled) {
+        if (item.status === 'rejected') {
+          errors.push(String(item.reason?.message || item.reason || 'Unknown error'));
+          continue;
+        }
+
+        if (item.value?.skipped) {
+          skipped += 1;
+          continue;
+        }
+
+        if (item.value?.result?.success === false) {
+          skipped += 1;
+          continue;
+        }
+
+        sent += 1;
+      }
+
+      if (errors.length > 0) {
+        console.error('[Notification] Some workflow handler notifications failed:', errors);
+      } else {
+        console.log('[Notification] Workflow handler notifications sent:', { workflowCode, sent, skipped });
+      }
+
+      return {
+        success: errors.length === 0,
+        workflowCode,
+        totalCandidates: recipients.length,
+        sent,
+        skipped,
+        errors,
+      };
+    } catch (error) {
+      console.error('[Notification] Error notifying workflow handlers for new report:', error);
       return { success: false, error: error.message };
     }
   },
@@ -410,6 +527,28 @@ ${commentStyles}
   },
 
   /**
+   * Notify reporter that processing has started after first handler assignment.
+   * @param {Object} ticket - Ticket object
+   * @param {Object} options - Additional context
+   * @returns {Promise<Object>}
+   */
+  async notifyReporterAssignmentStarted(ticket, options = {}) {
+    try {
+      const hasReporterEmail = Boolean(ticket?.reporterEmail || ticket?.reporterEmailEncrypted);
+      if (!ticket?.emailNotify || !hasReporterEmail) {
+        return { success: false, skipped: true, reason: 'Reporter did not opt-in or email missing' };
+      }
+
+      const result = await emailService.sendReporterAssignmentStartedEmail(ticket, options);
+      console.log('[Notification] Reporter assignment-started notification sent:', result);
+      return { success: true, result };
+    } catch (error) {
+      console.error('[Notification] Error sending reporter assignment-started notification:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  /**
    * Send attachment added notification (public attachments only)
    * @param {Object} ticket - Ticket object
    * @param {Object} attachment - Attachment object
@@ -439,7 +578,7 @@ ${commentStyles}
    * @param {boolean} isInternal - Whether message is internal
    * @returns {Promise<Object>}
    */
-  async notifyMessage(ticket, sender, body, isInternal = false) {
+  async notifyMessage(ticket, sender, body, isInternal = false, options = {}) {
     const results = {
       reporter: null,
       handler: null
@@ -472,6 +611,9 @@ ${commentStyles}
             ? (reporterCopy.senderAnonymousReporter || reporterCopy.senderReporter || reporterCopy.reporterFallback)
             : (reporterCopy.senderReporter || reporterCopy.reporterFallback));
       const handlerDisplayName = assignedHandler?.name || reporterCopy.senderHandler || 'Handler';
+      const publicHandlerName = options?.discloseHandlerIdentity
+        ? (String(options?.senderName || '').trim() || handlerDisplayName)
+        : (reporterCopy.senderHandler || 'Handler');
 
       // Reporter sent -> notify assigned handler only
       if (isFromReporter || !isFromHandler) {
@@ -493,7 +635,7 @@ ${commentStyles}
       if (isFromHandler) {
         if (ticket?.emailNotify && (ticket.reporterEmail || ticket.reporterEmailEncrypted)) {
           try {
-            results.reporter = await emailService.sendReporterMessageEmail(ticket, handlerDisplayName, body);
+            results.reporter = await emailService.sendReporterMessageEmail(ticket, publicHandlerName, body);
             console.log('[Notification] Reporter message notification sent');
           } catch (error) {
             console.error('[Notification] Error sending reporter message notification:', error);

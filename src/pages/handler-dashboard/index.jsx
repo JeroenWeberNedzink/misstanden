@@ -351,17 +351,17 @@ export default function HandlerDashboard() {
         <div className="min-h-screen bg-background">
           <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 md:py-8 lg:py-12">
             <div className="mb-8">
-              <div className="rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-sky-900 text-white p-6 md:p-8 shadow-xl">
+              <div className="rounded-3xl bg-gradient-to-br from-sky-800 via-sky-700 to-sky-600 text-white p-6 md:p-8 shadow-xl">
                 <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
                   <div>
                     <div className="text-xs uppercase tracking-[0.2em] text-sky-200 mb-2">
-                      {t('handlerDashboard.title')}
+                      {t('handlerDashboard.welcomeMessage')} {user?.name || user?.email || t('handlerDashboard.fallbackUser')}
                     </div>
                     <h1 className="text-3xl md:text-4xl font-bold">
-                      {t('handlerDashboard.welcomeMessage')} {user?.name || user?.email || t('handlerDashboard.fallbackUser')}
+                      {t('handlerDashboard.title')}
                     </h1>
                     <p className="text-sm md:text-base text-slate-200 mt-3 max-w-2xl">
-                      {t('handlerDashboard.subtitle')}
+                      {/* {t('handlerDashboard.subtitle')} */}
                     </p>
                     <div className="flex items-center gap-2 text-xs text-slate-300 mt-4">
                       <Icon name="RefreshCw" size={14} />

@@ -181,7 +181,7 @@ export default function SystemSettingsAdmin() {
   const [original, setOriginal] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('all'); // 'all', 'security', 'email_notifications'
-  const [pageMode, setPageMode] = useState('settings'); // 'settings' | 'admin'
+  const [pageMode, setPageMode] = useState('admin'); // 'settings' | 'admin'
   const [selectedCategory, setSelectedCategory] = useState(null); // For focused category view
 
   const [isLoading, setIsLoading] = useState(true);
@@ -287,13 +287,11 @@ export default function SystemSettingsAdmin() {
 
   useEffect(() => {
     const modeParam = new URLSearchParams(location.search).get('mode');
-    if (modeParam === 'admin') {
-      setPageMode('admin');
-      return;
-    }
     if (modeParam === 'settings') {
       setPageMode('settings');
+      return;
     }
+    setPageMode('admin');
   }, [location.search]);
 
   const save = async () => {
@@ -357,20 +355,20 @@ export default function SystemSettingsAdmin() {
                 </div>
                 <div className="flex items-center gap-2 rounded-xl border border-border bg-card p-1">
                   <button
-                    onClick={() => setPageMode('settings')}
-                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
-                      pageMode === 'settings' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {t('settings.tabs.settings')}
-                  </button>
-                  <button
                     onClick={() => setPageMode('admin')}
                     className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
                       pageMode === 'admin' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
                     {t('settings.tabs.adminCenter')}
+                  </button>
+                  <button
+                    onClick={() => setPageMode('settings')}
+                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                      pageMode === 'settings' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {t('settings.tabs.settings')}
                   </button>
                 </div>
               </div>
@@ -810,6 +808,7 @@ export default function SystemSettingsAdmin() {
     </>
   );
 }
+
 
 
 

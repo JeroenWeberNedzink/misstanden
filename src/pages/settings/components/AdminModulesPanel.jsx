@@ -20,10 +20,10 @@ const getModuleMeta = (usersCount, rolesCount, workflowsCount) => ({
     priority: 1,
     description: 'Beheer gebruikersaccounts, rollen en toegangsrechten',
     meta: `${usersCount} gebruikers`,
-    color: 'from-blue-500 to-indigo-600',
-    bgColor: 'bg-gradient-to-br from-blue-50 to-indigo-50',
-    iconBg: 'bg-blue-100',
-    iconColor: 'text-blue-600'
+    color: 'from-sky-500 to-sky-700',
+    bgColor: 'bg-card',
+    iconBg: 'bg-sky-100',
+    iconColor: 'text-sky-700'
   },
   permissions: {
     label: 'Rechten & Rollen',
@@ -31,10 +31,10 @@ const getModuleMeta = (usersCount, rolesCount, workflowsCount) => ({
     priority: 2,
     description: 'Configureer permissies en beheer rol-gebaseerde toegang',
     meta: `${rolesCount} rollen`,
-    color: 'from-purple-500 to-pink-600',
-    bgColor: 'bg-gradient-to-br from-purple-50 to-pink-50',
-    iconBg: 'bg-purple-100',
-    iconColor: 'text-purple-600'
+    color: 'from-sky-500 to-sky-700',
+    bgColor: 'bg-card',
+    iconBg: 'bg-sky-100',
+    iconColor: 'text-sky-700'
   },
   workflows: {
     label: 'Workflows',
@@ -42,10 +42,10 @@ const getModuleMeta = (usersCount, rolesCount, workflowsCount) => ({
     priority: 3,
     description: 'Bekijk en beheer ticket workflows en processtatistieken',
     meta: `${workflowsCount} workflows`,
-    color: 'from-green-500 to-emerald-600',
-    bgColor: 'bg-gradient-to-br from-green-50 to-emerald-50',
-    iconBg: 'bg-green-100',
-    iconColor: 'text-green-600'
+    color: 'from-sky-500 to-sky-700',
+    bgColor: 'bg-card',
+    iconBg: 'bg-sky-100',
+    iconColor: 'text-sky-700'
   },
   translations: {
     label: 'Vertalingen',
@@ -178,16 +178,7 @@ const AdminModulesPanel = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl md:text-3xl font-bold text-sky-600">Admin Center</h2>
-          </div>
-          <p className="mt-2 text-sm md:text-base text-muted-foreground">
-            Eén plek voor beheer van accounts, toegang en workflows.
-          </p>
-        </div>
-
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-end">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
           <div className="relative w-full sm:w-[360px]">
             <div className="absolute left-3 top-1/2 -translate-y-1/2 opacity-70">
@@ -289,7 +280,7 @@ const AdminModulesPanel = () => {
               </div>
             </div>
 
-            <div className="p-6">
+            <div className={activeModule === 'workflows' ? 'p-4 md:p-5' : 'p-6'}>
               {activeModule === 'users' && (
                 <UserManagementPanel
                   users={filteredUsers}
@@ -389,3 +380,4 @@ const AdminModulesPanel = () => {
 };
 
 export default AdminModulesPanel;
+

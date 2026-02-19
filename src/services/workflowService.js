@@ -39,6 +39,69 @@ const throwIfError = (error, context = '') => {
 };
 
 const safeTrim = (v) => String(v ?? '').trim();
+const WORKFLOW_API_URL = '/api/workflows.api.php';
+let workflowTokenProvider = null;
+
+const setTokenProvider = (provider) => {
+  workflowTokenProvider = typeof provider === 'function' ? provider : null;
+};
+
+const getAuthHeaders = async () => {
+  if (!workflowTokenProvider) return {};
+  try {
+    const token = await workflowTokenProvider();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+};
+
+const apiGet = async (action, params = {}, { requireAdmin = false } = {}) => {
+  let headers = await getAuthHeaders();
+  if (requireAdmin && !headers.Authorization) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    headers = await getAuthHeaders();
+  }
+  const urlParams = new URLSearchParams({ action, ...params });
+  const response = await fetch(`${WORKFLOW_API_URL}?${urlParams.toString()}`, {
+    method: 'GET',
+    headers,
+  });
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    const message = json?.message || `Workflows API error (${response.status})`;
+    if (!headers.Authorization && requireAdmin) {
+      throw new Error(`Admin token missing: ${message}`);
+    }
+    throw new Error(message);
+  }
+  return json?.data;
+};
+
+const apiPost = async (action, payload = {}, { requireAdmin = true } = {}) => {
+  let headers = await getAuthHeaders();
+  if (requireAdmin && !headers.Authorization) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    headers = await getAuthHeaders();
+  }
+  const response = await fetch(WORKFLOW_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    const message = json?.message || `Workflows API error (${response.status})`;
+    if (!headers.Authorization && requireAdmin) {
+      throw new Error(`Admin token missing: ${message}`);
+    }
+    throw new Error(message);
+  }
+  return json?.data;
+};
 
 // -----------------------------
 // Small cache (optional)
@@ -61,24 +124,12 @@ export const workflowService = {
 
   /**
    * Returns workflows with status count, ticket count, and handler count (for UI badges).
-   * NOTE: This uses PostgREST embedded count via workflow_statuses(count), tickets(count), and handler_workflows(count).
+   * Admin read via backend API.
    */
   async getWorkflowsWithStats() {
-    const { data, error } = await supabase
-      .from('workflows')
-      .select(
-        `
-        *,
-        workflow_statuses:workflow_statuses(count),
-        tickets:tickets(count),
-        handler_workflows:handler_workflows(count)
-      `
-      )
-      .order('display_order', { ascending: true });
+    const data = await apiGet('list_with_stats', {}, { requireAdmin: true });
 
-    throwIfError(error, 'getWorkflowsWithStats(workflows)');
-
-    const rows = (data || []).map((w) => {
+    const rows = (data?.rows || []).map((w) => {
       const statusCount = w?.workflow_statuses?.[0]?.count ?? 0;
       const ticketCount = w?.tickets?.[0]?.count ?? 0;
       const handlerCount = w?.handler_workflows?.[0]?.count ?? 0;
@@ -129,75 +180,28 @@ export const workflowService = {
   },
 
   async createWorkflow(payload) {
-    const { data, error } = await supabase.from('workflows').insert(toSnakeCase(payload)).select().single();
-    throwIfError(error, 'createWorkflow(workflows)');
-    return toCamelCase(data);
+    const data = await apiPost('create_workflow', { payload: toSnakeCase(payload) });
+    return toCamelCase(data?.row);
   },
 
   async updateWorkflow(id, patch) {
     if (!id) throw new Error('workflow id is required');
 
-    const { data, error } = await supabase
-      .from('workflows')
-      .update(toSnakeCase(patch))
-      .eq('id', id)
-      .select()
-      .single();
-
-    throwIfError(error, 'updateWorkflow(workflows)');
-    return toCamelCase(data);
+    const data = await apiPost('update_workflow', { id, patch: toSnakeCase(patch) });
+    return toCamelCase(data?.row);
   },
 
   async toggleWorkflowStatus(id, active) {
     if (!id) throw new Error('workflow id is required');
 
-    const { data, error } = await supabase.from('workflows').update({ active: !!active }).eq('id', id).select().single();
-    throwIfError(error, 'toggleWorkflowStatus(workflows)');
-    return toCamelCase(data);
+    const data = await apiPost('toggle_workflow_status', { id, active: !!active });
+    return toCamelCase(data?.row);
   },
 
   async deleteWorkflowForce(id) {
     if (!id) throw new Error('workflow id is required');
-
-    const { data: workflow, error: workflowError } = await supabase
-      .from('workflows')
-      .select('id, code')
-      .eq('id', id)
-      .maybeSingle();
-    throwIfError(workflowError, 'deleteWorkflowForce(fetch workflow)');
-    if (!workflow?.id) throw new Error('Workflow not found');
-
-    // Delete child records first to avoid FK constraint violations
-    // 1. Delete handler assignments
-    const { error: handlerWorkflowsError } = await supabase
-      .from('handler_workflows')
-      .delete()
-      .eq('workflow_id', id);
-    throwIfError(handlerWorkflowsError, 'deleteWorkflowForce(handler_workflows)');
-
-    // 2. Delete workflow statuses
-    const { error: statusesError } = await supabase
-      .from('workflow_statuses')
-      .delete()
-      .eq('workflow_id', id);
-    throwIfError(statusesError, 'deleteWorkflowForce(workflow_statuses)');
-
-    // 3. Nullify ticket workflow references before deleting workflow row.
-    // In this app `tickets.workflow_type` stores workflow code (legacy may contain id).
-    const candidates = [workflow.code, id].filter(Boolean);
-    const { error: ticketsError } = await supabase
-      .from('tickets')
-      .update({ workflow_type: null })
-      .in('workflow_type', candidates);
-    throwIfError(ticketsError, 'deleteWorkflowForce(tickets)');
-
-    // 4. Finally delete the workflow itself
-    const { error } = await supabase.from('workflows').delete().eq('id', id);
-    throwIfError(error, 'deleteWorkflowForce(workflows)');
-
-    // Clear cache
+    await apiPost('delete_workflow_force', { id });
     invalidateWorkflowStatusesCache(id);
-
     return true;
   },
 
@@ -224,32 +228,77 @@ export const workflowService = {
     return statuses;
   },
 
+  async getWorkflowStatusesAdmin(workflowId) {
+    const id = safeTrim(workflowId);
+    if (!id) return [];
+    const data = await apiGet('status_list', { workflow_id: id }, { requireAdmin: true });
+    const statuses = toCamelCase(data?.rows || []);
+    cache.statusesByWorkflowId.set(id, { statuses, ts: Date.now() });
+    return statuses;
+  },
+
+  async saveWorkflowStatuses(workflowId, statuses = [], deleteIds = []) {
+    const id = safeTrim(workflowId);
+    if (!id) throw new Error('workflowId is required');
+
+    const rows = (statuses || []).map((s, i) => ({
+      id: safeTrim(s.id) || null,
+      code: safeTrim(s.code),
+      label: safeTrim(s.label),
+      description: safeTrim(s.description) || null,
+      color: safeTrim(s.color) || null,
+      sort_order: Number(s.sortOrder ?? s.sort_order ?? i),
+      is_terminal: Boolean(s.isTerminal ?? s.is_terminal ?? false),
+      next_codes: Array.isArray(s.nextCodes ?? s.next_codes) ? (s.nextCodes ?? s.next_codes) : [],
+      expected_duration_days: s.expectedDurationDays ?? s.expected_duration_days ?? null,
+      contact_person_name: safeTrim(s.contactPersonName ?? s.contact_person_name) || null,
+      contact_person_email: safeTrim(s.contactPersonEmail ?? s.contact_person_email) || null,
+      contact_person_phone: safeTrim(s.contactPersonPhone ?? s.contact_person_phone) || null,
+      contact_notes: safeTrim(s.contactNotes ?? s.contact_notes) || null,
+    }));
+
+    const data = await apiPost('save_statuses', {
+      workflow_id: id,
+      statuses: rows,
+      delete_ids: (deleteIds || []).map((x) => safeTrim(x)).filter(Boolean),
+    });
+
+    const persisted = toCamelCase(data?.rows || []);
+    cache.statusesByWorkflowId.set(id, { statuses: persisted, ts: Date.now() });
+    return persisted;
+  },
+
   async createWorkflowStatus(workflowId, status) {
     const id = safeTrim(workflowId);
     if (!id) throw new Error('workflowId is required');
 
     const payload = {
-      workflow_id: id,
       code: safeTrim(status?.code),
       label: safeTrim(status?.label),
       description: safeTrim(status?.description) || null,
       color: safeTrim(status?.color) || null,
       sort_order: Number(status?.sortOrder ?? status?.sort_order ?? 0),
       is_terminal: Boolean(status?.isTerminal ?? status?.is_terminal ?? false),
-      next_codes: status?.nextCodes ?? status?.next_codes ?? null,
+      next_codes: Array.isArray(status?.nextCodes ?? status?.next_codes) ? (status?.nextCodes ?? status?.next_codes) : [],
+      expected_duration_days: status?.expectedDurationDays ?? status?.expected_duration_days ?? null,
+      contact_person_name: safeTrim(status?.contactPersonName ?? status?.contact_person_name) || null,
+      contact_person_email: safeTrim(status?.contactPersonEmail ?? status?.contact_person_email) || null,
+      contact_person_phone: safeTrim(status?.contactPersonPhone ?? status?.contact_person_phone) || null,
+      contact_notes: safeTrim(status?.contactNotes ?? status?.contact_notes) || null,
     };
 
-    const { data, error } = await supabase.from('workflow_statuses').insert(payload).select().single();
-    throwIfError(error, 'createWorkflowStatus(workflow_statuses)');
+    const data = await apiPost('create_status', {
+      workflow_id: id,
+      status: payload,
+    });
 
     invalidateWorkflowStatusesCache(id);
-    return toCamelCase(data);
+    return toCamelCase(data?.row);
   },
 
   async updateWorkflowStatus(statusId, patch) {
     const sid = safeTrim(statusId);
     if (!sid) throw new Error('statusId is required');
-
     const payload = {};
     if (patch.code !== undefined) payload.code = safeTrim(patch.code);
     if (patch.label !== undefined) payload.label = safeTrim(patch.label);
@@ -258,27 +307,29 @@ export const workflowService = {
     if (patch.sortOrder !== undefined) payload.sort_order = Number(patch.sortOrder ?? 0);
     if (patch.isTerminal !== undefined) payload.is_terminal = !!patch.isTerminal;
     if (patch.nextCodes !== undefined) payload.next_codes = patch.nextCodes;
-
-    const { data, error } = await supabase.from('workflow_statuses').update(payload).eq('id', sid).select().single();
-    throwIfError(error, 'updateWorkflowStatus(workflow_statuses)');
-
-    // We don’t know workflow_id here reliably without extra select, so just clear whole cache.
-    cache.statusesByWorkflowId.clear();
-    return toCamelCase(data);
+    if (patch.expectedDurationDays !== undefined) payload.expected_duration_days = patch.expectedDurationDays;
+    if (patch.contactPersonName !== undefined) payload.contact_person_name = safeTrim(patch.contactPersonName) || null;
+    if (patch.contactPersonEmail !== undefined) payload.contact_person_email = safeTrim(patch.contactPersonEmail) || null;
+    if (patch.contactPersonPhone !== undefined) payload.contact_person_phone = safeTrim(patch.contactPersonPhone) || null;
+    if (patch.contactNotes !== undefined) payload.contact_notes = safeTrim(patch.contactNotes) || null;
+    const data = await apiPost('update_status', {
+      status_id: sid,
+      patch: payload,
+    });
+    const row = toCamelCase(data?.row);
+    if (row?.workflowId) invalidateWorkflowStatusesCache(row.workflowId);
+    else cache.statusesByWorkflowId.clear();
+    return row;
   },
 
   async deleteWorkflowStatus(statusId) {
     const sid = safeTrim(statusId);
     if (!sid) throw new Error('statusId is required');
-
-    const { data, error } = await supabase.from('workflow_statuses').delete().eq('id', sid).select().maybeSingle();
-    throwIfError(error, 'deleteWorkflowStatus(workflow_statuses)');
-
+    const data = await apiPost('delete_status', { status_id: sid });
     // If row returned, we can invalidate exact workflow cache
-    const wfId = data?.workflow_id;
+    const wfId = data?.row?.workflow_id;
     if (wfId) invalidateWorkflowStatusesCache(wfId);
     else cache.statusesByWorkflowId.clear();
-
     return true;
   },
 
@@ -288,36 +339,7 @@ export const workflowService = {
    * - Also supports existing `id` if you pass it.
    */
   async upsertWorkflowStatuses(workflowId, statuses = []) {
-    const id = safeTrim(workflowId);
-    if (!id) throw new Error('workflowId is required');
-
-    const rows = (statuses || []).map((s, i) => ({
-      id: s.id || undefined,
-      workflow_id: id,
-      code: safeTrim(s.code),
-      label: safeTrim(s.label),
-      description: safeTrim(s.description) || null,
-      color: safeTrim(s.color) || null,
-      sort_order: Number(s.sortOrder ?? s.sort_order ?? i),
-      is_terminal: Boolean(s.isTerminal ?? s.is_terminal ?? false),
-      next_codes: s.nextCodes ?? s.next_codes ?? null,
-      expected_duration_days: s.expectedDurationDays ?? s.expected_duration_days ?? null,
-      contact_person_name: safeTrim(s.contactPersonName ?? s.contact_person_name) || null,
-      contact_person_email: safeTrim(s.contactPersonEmail ?? s.contact_person_email) || null,
-      contact_person_phone: safeTrim(s.contactPersonPhone ?? s.contact_person_phone) || null,
-      contact_notes: safeTrim(s.contactNotes ?? s.contact_notes) || null,
-    }));
-
-    // Supabase upsert supports onConflict
-    const { data, error } = await supabase
-      .from('workflow_statuses')
-      .upsert(rows, { onConflict: 'workflow_id,code' })
-      .select();
-
-    throwIfError(error, 'upsertWorkflowStatuses(workflow_statuses)');
-
-    invalidateWorkflowStatusesCache(id);
-    return toCamelCase(data || []);
+    return this.saveWorkflowStatuses(workflowId, statuses, []);
   },
 
   /**
@@ -326,80 +348,22 @@ export const workflowService = {
   async reorderWorkflowStatuses(workflowId, orderPairs = []) {
     const id = safeTrim(workflowId);
     if (!id) throw new Error('workflowId is required');
-
     const updates = (orderPairs || []).map((p) => ({
       id: p.id,
       sort_order: Number(p.sortOrder ?? p.sort_order ?? 0),
     }));
-
-    // Do it sequentially (simple + safe). If you want faster: RPC.
-    for (const u of updates) {
-      if (!u.id) continue;
-      const { error } = await supabase.from('workflow_statuses').update({ sort_order: u.sort_order }).eq('id', u.id);
-      throwIfError(error, 'reorderWorkflowStatuses(workflow_statuses)');
-    }
-
+    await apiPost('reorder_statuses', {
+      workflow_id: id,
+      items: updates,
+    });
     invalidateWorkflowStatusesCache(id);
     return true;
   },
 
   async duplicateWorkflow(id) {
     if (!id) throw new Error('workflow id is required');
-
-    const { data: original, error: fetchError } = await supabase
-      .from('workflows')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    throwIfError(fetchError, 'duplicateWorkflow(fetch)');
-
-    const suffix = `_copy_${Date.now()}`;
-    const payload = {
-      name: `${original.name} (kopie)`,
-      code: `${original.code}${suffix}`,
-      description: original.description,
-      icon_name: original.icon_name,
-      color_scheme: original.color_scheme,
-      display_order: (original.display_order || 0) + 1,
-      active: false,
-      changed_by: '00000000-0000-0000-0000-000000000000', // System user for duplications
-    };
-
-    const { data: newWorkflow, error: createError } = await supabase
-      .from('workflows')
-      .insert(payload)
-      .select()
-      .single();
-
-    throwIfError(createError, 'duplicateWorkflow(create)');
-
-    // Copy statuses
-    const { data: statuses, error: statusError } = await supabase
-      .from('workflow_statuses')
-      .select('*')
-      .eq('workflow_id', id);
-
-    throwIfError(statusError, 'duplicateWorkflow(fetch statuses)');
-
-    if (statuses && statuses.length > 0) {
-      const statusCopies = statuses.map((s) => ({
-        workflow_id: newWorkflow.id,
-        code: s.code,
-        label: s.label,
-        description: s.description,
-        color: s.color,
-        sort_order: s.sort_order,
-        is_terminal: s.is_terminal,
-        next_codes: s.next_codes,
-      }));
-
-      const { error: insertError } = await supabase.from('workflow_statuses').insert(statusCopies);
-
-      throwIfError(insertError, 'duplicateWorkflow(copy statuses)');
-    }
-
-    return toCamelCase(newWorkflow);
+    const data = await apiPost('duplicate_workflow', { id });
+    return toCamelCase(data?.row);
   },
 
   // ----- Handler Routing (handler_workflows table) -----
@@ -407,67 +371,62 @@ export const workflowService = {
   async getRoutingRules(workflowId) {
     const id = safeTrim(workflowId);
     if (!id) return [];
-
-    const { data, error } = await supabase
-      .from('handler_workflows')
-      .select(
-        `
-        id,
-        handler_id,
-        workflow_id,
-        handlers:handler_id (
-          id,
-          name,
-          email,
-          role,
-          active
-        )
-      `
-      )
-      .eq('workflow_id', id);
-
-    throwIfError(error, 'getRoutingRules(handler_workflows)');
-    return toCamelCase(data || []);
+    const data = await apiGet('routing_rules', { workflow_id: id }, { requireAdmin: true });
+    return toCamelCase(data?.rows || []);
   },
 
   async addRoutingRule(workflowId, handlerId) {
     const wfId = safeTrim(workflowId);
     const hId = safeTrim(handlerId);
     if (!wfId || !hId) throw new Error('workflowId and handlerId are required');
-
-    const { data, error } = await supabase
-      .from('handler_workflows')
-      .insert({ workflow_id: wfId, handler_id: hId })
-      .select()
-      .single();
-
-    throwIfError(error, 'addRoutingRule(handler_workflows)');
-    return toCamelCase(data);
+    const data = await apiPost('add_routing_rule', { workflow_id: wfId, handler_id: hId });
+    return toCamelCase(data?.row);
   },
 
   async removeRoutingRule(ruleId) {
     const id = safeTrim(ruleId);
     if (!id) throw new Error('ruleId is required');
-
-    const { error } = await supabase.from('handler_workflows').delete().eq('id', id);
-
-    throwIfError(error, 'removeRoutingRule(handler_workflows)');
+    await apiPost('remove_routing_rule', { rule_id: id });
     return true;
   },
 
   async getActiveHandlers() {
-    const { data, error } = await supabase
-      .from('handlers')
-      .select('id, name, email, role')
-      .eq('active', true)
-      .order('name', { ascending: true });
-
-    throwIfError(error, 'getActiveHandlers(handlers)');
-    return toCamelCase(data || []);
+    const data = await apiGet('active_handlers', {}, { requireAdmin: true });
+    return toCamelCase(data?.rows || []);
+  },
+  async getHandlerWorkflowIds(handlerId) {
+    const id = safeTrim(handlerId);
+    if (!id) throw new Error('handlerId is required');
+    const data = await apiGet('handler_workflow_ids', { handler_id: id }, { requireAdmin: true });
+    return Array.isArray(data?.workflow_ids) ? data.workflow_ids : [];
+  },
+  async setHandlerWorkflows(handlerId, workflowIds = []) {
+    const id = safeTrim(handlerId);
+    if (!id) throw new Error('handlerId is required');
+    const normalizedIds = Array.from(
+      new Set(
+        (Array.isArray(workflowIds) ? workflowIds : [])
+          .map((wid) => safeTrim(wid))
+          .filter(Boolean)
+      )
+    );
+    const data = await apiPost('set_handler_workflows', {
+      handler_id: id,
+      workflow_ids: normalizedIds,
+    });
+    return Array.isArray(data?.workflow_ids) ? data.workflow_ids : normalizedIds;
+  },
+  async clearHandlerWorkflows(handlerId) {
+    const id = safeTrim(handlerId);
+    if (!id) throw new Error('handlerId is required');
+    await apiPost('clear_handler_workflows', { handler_id: id });
+    return true;
   },
 
   // ----- Utilities -----
   toCamelCase,
   toSnakeCase,
   invalidateWorkflowStatusesCache,
+  setTokenProvider,
 };
+

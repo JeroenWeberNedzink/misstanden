@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Button from '../../../components/ui/Button';
 import Icon from '../../../components/AppIcon';
 import Input from '../../../components/ui/Input';
-import Select from '../../../components/ui/Select';
 
 const safeTrim = (v) => String(v ?? '').trim();
 
@@ -13,12 +12,7 @@ export default function WorkflowEditorPanel({
   onToggleActive,
   onOpenHandlerAssign,
   onDelete,
-
-  // ✅ NEW: open statuses editor modal/panel (DB-driven workflow_statuses)
   onEditStatuses,
-
-  // ✅ OPTIONAL: if parent already fetched statuses list for this workflow
-  // you can pass workflowStatuses=[...] to show exact count
   workflowStatuses,
 }) {
   const [form, setForm] = useState({
@@ -33,8 +27,8 @@ export default function WorkflowEditorPanel({
 
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState(false);
+  const [showDangerZone, setShowDangerZone] = useState(false);
 
-  // Keep editor in sync with selected workflow
   useEffect(() => {
     if (!workflow) return;
 
@@ -50,37 +44,9 @@ export default function WorkflowEditorPanel({
 
     setErrors({});
     setTouched(false);
+    setShowDangerZone(false);
   }, [workflow?.id]);
 
-  const iconOptions = useMemo(
-    () => [
-      { value: 'ClipboardList', label: 'ClipboardList' },
-      { value: 'Workflow', label: 'Workflow' },
-      { value: 'AlertTriangle', label: 'AlertTriangle' },
-      { value: 'ShieldAlert', label: 'ShieldAlert' },
-      { value: 'FileText', label: 'FileText' },
-      { value: 'MessageSquare', label: 'MessageSquare' },
-      { value: 'Users', label: 'Users' },
-    ],
-    []
-  );
-
-  const colorOptions = useMemo(
-    () => [
-      { value: 'sky', label: 'Sky' },
-      { value: 'blue', label: 'Blue' },
-      { value: 'emerald', label: 'Emerald' },
-      { value: 'amber', label: 'Amber' },
-      { value: 'rose', label: 'Rose' },
-      { value: 'slate', label: 'Slate' },
-    ],
-    []
-  );
-
-  // ✅ Status count from:
-  // 1) explicit workflowStatuses list
-  // 2) workflow.statusCount (camel)
-  // 3) workflow.status_count (snake)
   const statusCount = useMemo(() => {
     if (Array.isArray(workflowStatuses)) return workflowStatuses.length;
 
@@ -90,7 +56,6 @@ export default function WorkflowEditorPanel({
     const b = Number(workflow?.status_count);
     if (Number.isFinite(b)) return b;
 
-    // fallback unknown
     return null;
   }, [workflowStatuses, workflow?.statusCount, workflow?.status_count]);
 
@@ -100,7 +65,6 @@ export default function WorkflowEditorPanel({
     if (!safeTrim(form.name)) next.name = 'Naam is verplicht';
     if (!safeTrim(form.code)) next.code = 'Code is verplicht';
 
-    // Supabase constraint: code ~ '^[a-z0-9_]+$'
     if (safeTrim(form.code) && !/^[a-z0-9_]+$/.test(safeTrim(form.code))) {
       next.code = 'Code mag alleen: a-z, 0-9 en _';
     }
@@ -152,165 +116,219 @@ export default function WorkflowEditorPanel({
 
   if (!workflow) return null;
 
-return (
-  <div className="bg-card border border-border rounded-xl overflow-hidden">
-    {/* Body */}
-    <div className="p-4 md:p-5 space-y-4">
-      {/* Title (simple, no header card) */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-lg font-bold text-foreground truncate">
-            {workflow?.name}
-          </h2>
-          {!!workflow?.code && (
-            <p className="text-xs text-muted-foreground truncate">
-              <span className="font-mono text-[11px]">{workflow.code}</span>
-              {workflow?.description ? <span> · {workflow.description}</span> : null}
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        <Input
-          label="Naam"
-          required
-          value={form.name}
-          onChange={(e) => handleChange({ name: e.target.value })}
-          error={errors.name}
-          disabled={isBusy}
-          description="Omschrijving die extern gezien word door gebruikers van de pagina"
-        />
-
-        <Input
-          label="Code"
-          required
-          value={form.code}
-          onChange={(e) => handleChange({ code: e.target.value })}
-          error={errors.code}
-          disabled={isBusy}
-          description="Omschrijving die intern word gebruikt voor deze workflow"
-        />
-
-      <div className="col-span-2 space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
-          Omschrijving
-        </label>
-
-        <textarea
-          value={form.description}
-          onChange={(e) => handleChange({ description: e.target.value })}
-          disabled={isBusy}
-          rows={3}
-          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none resize-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
-        />
-      </div>
-      </div>
-
-      {/* ✅ Status management (DB-driven) */}
-      <div className="rounded-lg border border-border bg-muted/10 p-3">
-        <div className="flex items-start justify-between gap-3">
+  return (
+    <div className="bg-transparent">
+      <div className="pb-3 border-b border-border">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <Icon name="ListChecks" size={14} className="text-muted-foreground" />
-              <h3 className="text-xs font-medium text-foreground">Workflow statussen</h3>
-
-              {Number.isFinite(statusCount) && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                  {statusCount}
-                </span>
-              )}
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="w-7 h-7 rounded-full bg-sky-600 text-white text-sm font-bold inline-flex items-center justify-center">
+                2
+              </span>
+              <div className="text-base font-bold text-sky-700">Stap 2 - Bewerk workflow</div>
             </div>
-
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              Beheer workflow statussen en transities
+            <h2 className="text-lg font-bold text-foreground truncate">{workflow?.name}</h2>
+            <p className="text-xs text-muted-foreground truncate">
+              <span className="font-mono text-[11px]">{workflow?.code}</span>
+              {workflow?.description ? <span> - {workflow.description}</span> : null}
             </p>
           </div>
 
-          {/* Make Beheer stand out */}
+          <div className="flex items-center gap-2">
+            <span
+              className={[
+                'text-[11px] px-2.5 py-1 rounded-full border',
+                workflow?.active
+                  ? 'border-sky-300 bg-sky-50 text-sky-700'
+                  : 'border-slate-300 bg-slate-50 text-slate-700',
+              ].join(' ')}
+            >
+              {workflow?.active ? 'Actief' : 'Inactief'}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onToggleActive?.(!workflow?.active)}
+              disabled={isBusy}
+            >
+              {workflow?.active ? 'Deactiveer' : 'Activeer'}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="pt-3 space-y-5">
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-base font-semibold text-foreground">Basisgegevens</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Alleen dit gedeelte is nodig voor dagelijkse administratie.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Input
+              label="Naam"
+              required
+              value={form.name}
+              onChange={(e) => handleChange({ name: e.target.value })}
+              error={errors.name}
+              disabled={isBusy}
+              description="Zichtbaar voor gebruikers in het meldformulier."
+            />
+
+            <Input
+              label="Code"
+              required
+              value={form.code}
+              onChange={(e) => handleChange({ code: e.target.value })}
+              error={errors.code}
+              disabled={isBusy}
+              description="Interne sleutel, gebruik kleine letters en underscores."
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Omschrijving</label>
+            <textarea
+              value={form.description}
+              onChange={(e) => handleChange({ description: e.target.value })}
+              disabled={isBusy}
+              rows={3}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none resize-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
+            />
+          </div>
+        </section>
+
+        <section className="pt-4 border-t border-sky-100">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="w-6 h-6 rounded-full bg-sky-600 text-white text-xs font-bold inline-flex items-center justify-center">
+                  3
+                </span>
+                <div className="text-base font-bold text-sky-700">Stap 3 - Workflow stappen</div>
+              </div>
+              <h3 className="text-base font-semibold text-foreground">Statussen en transities</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Beheer de route van een ticket door het proces.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {Number.isFinite(statusCount) && (
+                <span className="text-[11px] px-2.5 py-1 rounded-full border border-border bg-white text-muted-foreground">
+                  {statusCount} statussen
+                </span>
+              )}
+              <Button
+                variant="default"
+                size="sm"
+                iconName="ListChecks"
+                iconPosition="left"
+                disabled={isBusy}
+                onClick={() => onEditStatuses?.(workflow)}
+                className="font-semibold"
+              >
+                Beheer stappen
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        <section className="pt-4 border-t border-sky-100">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="w-6 h-6 rounded-full bg-sky-600 text-white text-xs font-bold inline-flex items-center justify-center">
+                  4
+                </span>
+                <div className="text-base font-bold text-sky-700">Stap 4 - Team</div>
+              </div>
+              <h3 className="text-base font-semibold text-foreground">Handlers</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Koppel de behandelaars die voor deze workflow tickets mogen verwerken.
+              </p>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              iconName="Users"
+              iconPosition="left"
+              onClick={(e) => onOpenHandlerAssign?.(e)}
+              disabled={isBusy || !workflow?.id}
+            >
+              Handlers beheren
+            </Button>
+          </div>
+        </section>
+
+        <section className="pt-4 border-t border-sky-100">
+          <button
+            type="button"
+            className="w-full text-left flex items-center justify-between gap-2"
+            onClick={() => setShowDangerZone((prev) => !prev)}
+            disabled={isBusy}
+          >
+            <span className="text-sm font-semibold text-destructive">Gevaarzone</span>
+            <Icon name={showDangerZone ? 'ChevronUp' : 'ChevronDown'} size={16} className="text-destructive" />
+          </button>
+
+          {showDangerZone && (
+            <div className="mt-2 pt-2 border-t border-destructive/20 space-y-3">
+              <p className="text-xs text-destructive/80">
+                Verwijderen is permanent en verwijdert gekoppelde tickets en toewijzingen.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                iconName="Trash2"
+                iconPosition="left"
+                disabled={isBusy || !workflow?.id}
+                onClick={onDelete}
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:border-destructive/60 font-semibold"
+              >
+                Workflow verwijderen
+              </Button>
+            </div>
+          )}
+        </section>
+      </div>
+
+      <div className="pt-3 mt-3 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div className="text-xs text-muted-foreground flex items-center gap-2">
+          {touched ? (
+            <>
+              <span className="w-2 h-2 rounded-full bg-warning" />
+              Onopgeslagen wijzigingen
+            </>
+          ) : (
+            <>
+              <span className="w-2 h-2 rounded-full bg-success" />
+              Up-to-date
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleReset} disabled={!touched || isBusy}>
+            Reset
+          </Button>
+
           <Button
             variant="default"
             size="sm"
-            iconName="Settings"
+            iconName="Save"
             iconPosition="left"
-            disabled={isBusy}
-            onClick={() => onEditStatuses?.(workflow)}
-            className={[
-              'text-xs font-semibold',
-              'shadow-sm hover:shadow',
-              'focus:ring-2 focus:ring-primary/30',
-            ].join(' ')}
+            onClick={handleSave}
+            disabled={!touched || isBusy}
+            className="font-semibold"
           >
-            Beheer
+            Opslaan
           </Button>
         </div>
       </div>
     </div>
-
-    {/* Footer */}
-    <div className="p-4 md:p-5 border-t border-border flex items-center justify-between gap-2">
-      <div className="text-xs text-muted-foreground flex items-center gap-2">
-        {touched ? (
-          <>
-            <span className="w-2 h-2 rounded-full bg-warning" />
-            Onopgeslagen wijzigingen
-          </>
-        ) : (
-          <>
-            <span className="w-2 h-2 rounded-full bg-success" />
-            Up-to-date
-          </>
-        )}
-      </div>
-
-      {/* Actions: Reset + Save + Assign + Delete (all together) */}
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleReset}
-          disabled={!touched || isBusy}
-        >
-          Reset
-        </Button>
-
-        <Button
-          variant="default"
-          size="sm"
-          iconName="Save"
-          iconPosition="left"
-          onClick={handleSave}
-          disabled={!touched || isBusy}
-          className="font-semibold"
-        >
-          Opslaan
-        </Button>
-
-        <Button
-          variant="outline"
-          size="sm"
-          iconName="Users"
-          iconPosition="left"
-          onClick={onOpenHandlerAssign}
-          disabled={isBusy || !workflow?.id}
-          className="font-semibold"
-        >
-          Handlers
-        </Button>
-
-        <Button
-          variant="outline"
-          size="sm"
-          iconName="Trash2"
-          iconPosition="left"
-          disabled={isBusy || !workflow?.id}
-          onClick={onDelete}
-          className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:border-destructive/50 font-semibold"
-        >
-          Verwijder
-        </Button>
-      </div>
-    </div>
-  </div>
-);
+  );
 }
