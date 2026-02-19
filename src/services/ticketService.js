@@ -15,6 +15,11 @@ const isUniqueViolation = (err) => {
 const isForeignKeyViolation = (err) =>
   err?.code === '23503' || String(err?.message || '').toLowerCase().includes('foreign key');
 
+const isMissingRelation = (err) => {
+  const msg = String(err?.message || '').toLowerCase();
+  return err?.code === '42P01' || (msg.includes('relation') && msg.includes('does not exist'));
+};
+
 const friendlyHandlerError = (error, context = 'handlers') => {
   if (isUniqueViolation(error)) {
     const e = new Error('Er bestaat al een gebruiker met dit e-mailadres.');
@@ -145,14 +150,24 @@ const detachHandlerReferences = async (handlerId, nowIso) => {
       run: () => supabase.from('ticket_actions').update({ handler_id: null }).eq('handler_id', handlerId),
     },
     {
-      label: 'email_notification_preferences',
-      run: () => supabase.from('email_notification_preferences').delete().eq('handler_id', handlerId),
+      label: 'handler_email_preferences',
+      run: () => supabase.from('handler_email_preferences').delete().eq('handler_id', handlerId),
+    },
+    {
+      label: 'handler_notification_settings',
+      run: () => supabase.from('handler_notification_settings').delete().eq('handler_id', handlerId),
+    },
+    {
+      label: 'user_availability',
+      run: () => supabase.from('user_availability').delete().eq('user_id', handlerId),
     },
   ];
 
   for (const op of ops) {
     const { error } = await op.run();
-    if (error) warnings.push({ label: op.label, error });
+    if (!error) continue;
+    if (isMissingRelation(error)) continue;
+    warnings.push({ label: op.label, error });
   }
 
   return { warnings, stats };

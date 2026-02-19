@@ -203,10 +203,11 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
 
     try {
       setIsBusy(true);
-      const result = await ticketService.deleteHandler(userId, { hard: true });
+      const result = await ticketService.deleteHandler(userId, { hard: true, forceDetach: true });
       console.log('Delete result:', result);
       setDeleteRetry(null);
-      onShowToast?.('Gebruiker permanent verwijderd');
+      const count = Number(result?.autoUnassignedTickets || 0);
+      onShowToast?.(`Gebruiker permanent verwijderd. ${count} ticket(s) automatisch ontkoppeld.`);
 
       // Refresh in background
       onRefresh?.().catch(err => {

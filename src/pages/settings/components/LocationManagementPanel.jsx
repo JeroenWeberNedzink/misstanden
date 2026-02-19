@@ -137,8 +137,16 @@ const LocationManagementPanel = () => {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Icon name="Loader" size={32} className="animate-spin text-primary" />
+      <div className="rounded-2xl border border-border bg-card p-6 animate-pulse">
+        <div className="h-5 w-48 bg-muted rounded mb-5"></div>
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={`loc-loading-${idx}`} className="rounded-xl border border-border p-4 bg-background/60">
+              <div className="h-4 w-1/3 bg-muted rounded mb-2"></div>
+              <div className="h-3 w-2/3 bg-muted/70 rounded"></div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

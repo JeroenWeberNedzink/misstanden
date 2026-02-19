@@ -515,9 +515,18 @@ export default function SystemSettingsAdmin() {
 
             {/* Content */}
             {isLoading ? (
-              <div className="rounded-2xl border border-border bg-card p-16 flex flex-col items-center justify-center gap-3">
-                <Icon name="Loader" size={32} className="animate-spin text-primary" />
-                <div className="text-sm text-muted-foreground">{t('settings.messages.loading')}</div>
+              <div className="rounded-2xl border border-border bg-card p-8 md:p-10 animate-pulse">
+                <div className="h-6 w-56 bg-muted rounded mb-6"></div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <div key={`settings-loading-${idx}`} className="rounded-xl border border-border p-4 bg-background/60">
+                      <div className="h-4 w-2/3 bg-muted rounded mb-3"></div>
+                      <div className="h-3 w-full bg-muted/70 rounded mb-2"></div>
+                      <div className="h-3 w-4/5 bg-muted/70 rounded"></div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-6 text-sm text-muted-foreground">{t('settings.messages.loading')}</div>
               </div>
             ) : searchQuery.trim() ? (
               // Show search results across all categories

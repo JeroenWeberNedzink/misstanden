@@ -137,9 +137,17 @@ export default function EmailNotificationSettings() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-border bg-card p-8 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-        <Icon name="Loader" size={16} className="animate-spin" />
-        Email instellingen laden…
+      <div className="rounded-2xl border border-border bg-card p-6 animate-pulse">
+        <div className="h-5 w-56 bg-muted rounded mb-5"></div>
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={`email-loading-${idx}`} className="rounded-xl border border-border p-4 bg-background/60">
+              <div className="h-4 w-1/2 bg-muted rounded mb-2"></div>
+              <div className="h-3 w-5/6 bg-muted/70 rounded"></div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 text-sm text-muted-foreground">Email instellingen laden...</div>
       </div>
     );
   }

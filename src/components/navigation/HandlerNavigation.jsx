@@ -56,12 +56,12 @@ const HandlerNavigation = ({ userRole, onLogout }) => {
       icon: 'LayoutDashboard',
       show: canViewTickets,
     },
-    {
-      path: '/admin-dashboard',
-      label: 'Admin',
-      icon: 'ShieldCheck',
-      show: canManageUsers,
-    },
+    // {
+    //   path: '/admin-dashboard',
+    //   label: 'Admin',
+    //   icon: 'ShieldCheck',
+    //   show: canManageUsers,
+    // },
     {
       path: '/settings',
       label: 'System',

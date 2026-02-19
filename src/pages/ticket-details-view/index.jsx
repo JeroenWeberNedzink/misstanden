@@ -142,6 +142,9 @@ export default function TicketDetailsView() {
         ].reverse(),
         communications: (ticket?.messages || []).map((msg) => ({
           from: msg?.sender,
+          senderName: msg?.sender === 'handler'
+            ? (msg?.handler_name || msg?.handlerName || ticket?.handlers?.name || t('ticketDetailsView.communication.handler'))
+            : t('ticketDetailsView.communication.you'),
           timestamp: msg?.created_at || msg?.createdAt,
           message: msg?.body,
           isRead: msg?.read ?? msg?.isRead ?? false,
@@ -169,6 +172,7 @@ export default function TicketDetailsView() {
       const created = await ticketService.addMessage(ticketId, 'reporter', messageContent, false);
       const newMessage = {
         from: 'reporter',
+        senderName: t('ticketDetailsView.communication.you'),
         timestamp: created?.createdAt || new Date().toISOString(),
         message: created?.body || messageContent,
         isRead: false,

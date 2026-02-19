@@ -544,43 +544,40 @@ const PermissionsManagementPanel = ({ permissions, roles, users, onRefresh, onSh
                   return (
                     <div key={category} className="border border-border rounded-2xl overflow-hidden bg-card">
                       {/* Category header */}
-                      <button
-                        onClick={() =>
-                          setExpandedCategories(prev => ({ ...prev, [category]: !prev[category] }))
-                        }
-                        className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/20 transition-colors"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/20 transition-colors">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedCategories(prev => ({ ...prev, [category]: !prev[category] }))
+                          }
+                          className="flex items-center gap-2 min-w-0 text-left"
+                        >
                           <Icon name={isOpen ? 'ChevronDown' : 'ChevronRight'} size={16} className="opacity-70" />
                           <p className="font-semibold text-foreground capitalize truncate">{category}</p>
                           <span className="text-xs px-2 py-0.5 rounded bg-purple-50 border border-purple-200 text-purple-700">
                             {selectedInCategory}/{perms.length}
                           </span>
-                        </div>
+                        </button>
 
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleCategorySelectAll(category);
-                            }}
+                            type="button"
+                            onClick={() => handleCategorySelectAll(category)}
                             className="text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-muted/40"
                             disabled={saving}
                           >
                             Alles aan
                           </button>
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleCategoryClear(category);
-                            }}
+                            type="button"
+                            onClick={() => handleCategoryClear(category)}
                             className="text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-muted/40"
                             disabled={saving}
                           >
                             Alles uit
                           </button>
                         </div>
-                      </button>
+                      </div>
 
                       {/* Rows */}
                       {isOpen && (

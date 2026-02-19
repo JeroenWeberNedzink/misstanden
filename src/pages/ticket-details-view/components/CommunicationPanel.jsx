@@ -125,7 +125,7 @@ const CommunicationPanel = ({ initialMessages = [], onSendMessage }) => {
                         {isReporter
                           ? t('ticketDetailsView.communication.you')
                           : isHandler
-                          ? t('ticketDetailsView.communication.handler')
+                          ? (msg?.senderName || t('ticketDetailsView.communication.handler'))
                           : t('ticketDetailsView.activity.system')}
                       </span>
                       <span className="text-xs text-muted-foreground">{formatDate(msg.timestamp)}</span>

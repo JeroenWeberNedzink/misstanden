@@ -44,9 +44,12 @@ const ProtectedRoute = ({
   if (isLoading && !settingsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
-          <p className="mt-4 text-muted-foreground">Loading...</p>
+        <div className="w-full max-w-sm px-6">
+          <div className="rounded-xl border border-border bg-card p-6 animate-pulse">
+            <div className="h-4 w-1/2 bg-muted rounded mb-4"></div>
+            <div className="h-3 w-full bg-muted/70 rounded mb-2"></div>
+            <div className="h-3 w-4/5 bg-muted/70 rounded"></div>
+          </div>
         </div>
       </div>
     );

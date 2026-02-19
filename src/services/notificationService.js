@@ -452,44 +452,55 @@ ${commentStyles}
     const isFromHandler = senderKey === 'handler';
 
     try {
-      // If handler sent message -> notify reporter
-      if (isFromHandler) {
-        if (ticket?.emailNotify && (ticket.reporterEmail || ticket.reporterEmailEncrypted)) {
-          const language = emailService.resolveTicketLanguage(ticket);
-          const copy = emailService.getReporterEmailCopy(language);
-          let handlerName = copy.senderHandler || 'Handler';
-          try {
-            if (ticket?.handlerId) {
-              const handler = await ticketService.getHandlerById(ticket.handlerId);
-              handlerName = handler?.name || handlerName;
-            }
-          } catch (err) {
-            console.warn('[Notification] Could not resolve handler name for message email:', err);
-          }
+      let assignedHandler = null;
+      if (ticket?.handlerId) {
+        try {
+          assignedHandler = await ticketService.getHandlerById(ticket.handlerId);
+        } catch (err) {
+          console.warn('[Notification] Could not resolve assigned handler for message emails:', err);
+        }
+      }
 
-          results.reporter = await emailService.sendReporterMessageEmail(ticket, handlerName, body);
-          console.log('[Notification] Reporter message notification sent');
+      const reporterKnownName = String(ticket?.reporterName || '').trim();
+      const isAnonymousReporter = Boolean(ticket?.isAnonymous || ticket?.is_anonymous);
+      const reporterLanguage = emailService.resolveTicketLanguage(ticket);
+      const reporterCopy = emailService.getReporterEmailCopy(reporterLanguage);
+      const reporterDisplayName =
+        !isAnonymousReporter && reporterKnownName
+          ? reporterKnownName
+          : (isAnonymousReporter
+            ? (reporterCopy.senderAnonymousReporter || reporterCopy.senderReporter || reporterCopy.reporterFallback)
+            : (reporterCopy.senderReporter || reporterCopy.reporterFallback));
+      const handlerDisplayName = assignedHandler?.name || reporterCopy.senderHandler || 'Handler';
+
+      // Reporter sent -> notify assigned handler only
+      if (isFromReporter || !isFromHandler) {
+        if (assignedHandler?.email) {
+          try {
+            results.handler = await emailService.sendHandlerMessageEmail(ticket, assignedHandler, reporterDisplayName, body);
+            console.log('[Notification] Handler message notification sent');
+          } catch (error) {
+            console.error('[Notification] Error sending handler message notification:', error);
+            results.handler = { success: false, error: error.message };
+          }
+        } else if (ticket?.handlerId) {
+          results.handler = { success: false, skipped: true, reason: 'No handler email' };
         }
         return results;
       }
 
-      // If reporter (or unknown sender) -> notify handler
-      if (ticket?.handlerId) {
-        try {
-          const handler = await ticketService.getHandlerById(ticket.handlerId);
-          if (handler) {
-            const settings = await handlerProfileService.getNotificationSettings(handler.id);
-            if (shouldNotifyHandler(settings, 'message', ticket.severityCode)) {
-              const reporterName = ticket?.reporterName || 'Melder';
-              results.handler = await emailService.sendHandlerMessageEmail(ticket, handler, reporterName, body);
-              console.log('[Notification] Handler message notification sent');
-            } else {
-              results.handler = { success: false, skipped: true, reason: 'Handler preferences' };
-            }
+      // Handler sent -> notify reporter only
+      if (isFromHandler) {
+        if (ticket?.emailNotify && (ticket.reporterEmail || ticket.reporterEmailEncrypted)) {
+          try {
+            results.reporter = await emailService.sendReporterMessageEmail(ticket, handlerDisplayName, body);
+            console.log('[Notification] Reporter message notification sent');
+          } catch (error) {
+            console.error('[Notification] Error sending reporter message notification:', error);
+            results.reporter = { success: false, error: error.message };
           }
-        } catch (error) {
-          console.error('[Notification] Error sending handler message notification:', error);
-          results.handler = { success: false, error: error.message };
+        } else {
+          results.reporter = { success: false, skipped: true, reason: 'No reporter email or opt-in' };
         }
       }
     } catch (error) {

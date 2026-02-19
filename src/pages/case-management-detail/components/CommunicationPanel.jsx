@@ -115,7 +115,9 @@ const CommunicationPanel = ({ messages, canContact, onSendMessage }) => {
                           {!isHandler ? (
                             <span className="inline-flex items-center gap-1">
                               <Icon name="UserCircle" size={12} />
-                              <span>{t('caseManagement.reporter')}</span>
+                              <span className="truncate max-w-[180px]">
+                                {message?.senderName || t('caseManagement.reporter')}
+                              </span>
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1">

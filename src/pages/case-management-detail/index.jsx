@@ -63,6 +63,26 @@ const getFirstResponseAt = (ticket) => {
   return new Date(Math.min(...all.map((d) => d.getTime())));
 };
 
+const resolveAssignedHandler = (ticket, handlers = [], fallbackLabel = '-') => {
+  const assignedToId = ticket?.handlerId ?? ticket?.handler_id ?? null;
+  const directName = String(
+    ticket?.handlers?.name || ticket?.handlerName || ticket?.handler_name || ''
+  ).trim();
+
+  if (directName) {
+    return { assignedToId, assignedTo: directName };
+  }
+
+  if (assignedToId) {
+    const match = (handlers || []).find((h) => h?.id === assignedToId);
+    if (match?.name) {
+      return { assignedToId, assignedTo: match.name };
+    }
+  }
+
+  return { assignedToId, assignedTo: fallbackLabel };
+};
+
 export default function CaseManagementDetail() {
   const [caseData, setCaseData] = useState(null);
   const [workflowStatuses, setWorkflowStatuses] = useState([]);
@@ -118,7 +138,7 @@ export default function CaseManagementDetail() {
       : t('caseManagement.low');
   }, [t]);
 
-  const formatCase = useCallback((fullTicket, statusMeta = null) => {
+  const formatCase = useCallback((fullTicket, statusMeta = null, handlers = []) => {
     if (!fullTicket) return null;
     const submissionDateValue =
       fullTicket?.submittedAt ||
@@ -165,6 +185,12 @@ export default function CaseManagementDetail() {
       fullTicket?.status ||
       '-';
 
+    const assignment = resolveAssignedHandler(
+      fullTicket,
+      handlers,
+      t('caseManagement.notAssigned')
+    );
+
     return {
       id: fullTicket?.id,
       ticketNumber: fullTicket?.ticketNumber,
@@ -180,8 +206,8 @@ export default function CaseManagementDetail() {
       priorityCode: fullTicket?.severityCode || 'low',
 
       submittedDate: submissionDateValue ? fmtDateTime(submissionDateValue, i18n?.resolvedLanguage || i18n?.language) : '-',
-      assignedTo: fullTicket?.handlers?.name || t('caseManagement.notAssigned'),
-      assignedToId: fullTicket?.handlerId,
+      assignedTo: assignment.assignedTo,
+      assignedToId: assignment.assignedToId,
       statusEmailNotify:
         fullTicket?.statusEmailNotify ??
         fullTicket?.status_email_notify ??
@@ -208,7 +234,7 @@ export default function CaseManagementDetail() {
         phoneVerified: fullTicket?.reporterPhoneVerified || false,
       },
     };
-  }, [severityToPriorityLabel, t]);
+  }, [i18n?.language, i18n?.resolvedLanguage, severityToPriorityLabel, t]);
 
   const resolveStatusMeta = useCallback((ticket, statuses = workflowStatuses) => {
     const statusCode =
@@ -298,7 +324,7 @@ export default function CaseManagementDetail() {
       const statusMeta = resolveStatusMeta(fullTicket, statuses);
 
       // core
-      setCaseData(formatCase(fullTicket, statusMeta));
+      setCaseData(formatCase(fullTicket, statusMeta, availableHandlers));
 
       const allAttachments = fullTicket?.attachments ?? [];
       const publicAttachments = allAttachments.filter(
@@ -351,16 +377,23 @@ export default function CaseManagementDetail() {
 
       // messages
       setCommunicationMessages(
-        (fullTicket?.messages ?? []).map((msg) => ({
-          id: msg?.id,
-          sender: msg?.sender,
-          senderName: msg?.sender === 'handler'
-            ? (msg?.handlerName || fullTicket?.handlers?.name || user?.name || t('caseManagement.handler'))
-            : t('caseManagement.reporter'),
-          timestamp: msg?.createdAt ? fmtDateTime(msg.createdAt, i18n?.resolvedLanguage || i18n?.language) : '-',
-          content: msg?.body,
-          read: msg?.read ?? msg?.isRead ?? false,
-        }))
+        (fullTicket?.messages ?? []).map((msg) => {
+          const reporterDisplayName =
+            String(fullTicket?.reporterName || fullTicket?.reporter_name || '').trim()
+            || String(fullTicket?.reporterEmail || fullTicket?.reporter_email || '').trim()
+            || t('caseManagement.reporter');
+
+          return {
+            id: msg?.id,
+            sender: msg?.sender,
+            senderName: msg?.sender === 'handler'
+              ? (msg?.handlerName || fullTicket?.handlers?.name || user?.name || t('caseManagement.handler'))
+              : reporterDisplayName,
+            timestamp: msg?.createdAt ? fmtDateTime(msg.createdAt, i18n?.resolvedLanguage || i18n?.language) : '-',
+            content: msg?.body,
+            read: msg?.read ?? msg?.isRead ?? false,
+          };
+        })
       );
 
       // actions
@@ -431,7 +464,7 @@ export default function CaseManagementDetail() {
           console.warn('Error reloading workflow statuses after update:', err);
         }
       }
-      setCaseData(formatCase(updatedTicket, statusMeta));
+      setCaseData(formatCase(updatedTicket, statusMeta, availableHandlers));
 
       // Add action in UI immediately.
       pushAction({
@@ -613,7 +646,7 @@ export default function CaseManagementDetail() {
       const updatedTicket = await ticketService.assignHandler(ticketId, newHandlerId, null, { currentHandlerId });
 
       // Update header and panel assignment immediately.
-      setCaseData(formatCase(updatedTicket));
+      setCaseData(formatCase(updatedTicket, null, availableHandlers));
 
       pushAction({
         actionType: 'assignment',
@@ -687,7 +720,7 @@ export default function CaseManagementDetail() {
       const updatedTicket = await ticketService.updateTicket(ticketId, backendPayload);
 
       // Update case data immediately.
-      setCaseData(formatCase(updatedTicket));
+      setCaseData(formatCase(updatedTicket, null, availableHandlers));
 
       pushAction({
         actionType: 'details_updated',

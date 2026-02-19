@@ -159,15 +159,37 @@ export const workflowService = {
   async deleteWorkflowForce(id) {
     if (!id) throw new Error('workflow id is required');
 
+    const { data: workflow, error: workflowError } = await supabase
+      .from('workflows')
+      .select('id, code')
+      .eq('id', id)
+      .maybeSingle();
+    throwIfError(workflowError, 'deleteWorkflowForce(fetch workflow)');
+    if (!workflow?.id) throw new Error('Workflow not found');
+
     // Delete child records first to avoid FK constraint violations
     // 1. Delete handler assignments
-    await supabase.from('handler_workflows').delete().eq('workflow_id', id);
+    const { error: handlerWorkflowsError } = await supabase
+      .from('handler_workflows')
+      .delete()
+      .eq('workflow_id', id);
+    throwIfError(handlerWorkflowsError, 'deleteWorkflowForce(handler_workflows)');
 
     // 2. Delete workflow statuses
-    await supabase.from('workflow_statuses').delete().eq('workflow_id', id);
+    const { error: statusesError } = await supabase
+      .from('workflow_statuses')
+      .delete()
+      .eq('workflow_id', id);
+    throwIfError(statusesError, 'deleteWorkflowForce(workflow_statuses)');
 
-    // 3. Delete or nullify tickets (set workflow_type to null instead of deleting tickets)
-    await supabase.from('tickets').update({ workflow_type: null }).eq('workflow_type', id);
+    // 3. Nullify ticket workflow references before deleting workflow row.
+    // In this app `tickets.workflow_type` stores workflow code (legacy may contain id).
+    const candidates = [workflow.code, id].filter(Boolean);
+    const { error: ticketsError } = await supabase
+      .from('tickets')
+      .update({ workflow_type: null })
+      .in('workflow_type', candidates);
+    throwIfError(ticketsError, 'deleteWorkflowForce(tickets)');
 
     // 4. Finally delete the workflow itself
     const { error } = await supabase.from('workflows').delete().eq('id', id);

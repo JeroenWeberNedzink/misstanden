@@ -54,6 +54,23 @@ export const resolveTicketLanguage = (ticket = {}) => {
   return 'en';
 };
 
+const resolveHandlerLanguage = (handler = {}, ticket = {}) => {
+  const candidates = [
+    handler?.language,
+    handler?.preferredLanguage,
+    handler?.preferred_language,
+    handler?.locale,
+    handler?.lang,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeReporterLanguage(candidate);
+    if (normalized) return normalized;
+  }
+
+  return resolveTicketLanguage(ticket);
+};
+
 const formatDateByLanguage = (value, language = 'en') => {
   if (!value) return '-';
   try {
@@ -149,6 +166,9 @@ const REPORTER_EMAIL_COPY = {
     openPortalComment: 'Log in to the portal to view your report.',
     subjectComment: 'New comment: {{ticket}}',
     senderHandler: 'Handler',
+    senderReporter: 'Reporter',
+    senderAnonymousReporter: 'Anonymous reporter',
+    handlerMessageIntro: 'A new message was posted in this case.',
   },
   nl: {
     greeting: 'Beste',
@@ -209,6 +229,9 @@ const REPORTER_EMAIL_COPY = {
     openPortalComment: 'Log in op het portaal om de melding te bekijken.',
     subjectComment: 'Nieuwe opmerking: {{ticket}}',
     senderHandler: 'Behandelaar',
+    senderReporter: 'Melder',
+    senderAnonymousReporter: 'Anonieme melder',
+    handlerMessageIntro: 'Er is een nieuw bericht geplaatst in deze zaak.',
   },
   de: {
     greeting: 'Hallo',
@@ -269,6 +292,9 @@ const REPORTER_EMAIL_COPY = {
     openPortalComment: 'Melden Sie sich im Portal an, um die Meldung anzusehen.',
     subjectComment: 'Neuer Kommentar: {{ticket}}',
     senderHandler: 'Bearbeiter',
+    senderReporter: 'Hinweisgeber',
+    senderAnonymousReporter: 'Anonymer Hinweisgeber',
+    handlerMessageIntro: 'In diesem Fall wurde eine neue Nachricht veroeffentlicht.',
   },
   fr: {
     greeting: 'Bonjour',
@@ -329,6 +355,9 @@ const REPORTER_EMAIL_COPY = {
     openPortalComment: 'Connectez-vous au portail pour voir votre signalement.',
     subjectComment: 'Nouveau commentaire: {{ticket}}',
     senderHandler: 'Gestionnaire',
+    senderReporter: 'Declarant',
+    senderAnonymousReporter: 'Declarant anonyme',
+    handlerMessageIntro: 'Un nouveau message a ete publie dans ce dossier.',
   },
   pt: {
     greeting: 'Ola',
@@ -389,6 +418,9 @@ const REPORTER_EMAIL_COPY = {
     openPortalComment: 'Entre no portal para ver seu reporte.',
     subjectComment: 'Novo comentario: {{ticket}}',
     senderHandler: 'Responsavel',
+    senderReporter: 'Reportante',
+    senderAnonymousReporter: 'Reportante anonimo',
+    handlerMessageIntro: 'Uma nova mensagem foi publicada neste caso.',
   },
 };
 
@@ -1123,40 +1155,43 @@ export async function sendHandlerMessageEmail(ticket, handler, senderName, body)
     metadata
   } = ticket;
 
+  const language = resolveHandlerLanguage(handler, ticket);
+  const copy = getReporterEmailCopy(language);
   const statusLabel = getStatusLabel({ metadata, statusLabel: ticket.statusLabel, status: ticket.status, statusCode: ticket.statusCode });
-  const safeSeverityLabel = severityLabel || severityLabelFromCode(severityCode);
+  const safeSeverityLabel = severityLabel || severityLabelFromCode(severityCode, language);
+  const safeSenderName = senderName || copy.senderReporter || copy.notProvided;
 
   const html = `
 ${baseStyles}
-<h2 class="section-title">Nieuw bericht</h2>
-<p class="lead">Hallo ${escapeHtml(handler.name || 'collega')},</p>
-<p class="lead">Er is een nieuw bericht ontvangen van de melder.</p>
+<h2 class="section-title">${escapeHtml(copy.newMessageTitle)}</h2>
+<p class="lead">${escapeHtml(copy.greeting || 'Dear')} ${escapeHtml(handler.name || copy.senderHandler)},</p>
+<p class="lead">${escapeHtml(copy.handlerMessageIntro || copy.newMessageIntro)}</p>
 
 <div class="card">
-  <h3 class="section-title">Bericht</h3>
-  <p><strong>Van:</strong> ${escapeHtml(senderName || 'Melder')}</p>
+  <h3 class="section-title">${escapeHtml(copy.message)}</h3>
+  <p><strong>${escapeHtml(copy.from)}:</strong> ${escapeHtml(safeSenderName)}</p>
   <div>${nl2br(body || '-')}</div>
 </div>
 
 <div class="card">
-  <h3 class="section-title">Meldingsoverzicht</h3>
+  <h3 class="section-title">${escapeHtml(copy.reportOverview)}</h3>
   ${buildMetaTable([
-    ['Ticketnummer', escapeHtml(ticketNumber || '-')],
-    ['Huidige status', escapeHtml(statusLabel)],
-    ['Ernst', `<span class="badge ${severityClassFromCode(severityCode)}">${escapeHtml(safeSeverityLabel)}</span>`],
-    ['Workflow', escapeHtml(workflowType || '-')],
-    ['Locatie', escapeHtml(location || 'Niet opgegeven')],
-    ['Ingediend op', escapeHtml(formatDateNL(submittedAt))]
+    [copy.ticketNumber, escapeHtml(ticketNumber || '-')],
+    [copy.currentStatus, escapeHtml(statusLabel)],
+    [copy.severity, `<span class="badge ${severityClassFromCode(severityCode)}">${escapeHtml(safeSeverityLabel)}</span>`],
+    [copy.workflow, escapeHtml(workflowType || '-')],
+    [copy.location, escapeHtml(location || copy.notProvided)],
+    [copy.submittedOn, escapeHtml(formatDateByLanguage(submittedAt, language))]
   ])}
 </div>
 
-<p class="muted">Log in op het portaal om te reageren.</p>
+<p class="muted">${escapeHtml(copy.openPortalRespond)}</p>
 `;
 
   const result = await sendEmail({
     from: 'noreply@nedzink.nl',
     to: handler.email,
-    subject: `Nieuw bericht: ${ticketNumber || ''}`,
+    subject: copy.subjectMessage.replace('{{ticket}}', ticketNumber || '-'),
     html,
     useTemplate: true
   });
