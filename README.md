@@ -2,6 +2,15 @@
 
 Internal whistleblower/case-management portal built with React, Supabase, Auth0, and PHP API helpers.
 
+## At A Glance
+
+This repository contains:
+- A reporter-facing portal for anonymous/known incident submission
+- A secure ticket access portal for reporters
+- A handler/admin case-management interface
+- Workflow + SLA orchestration
+- Localized UI + localized mail notifications
+
 It supports:
 - Anonymous incident reporting
 - Secure ticket access for reporters
@@ -111,6 +120,7 @@ Create `.env` (or `.env.local`) with at least:
 - `VITE_SUPABASE_ANON_KEY`
 - `VITE_AUTH0_DOMAIN`
 - `VITE_AUTH0_CLIENT_ID`
+- `SUPABASE_SERVICE_ROLE_KEY` (required for server-side settings/workflow/ticket APIs)
 
 Recommended start (Windows PowerShell):
 
@@ -147,8 +157,7 @@ API/mail/security (optional or environment-specific):
 - `MAIL_OUTBOX_DIR`
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_AUTH`, `SMTP_USER`, `SMTP_PASS`
 - `MAIL_DEFAULT_FROM`, `MAIL_DEFAULT_FROM_NAME`
-- `SUPABASE_SERVICE_ROLE_KEY` (used by SLA backfill endpoint if present)
-- `SUPABASE_SERVICE_ROLE_KEY` (required for secure server-side settings + reporter ticket access APIs)
+- `SUPABASE_SERVICE_ROLE_KEY` (required for secure server-side settings/workflow/ticket APIs; also used by SLA tooling)
 
 ## Database and Migrations
 
@@ -187,6 +196,16 @@ Locale files:
 - Maintenance mode is controlled via dynamic settings.
 - Browser-visible `VITE_SUPABASE_ANON_KEY` is expected for Supabase frontends; real protection comes from strict RLS/policies.
 - Admin settings writes now go through `public/api/settings.api.php` and require an Auth0 token + admin handler authorization.
+
+## Troubleshooting
+
+- `GET /api/settings.api.php ... 500 Missing Supabase service key configuration`
+  - Cause: missing `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SERVICE_KEY`) in runtime environment
+  - Fix: add service key to `.env` and restart PHP + Vite
+
+- Reporter/admin screens show fallback defaults unexpectedly
+  - Check PHP logs in `php-errors.log` and `logs/php`
+  - Verify `.env` is loaded and contains required Auth0 + Supabase server-side vars
 
 ## Build
 
