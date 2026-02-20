@@ -110,11 +110,13 @@ function wf_is_admin(array $handler): bool {
 function wf_require_admin(string $baseUrl, string $serviceKey): array {
     $token = auth0_get_bearer_token();
     if ($token === '') wf_json(401, false, 'Authorization token required');
+    $auth0Domain = wf_env('VITE_AUTH0_DOMAIN');
+    $auth0Audience = auth0_expected_api_audience($auth0Domain);
 
     $claims = auth0_verify_access_token(
         $token,
-        wf_env('VITE_AUTH0_DOMAIN'),
-        wf_env('VITE_AUTH0_AUDIENCE'),
+        $auth0Domain,
+        $auth0Audience,
         wf_env('VITE_AUTH0_CLIENT_ID')
     );
     $sub = trim((string)($claims['sub'] ?? ''));

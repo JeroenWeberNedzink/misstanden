@@ -38,7 +38,7 @@ export default function App() {
   const [migrationStatus, setMigrationStatus] = useState('pending');
   const [migrationMessage, setMigrationMessage] = useState('');
 
-  if (!domain || !clientId || !apiAudience) {
+  if (!domain || !clientId) {
     console.error("Auth0 configuration missing. Please check your .env file.");
   }
 

@@ -80,6 +80,18 @@ function auth0_fetch_jwks(string $domain): array {
     return $decoded['keys'];
 }
 
+function auth0_expected_api_audience(string $domain): string {
+    $configured = trim((string)(getenv('VITE_AUTH0_AUDIENCE') ?: ''));
+    if ($configured !== '') {
+        return $configured;
+    }
+    $cleanDomain = trim($domain);
+    if ($cleanDomain === '') {
+        throw new Exception('Missing Auth0 domain configuration');
+    }
+    return 'https://' . $cleanDomain . '/mfa/';
+}
+
 function auth0_normalize_aud_list($aud): array {
     if (is_string($aud) && trim($aud) !== '') {
         return [trim($aud)];
