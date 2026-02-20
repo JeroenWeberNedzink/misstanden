@@ -219,6 +219,67 @@ function get_first_row($decoded) {
     return is_array($decoded) ? $decoded : null;
 }
 
+function is_absolute_url(string $value): bool {
+    return preg_match('#^https?://#i', $value) === 1;
+}
+
+function attachment_extract_storage_path(string $raw, string $bucket = 'attachments'): ?string {
+    $value = trim($raw);
+    if ($value === '' || $value === '#') {
+        return null;
+    }
+
+    if (!is_absolute_url($value)) {
+        $path = ltrim($value, '/');
+        if (str_starts_with($path, $bucket . '/')) {
+            $path = substr($path, strlen($bucket) + 1);
+        }
+        return $path !== '' ? $path : null;
+    }
+
+    $parsedPath = parse_url($value, PHP_URL_PATH);
+    if (!is_string($parsedPath) || $parsedPath === '') {
+        return null;
+    }
+
+    $needlePublic = '/storage/v1/object/public/' . $bucket . '/';
+    $posPublic = strpos($parsedPath, $needlePublic);
+    if ($posPublic !== false) {
+        $path = substr($parsedPath, $posPublic + strlen($needlePublic));
+        return $path !== '' ? $path : null;
+    }
+
+    return null;
+}
+
+function attachment_create_signed_url(string $baseUrl, string $serviceKey, string $path, string $bucket = 'attachments', int $expiresIn = 300): ?string {
+    $cleanPath = ltrim($path, '/');
+    if ($cleanPath === '') {
+        return null;
+    }
+
+    $url = rtrim($baseUrl, '/') . '/storage/v1/object/sign/' . rawurlencode($bucket) . '/' . str_replace('%2F', '/', rawurlencode($cleanPath));
+    [$code, $decoded] = supabase_request('POST', $url, $serviceKey, ['expiresIn' => $expiresIn], false);
+    if ($code < 200 || $code >= 300 || !is_array($decoded)) {
+        return null;
+    }
+
+    $signed = trim((string)($decoded['signedURL'] ?? $decoded['signedUrl'] ?? ''));
+    if ($signed === '') {
+        return null;
+    }
+
+    if (is_absolute_url($signed)) {
+        return $signed;
+    }
+
+    $base = rtrim($baseUrl, '/');
+    if (str_starts_with($signed, '/')) {
+        return $base . '/storage/v1' . $signed;
+    }
+    return $base . '/storage/v1/' . ltrim($signed, '/');
+}
+
 function normalize_access_code($raw): string {
     $digits = preg_replace('/\D+/', '', (string)$raw);
     if ($digits === null || $digits === '') return '';
@@ -260,7 +321,7 @@ function get_supabase_service_key(): string {
     return supabase_get_service_role_key();
 }
 
-function sanitize_reporter_ticket(array $ticket): array {
+function sanitize_reporter_ticket(array $ticket, string $baseUrl, string $serviceKey): array {
     unset($ticket['access_code'], $ticket['reporter_email'], $ticket['reporter_email_encrypted'], $ticket['reporter_email_hash']);
 
     $attachments = is_array($ticket['attachments'] ?? null) ? $ticket['attachments'] : [];
@@ -270,6 +331,26 @@ function sanitize_reporter_ticket(array $ticket): array {
         $hasNote = !empty($att['note_id']) || !empty($att['noteId']);
         return !$isInternal && !$hasNote;
     }));
+    $ticket['attachments'] = array_values(array_map(static function ($att) use ($baseUrl, $serviceKey) {
+        if (!is_array($att)) {
+            return null;
+        }
+        $rawUrl = (string)($att['file_url'] ?? '');
+        $storagePath = attachment_extract_storage_path($rawUrl, 'attachments');
+        $signedUrl = $storagePath ? attachment_create_signed_url($baseUrl, $serviceKey, $storagePath, 'attachments', 300) : null;
+        $downloadUrl = $signedUrl ?: (is_absolute_url($rawUrl) ? $rawUrl : null);
+
+        return [
+            'id' => $att['id'] ?? null,
+            'ticket_id' => $att['ticket_id'] ?? null,
+            'file_name' => $att['file_name'] ?? null,
+            'mime_type' => $att['mime_type'] ?? null,
+            'size_bytes' => $att['size_bytes'] ?? null,
+            'created_at' => $att['created_at'] ?? null,
+            'file_url' => $downloadUrl,
+        ];
+    }, $ticket['attachments']));
+    $ticket['attachments'] = array_values(array_filter($ticket['attachments'], static fn($att) => is_array($att)));
 
     $messages = is_array($ticket['messages'] ?? null) ? $ticket['messages'] : [];
     $ticket['messages'] = array_values(array_filter($messages, static function ($msg) {
@@ -397,7 +478,7 @@ function handle_access(array $data): void {
     }
 
     ticket_reset_failed_auth_attempts($ticketInput);
-    api_json(200, true, 'Ticket loaded', sanitize_reporter_ticket($ticket));
+    api_json(200, true, 'Ticket loaded', sanitize_reporter_ticket($ticket, $baseUrl, $serviceKey));
 }
 
 function handle_reporter_message(array $data): void {
@@ -478,7 +559,9 @@ function handle_reporter_message(array $data): void {
     }
 
     $ticketAfter = fetch_ticket_by_credentials($baseUrl, $serviceKey, $ticketInput, $accessCode);
-    $safeTicket = $ticketAfter ? sanitize_reporter_ticket($ticketAfter) : sanitize_reporter_ticket($ticket);
+    $safeTicket = $ticketAfter
+        ? sanitize_reporter_ticket($ticketAfter, $baseUrl, $serviceKey)
+        : sanitize_reporter_ticket($ticket, $baseUrl, $serviceKey);
 
     api_json(200, true, 'Message sent', [
         'message' => $insertedMessage,

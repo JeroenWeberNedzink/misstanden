@@ -90,6 +90,71 @@ const toSnakeCase = (obj) => {
   return out;
 };
 
+const isAbsoluteUrl = (value) => /^https?:\/\//i.test(String(value || '').trim());
+
+const toStoragePath = (rawUrl, bucket = 'attachments') => {
+  const value = String(rawUrl || '').trim();
+  if (!value || value === '#') return null;
+
+  if (!isAbsoluteUrl(value)) {
+    const normalized = value.replace(/^\/+/, '');
+    if (!normalized) return null;
+    if (normalized.startsWith(`${bucket}/`)) {
+      return normalized.slice(bucket.length + 1) || null;
+    }
+    return normalized;
+  }
+
+  try {
+    const parsed = new URL(value);
+    const marker = `/storage/v1/object/public/${bucket}/`;
+    const idx = parsed.pathname.indexOf(marker);
+    if (idx === -1) return null;
+    const path = parsed.pathname.slice(idx + marker.length);
+    return path || null;
+  } catch {
+    return null;
+  }
+};
+
+const createSignedAttachmentUrl = async (rawUrl, bucket = 'attachments', expiresIn = 600) => {
+  const path = toStoragePath(rawUrl, bucket);
+  if (!path) {
+    return isAbsoluteUrl(rawUrl) ? String(rawUrl).trim() : null;
+  }
+
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresIn);
+  if (error || !data?.signedUrl) {
+    return isAbsoluteUrl(rawUrl) ? String(rawUrl).trim() : null;
+  }
+  return data.signedUrl;
+};
+
+const attachSignedUrlsToTicket = async (ticket, bucket = 'attachments') => {
+  if (!ticket || !Array.isArray(ticket?.attachments) || ticket.attachments.length === 0) {
+    return ticket;
+  }
+
+  const signedAttachments = await Promise.all(
+    ticket.attachments.map(async (att) => {
+      const rawUrl = att?.fileUrl || att?.file_url || att?.url || '';
+      const signedUrl = await createSignedAttachmentUrl(rawUrl, bucket, 600);
+      if (!signedUrl) return att;
+      return {
+        ...att,
+        fileUrl: signedUrl,
+        file_url: signedUrl,
+        url: signedUrl,
+      };
+    })
+  );
+
+  return {
+    ...ticket,
+    attachments: signedAttachments,
+  };
+};
+
 // -----------------------------
 // Error helper
 // -----------------------------
@@ -600,7 +665,8 @@ export const ticketService = {
     }
 
     const ticket = toCamelCase(data);
-    return decorateTicketWithTicketHandlers(ticket);
+    const withHandlers = await decorateTicketWithTicketHandlers(ticket);
+    return attachSignedUrlsToTicket(withHandlers);
   },
 
   async getTicketByCredentials(ticketInput, accessCode) {
@@ -1532,7 +1598,7 @@ async deleteHandler(handlerId, options = {}) {
   async uploadAttachment(ticketId, file, options = {}) {
     const {
       bucket = 'attachments',
-      makePublicUrl = true,
+      makePublicUrl = false,
       upsert = false,
       currentHandlerId = null,
       isInternal = false,
@@ -1585,6 +1651,10 @@ async deleteHandler(handlerId, options = {}) {
       isInternal,
       noteId,
     });
+    const signedUrl = await createSignedAttachmentUrl(fileUrl, bucket, 600);
+    const attachmentWithUrl = signedUrl
+      ? { ...attachment, fileUrl: signedUrl, file_url: signedUrl, url: signedUrl }
+      : attachment;
 
     // Log action
     const { error: actionError } = await supabase.from('ticket_actions').insert({
@@ -1609,7 +1679,7 @@ async deleteHandler(handlerId, options = {}) {
         if (ticket) {
           notificationService.notifyAttachmentAdded(
             toCamelCase(ticket),
-            attachment,
+            attachmentWithUrl,
             handlerInfo?.name || 'Handler'
           ).catch(err => console.error('Failed to send attachment notification:', err));
         }
@@ -1618,7 +1688,7 @@ async deleteHandler(handlerId, options = {}) {
       }
     }
 
-    return attachment;
+    return attachmentWithUrl;
   },
 
   async addInvestigationNote(ticketId, comment, authorName, attachments = [], options = {}) {
