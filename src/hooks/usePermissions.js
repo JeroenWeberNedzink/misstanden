@@ -1,6 +1,7 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { getApiAccessToken } from '../lib/auth0ApiToken';
 import {
   hasPermission,
   hasAnyPermission,
@@ -18,14 +19,14 @@ import {
  * @returns {object} Permission checking utilities and user data
  */
 export const usePermissions = () => {
-  const { isAuthenticated, user, isLoading: auth0Loading } = useAuth0();
+  const { isAuthenticated, user, isLoading: auth0Loading, getAccessTokenSilently } = useAuth0();
   const [handlerProfile, setHandlerProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     const loadHandlerProfile = async () => {
-      if (!isAuthenticated || !user?.email) {
+      if (!isAuthenticated) {
         setHandlerProfile(null);
         setLoading(false);
         return;
@@ -34,29 +35,80 @@ export const usePermissions = () => {
       try {
         setLoading(true);
 
-        // Normalize email to lowercase for consistent comparison
-        const normalizedEmail = String(user.email || '').toLowerCase().trim();
+        const normalizedEmail = String(user?.email || '').toLowerCase().trim();
+        const normalizedSub = String(user?.sub || '').trim();
 
-        if (!normalizedEmail) {
-          console.warn('No email available for permission check');
+        if (!normalizedEmail && !normalizedSub) {
+          console.warn('No email/sub available for permission check');
           setHandlerProfile(null);
           setLoading(false);
           return;
         }
 
-        const { data, error: fetchError } = await supabase
-          .from('handlers')
-          .select('*')
-          .ilike('email', normalizedEmail) // Use ilike for case-insensitive comparison
-          .eq('active', true)
-          .maybeSingle(); // Use maybeSingle() to handle 0 rows gracefully
+        let apiProfile = null;
+        try {
+          const token = await getApiAccessToken(getAccessTokenSilently);
+          const response = await fetch('/api/me.api.php', {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+          const payload = await response.json().catch(() => null);
+          if (response.ok && payload?.success && payload?.data?.handler) {
+            apiProfile = payload.data.handler;
+          }
+        } catch (apiError) {
+          // Fallback to direct Supabase lookup for local/dev scenarios.
+          console.warn('Handler API context lookup failed, trying direct profile lookup:', apiError);
+        }
+
+        if (apiProfile) {
+          setHandlerProfile(apiProfile);
+          setError(null);
+          setLoading(false);
+          return;
+        }
+
+        let data = null;
+        let fetchError = null;
+
+        if (normalizedSub) {
+          const resultBySub = await supabase
+            .from('handlers')
+            .select('*')
+            .eq('user_id', normalizedSub)
+            .eq('active', true)
+            .maybeSingle();
+          data = resultBySub.data;
+          fetchError = resultBySub.error;
+        }
+
+        if (!data && normalizedEmail) {
+          const resultByEmail = await supabase
+            .from('handlers')
+            .select('*')
+            .ilike('email', normalizedEmail)
+            .eq('active', true)
+            .maybeSingle();
+          data = resultByEmail.data;
+          fetchError = resultByEmail.error;
+
+          if (data && normalizedSub && !data.user_id) {
+            // Best effort backfill: link handler profile to Auth0 subject for future lookups.
+            await supabase
+              .from('handlers')
+              .update({ user_id: normalizedSub })
+              .eq('id', data.id);
+          }
+        }
 
         if (fetchError) {
           console.error('Failed to load handler profile:', fetchError);
           setError(fetchError);
           setHandlerProfile(null);
         } else if (!data) {
-          console.warn(`No active handler found for email: ${normalizedEmail}`);
+          console.warn(`No active handler found for user (sub=${normalizedSub || 'n/a'}, email=${normalizedEmail || 'n/a'})`);
           setHandlerProfile(null);
           setError(null);
         } else {
@@ -73,7 +125,7 @@ export const usePermissions = () => {
     };
 
     loadHandlerProfile();
-  }, [isAuthenticated, user?.email]);
+  }, [isAuthenticated, user?.email, user?.sub, getAccessTokenSilently]);
 
   // Parse permissions from handler profile
   const permissions = handlerProfile?.permissions

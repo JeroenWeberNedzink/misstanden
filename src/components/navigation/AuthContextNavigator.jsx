@@ -1,13 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { supabase } from '../../lib/supabase';
+import { getApiAccessToken } from '../../lib/auth0ApiToken';
 import AnonymousNavHeader from './AnonymousNavHeader';
 import HandlerNavigation from './HandlerNavigation';
 import NoAccessPage from '../auth/NoAccessPage';
 import { isAdmin } from '../../utils/permissions';
 
 const AuthContextNavigator = ({ children }) => {
-  const { isAuthenticated: auth0Authenticated, isLoading: auth0Loading, user } = useAuth0();
+  const {
+    isAuthenticated: auth0Authenticated,
+    isLoading: auth0Loading,
+    user,
+    getAccessTokenSilently,
+  } = useAuth0();
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState(null);
@@ -19,22 +25,64 @@ const AuthContextNavigator = ({ children }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth0Authenticated, auth0Loading, user]);
 
-  const loadHandlerProfile = async (email) => {
+  const loadHandlerProfile = async (email, sub) => {
     try {
-      // Normalize email to lowercase for consistent comparison
       const normalizedEmail = String(email || '').toLowerCase().trim();
+      const normalizedSub = String(sub || '').trim();
 
-      if (!normalizedEmail) {
-        console.warn('No email provided to loadHandlerProfile');
+      if (!normalizedEmail && !normalizedSub) {
+        console.warn('No email/sub provided to loadHandlerProfile');
         return null;
       }
 
-      const { data, error } = await supabase
-        .from('handlers')
-        .select('*')
-        .ilike('email', normalizedEmail) // Use ilike for case-insensitive comparison
-        .eq('active', true)
-        .maybeSingle(); // Use maybeSingle() instead of single() to handle 0 rows gracefully
+      try {
+        const token = await getApiAccessToken(getAccessTokenSilently);
+        const response = await fetch('/api/me.api.php', {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const payload = await response.json().catch(() => null);
+        if (response.ok && payload?.success && payload?.data?.handler) {
+          return payload.data.handler;
+        }
+      } catch (apiError) {
+        // Fallback to direct lookup to keep local/dev workflows working.
+        console.warn('Handler API context lookup failed, trying direct profile lookup:', apiError);
+      }
+
+      let data = null;
+      let error = null;
+
+      if (normalizedSub) {
+        const resultBySub = await supabase
+          .from('handlers')
+          .select('*')
+          .eq('user_id', normalizedSub)
+          .eq('active', true)
+          .maybeSingle();
+        data = resultBySub.data;
+        error = resultBySub.error;
+      }
+
+      if (!data && normalizedEmail) {
+        const resultByEmail = await supabase
+          .from('handlers')
+          .select('*')
+          .ilike('email', normalizedEmail)
+          .eq('active', true)
+          .maybeSingle();
+        data = resultByEmail.data;
+        error = resultByEmail.error;
+
+        if (data && normalizedSub && !data.user_id) {
+          await supabase
+            .from('handlers')
+            .update({ user_id: normalizedSub })
+            .eq('id', data.id);
+        }
+      }
 
       if (error) {
         console.error('Failed to load handler profile:', error);
@@ -43,7 +91,7 @@ const AuthContextNavigator = ({ children }) => {
 
       // If no handler found, return null
       if (!data) {
-        console.warn(`No active handler found for email: ${normalizedEmail}`);
+        console.warn(`No active handler found for user (sub=${normalizedSub || 'n/a'}, email=${normalizedEmail || 'n/a'})`);
         return null;
       }
 
@@ -93,9 +141,9 @@ const AuthContextNavigator = ({ children }) => {
       }
 
       // 2) Load from Auth0 and database
-      if (!auth0Loading && auth0Authenticated && user?.email) {
+      if (!auth0Loading && auth0Authenticated && (user?.email || user?.sub)) {
         // Load handler profile from database
-        const profile = await loadHandlerProfile(user.email);
+        const profile = await loadHandlerProfile(user?.email, user?.sub);
 
         if (!profile) {
           // User authenticated in Auth0 but not in handlers table
