@@ -80,8 +80,34 @@ export const usePermissions = () => {
     ? parsePermissions(handlerProfile.permissions)
     : null;
 
-  // Get roles (prefer jsonb roles array, fallback to role field)
-  const roles = handlerProfile?.roles || (handlerProfile?.role ? [handlerProfile.role] : null);
+  // Get roles (prefer handler profile, fallback to Auth0 token claims)
+  const profileRoles = handlerProfile?.roles || (handlerProfile?.role ? [handlerProfile.role] : null);
+  const claimRoles = (() => {
+    const out = [];
+    const pushRoles = (candidate) => {
+      if (Array.isArray(candidate)) {
+        candidate.forEach((r) => out.push(String(r)));
+      } else if (typeof candidate === 'string' && candidate.trim()) {
+        out.push(candidate.trim());
+      }
+    };
+
+    pushRoles(user?.roles);
+    pushRoles(user?.role);
+
+    Object.entries(user || {}).forEach(([key, value]) => {
+      const k = String(key || '').toLowerCase();
+      if (!k.includes('role')) return;
+      pushRoles(value);
+    });
+
+    return out.filter(Boolean);
+  })();
+
+  const roles = (profileRoles && profileRoles.length > 0)
+    ? profileRoles
+    : (claimRoles.length > 0 ? claimRoles : null);
+  const isAdminRole = isAdmin(roles);
 
   return {
     // User data
@@ -93,25 +119,25 @@ export const usePermissions = () => {
     isAuthenticated,
 
     // Permission checking functions
-    hasPermission: (permission) => hasPermission(permissions, permission),
-    hasAnyPermission: (permissionList) => hasAnyPermission(permissions, permissionList),
-    hasAllPermissions: (permissionList) => hasAllPermissions(permissions, permissionList),
+    hasPermission: (permission) => isAdminRole || hasPermission(permissions, permission),
+    hasAnyPermission: (permissionList) => isAdminRole || hasAnyPermission(permissions, permissionList),
+    hasAllPermissions: (permissionList) => isAdminRole || hasAllPermissions(permissions, permissionList),
 
     // Role checking functions
     hasRole: (role) => hasRole(roles, role),
     hasAnyRole: (roleList) => hasAnyRole(roles, roleList),
-    isAdmin: () => isAdmin(roles),
+    isAdmin: () => isAdminRole,
 
     // Constants for convenience
     PERMISSIONS,
     ROLES,
 
     // Specific permission checks (convenience)
-    canViewTickets: hasPermission(permissions, PERMISSIONS.VIEW_TICKETS),
-    canEditTickets: hasPermission(permissions, PERMISSIONS.EDIT_TICKETS),
-    canDeleteTickets: hasPermission(permissions, PERMISSIONS.DELETE_TICKETS),
-    canManageUsers: hasPermission(permissions, PERMISSIONS.MANAGE_USERS),
-    canExportData: hasPermission(permissions, PERMISSIONS.EXPORT_DATA),
-    canManageWorkflows: hasPermission(permissions, PERMISSIONS.MANAGE_WORKFLOWS),
+    canViewTickets: isAdminRole || hasPermission(permissions, PERMISSIONS.VIEW_TICKETS),
+    canEditTickets: isAdminRole || hasPermission(permissions, PERMISSIONS.EDIT_TICKETS),
+    canDeleteTickets: isAdminRole || hasPermission(permissions, PERMISSIONS.DELETE_TICKETS),
+    canManageUsers: isAdminRole || hasPermission(permissions, PERMISSIONS.MANAGE_USERS),
+    canExportData: isAdminRole || hasPermission(permissions, PERMISSIONS.EXPORT_DATA),
+    canManageWorkflows: isAdminRole || hasPermission(permissions, PERMISSIONS.MANAGE_WORKFLOWS),
   };
 };

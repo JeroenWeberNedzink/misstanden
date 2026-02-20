@@ -47,12 +47,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $debugMode) {
 function load_env_file(string $file, bool $override = true): void {
     if (!is_file($file)) return;
     foreach (file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
-        $line = trim($line);
+        $line = preg_replace('/^\xEF\xBB\xBF/', '', (string)$line);
+        $line = trim((string)$line);
         if ($line === '' || str_starts_with($line, '#')) continue;
         if (!str_contains($line, '=')) continue;
         [$key, $val] = explode('=', $line, 2);
-        $key = trim($key);
+        $key = trim((string)$key);
+        $key = ltrim($key, "\xEF\xBB\xBF");
         $val = trim($val);
+        if ($key === '') continue;
         if ((str_starts_with($val, '"') && str_ends_with($val, '"')) || (str_starts_with($val, "'") && str_ends_with($val, "'"))) {
             $val = substr($val, 1, -1);
         }

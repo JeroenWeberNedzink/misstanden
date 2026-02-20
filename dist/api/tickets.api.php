@@ -130,6 +130,12 @@ function get_supabase_service_key(): string {
     return $key;
 }
 
+function try_get_supabase_service_key(): ?string {
+    $key = getenv('SUPABASE_SERVICE_ROLE_KEY') ?: getenv('SUPABASE_SERVICE_KEY') ?: '';
+    $key = trim((string)$key);
+    return $key !== '' ? $key : null;
+}
+
 function sanitize_reporter_ticket(array $ticket): array {
     unset($ticket['access_code'], $ticket['reporter_email'], $ticket['reporter_email_encrypted'], $ticket['reporter_email_hash']);
 
@@ -191,6 +197,7 @@ function fetch_ticket_by_credentials(string $baseUrl, string $key, string $ticke
 function handle_create(array $data): void {
     $baseUrl = get_supabase_url();
     $anonKey = get_supabase_anon_key();
+    $serviceKey = try_get_supabase_service_key();
 
     $email = trim((string)($data['reporter_email'] ?? ''));
     $isAnonymous = !empty($data['is_anonymous']);
@@ -230,14 +237,43 @@ function handle_create(array $data): void {
     ];
     $payload = array_filter($payload, static fn($v) => $v !== null);
 
+    // Prefer service role for server-side ticket creation so DB triggers
+    // (e.g. audit logging) do not fail under anon RLS constraints.
+    $writeKey = $serviceKey ?: $anonKey;
     [$code, $decoded, $raw] = supabase_request(
         'POST',
         $baseUrl . '/rest/v1/tickets',
-        $anonKey,
+        $writeKey,
         $payload,
         true
     );
+
+    // Backward-compatible retry path when service key is available but first
+    // attempt used anon (legacy environments) and trigger insert hit RLS.
+    if (($code < 200 || $code >= 300) && $writeKey === $anonKey && $serviceKey) {
+        $rawText = is_array($decoded) ? json_encode($decoded, JSON_UNESCAPED_UNICODE) : (string)$raw;
+        $lower = strtolower((string)$rawText);
+        if (strpos($lower, 'row-level security') !== false || strpos($lower, 'audit_logs') !== false || strpos($lower, '42501') !== false) {
+            [$code, $decoded, $raw] = supabase_request(
+                'POST',
+                $baseUrl . '/rest/v1/tickets',
+                $serviceKey,
+                $payload,
+                true
+            );
+        }
+    }
+
     if ($code < 200 || $code >= 300) {
+        $rawText = is_array($decoded) ? json_encode($decoded, JSON_UNESCAPED_UNICODE) : (string)$raw;
+        $lower = strtolower((string)$rawText);
+        if (
+            !$serviceKey &&
+            $writeKey === $anonKey &&
+            (strpos($lower, 'row-level security') !== false || strpos($lower, 'audit_logs') !== false || strpos($lower, '42501') !== false)
+        ) {
+            throw new Exception('Ticket create blocked by RLS on audit_logs. Configure SUPABASE_SERVICE_ROLE_KEY for tickets.api.php.');
+        }
         $msg = is_array($decoded) ? json_encode($decoded, JSON_UNESCAPED_UNICODE) : (string)$raw;
         throw new Exception('Supabase insert failed: ' . $msg);
     }
@@ -376,4 +412,3 @@ try {
 } catch (Throwable $e) {
     api_json(500, false, $e->getMessage());
 }
-

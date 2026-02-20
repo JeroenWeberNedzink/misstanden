@@ -63,7 +63,19 @@ export const settingsService = {
       return normalizeRows(data?.rows || []);
     } catch (error) {
       // Graceful fallback for non-admin sessions: retry without sensitive flag.
-      if (authHeaders.Authorization && String(error?.message || '').toLowerCase().includes('admin')) {
+      const msg = String(error?.message || '').toLowerCase();
+      const shouldRetryWithoutSensitive =
+        authHeaders.Authorization &&
+        (
+          msg.includes('admin') ||
+          msg.includes('authorization') ||
+          msg.includes('token required') ||
+          msg.includes('forbidden') ||
+          msg.includes('403') ||
+          msg.includes('401')
+        );
+
+      if (shouldRetryWithoutSensitive) {
         const retryParams = new URLSearchParams();
         if (category) retryParams.set('category', category);
         const retryData = await fetchJson(`${API_URL}?${retryParams.toString()}`, { method: 'GET' });

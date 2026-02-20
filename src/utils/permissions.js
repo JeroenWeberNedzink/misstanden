@@ -54,7 +54,14 @@ export const parsePermissions = (permissions) => {
 export const hasPermission = (permissions, permission) => {
   if (!permissions) return false;
   const parsed = parsePermissions(permissions);
-  return parsed[permission] === true;
+  const value = parsed[permission];
+  if (value === true) return true;
+  if (value === 1) return true;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'true' || normalized === '1' || normalized === 'yes';
+  }
+  return false;
 };
 
 /**
@@ -87,6 +94,7 @@ export const hasAllPermissions = (permissions, permissionList) => {
  */
 export const hasRole = (userRoles, role) => {
   if (!userRoles) return false;
+  if (!role) return false;
 
   // Handle both array and single role
   const rolesArray = Array.isArray(userRoles) ? userRoles : [userRoles];
@@ -105,9 +113,14 @@ export const hasRole = (userRoles, role) => {
       }
     }
     return r;
-  }).flat();
+  }).flat().map((r) => {
+    if (r == null) return '';
+    if (typeof r === 'object' && typeof r.role === 'string') return r.role;
+    return String(r);
+  });
 
-  return parsedRoles.includes(role);
+  const target = String(role).trim().toUpperCase();
+  return parsedRoles.some((r) => String(r).trim().toUpperCase() === target);
 };
 
 /**
