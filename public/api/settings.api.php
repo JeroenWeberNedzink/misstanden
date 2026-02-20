@@ -15,6 +15,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_auth0.php';
+require_once __DIR__ . '/_supabase.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -103,11 +104,7 @@ function settings_get_supabase_url(): string {
 }
 
 function settings_get_supabase_service_key(): string {
-    $key = getenv('SUPABASE_SERVICE_ROLE_KEY') ?: getenv('SUPABASE_SERVICE_KEY') ?: '';
-    if ($key === '') {
-        throw new Exception('Missing Supabase service key configuration (set SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY)');
-    }
-    return $key;
+    return supabase_get_service_role_key();
 }
 
 function settings_is_local_dev(): bool {

@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_admin_auth.php';
+require_once __DIR__ . '/_supabase.php';
 
 // Headers
 header('Content-Type: application/json; charset=utf-8');
@@ -77,12 +78,7 @@ try {
     });
 
     $supabaseUrl = getenv('VITE_SUPABASE_URL');
-    $serviceKey =
-        getenv('SUPABASE_SERVICE_ROLE_KEY') ?:
-        getenv('SUPABASE_SERVICE_KEY') ?:
-        null;
-    $supabaseAnon = getenv('VITE_SUPABASE_ANON_KEY');
-    $supabaseKey = $serviceKey ?: $supabaseAnon;
+    $supabaseKey = supabase_get_service_role_key();
 
     if (!$supabaseUrl || !$supabaseKey) {
         throw new Exception('Missing Supabase environment configuration');

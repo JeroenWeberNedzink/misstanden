@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_auth0.php';
+require_once __DIR__ . '/_supabase.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -37,9 +38,7 @@ function wf_url(): string {
 }
 
 function wf_key(): string {
-    $key = getenv('SUPABASE_SERVICE_ROLE_KEY') ?: getenv('SUPABASE_SERVICE_KEY') ?: '';
-    if ($key === '') throw new Exception('Missing Supabase service role key');
-    return $key;
+    return supabase_get_service_role_key();
 }
 
 function wf_uuid(string $v): bool {

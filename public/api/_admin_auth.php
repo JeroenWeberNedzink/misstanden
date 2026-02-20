@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/_auth0.php';
+require_once __DIR__ . '/_supabase.php';
 
 function api_authz_env_required(string $key): string {
     $value = trim((string)(getenv($key) ?: ''));
@@ -126,10 +127,7 @@ function api_authz_require_admin(callable $deny): array {
     $claims = auth0_verify_id_token($token, $auth0Domain, $auth0ClientId);
 
     $baseUrl = rtrim(api_authz_env_required('VITE_SUPABASE_URL'), '/');
-    $serviceKey = trim((string)(getenv('SUPABASE_SERVICE_ROLE_KEY') ?: getenv('SUPABASE_SERVICE_KEY') ?: ''));
-    if ($serviceKey === '') {
-        throw new Exception('Missing Supabase service key configuration');
-    }
+    $serviceKey = supabase_get_service_role_key();
 
     $handler = api_authz_fetch_handler($baseUrl, $serviceKey, $claims);
     if (!$handler || empty($handler['active'])) {
