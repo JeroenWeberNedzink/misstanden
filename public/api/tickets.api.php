@@ -9,6 +9,8 @@ declare(strict_types=1);
  */
 
 require_once __DIR__ . '/_crypto.php';
+require_once __DIR__ . '/_auth0.php';
+require_once __DIR__ . '/_admin_auth.php';
 require_once __DIR__ . '/_supabase.php';
 require_once __DIR__ . '/_errors.php';
 
@@ -322,6 +324,40 @@ function get_supabase_service_key(): string {
     return supabase_get_service_role_key();
 }
 
+function ticket_is_uuid(string $value): bool {
+    return preg_match(
+        '/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',
+        $value
+    ) === 1;
+}
+
+function ticket_require_active_handler_context(): array {
+    $token = auth0_get_bearer_token();
+    if ($token === '') {
+        api_json(401, false, 'Authorization token required');
+    }
+
+    $auth0Domain = api_authz_env_required('VITE_AUTH0_DOMAIN');
+    $auth0Audience = auth0_expected_api_audience();
+    $auth0ClientId = api_authz_env_required('VITE_AUTH0_CLIENT_ID');
+    $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
+
+    $baseUrl = get_supabase_url();
+    $serviceKey = get_supabase_service_key();
+    $handler = api_authz_fetch_handler($baseUrl, $serviceKey, $claims);
+
+    if (!$handler || empty($handler['active'])) {
+        api_json(403, false, 'Handler account not active or not found');
+    }
+
+    return [
+        'claims' => $claims,
+        'handler' => $handler,
+        'base_url' => $baseUrl,
+        'service_key' => $serviceKey,
+    ];
+}
+
 function sanitize_reporter_ticket(array $ticket, string $baseUrl, string $serviceKey): array {
     unset($ticket['access_code'], $ticket['reporter_email'], $ticket['reporter_email_encrypted'], $ticket['reporter_email_hash']);
 
@@ -570,6 +606,221 @@ function handle_reporter_message(array $data): void {
     ]);
 }
 
+function handle_handler_update_ticket(array $data): void {
+    $ctx = ticket_require_active_handler_context();
+    $baseUrl = (string)$ctx['base_url'];
+    $serviceKey = (string)$ctx['service_key'];
+
+    $ticketId = trim((string)($data['ticket_id'] ?? ''));
+    if (!ticket_is_uuid($ticketId)) {
+        api_json(400, false, 'ticket_id must be a valid UUID');
+    }
+
+    $updatesRaw = $data['updates'] ?? [];
+    if (!is_array($updatesRaw)) {
+        api_json(400, false, 'updates must be an object');
+    }
+
+    $allowedKeys = [
+        'severity_code',
+        'status_code',
+        'current_stage',
+        'workflow_type',
+        'handler_id',
+        'next_step_due',
+        'metadata',
+        'description',
+    ];
+
+    $payload = [];
+    foreach ($allowedKeys as $key) {
+        if (array_key_exists($key, $updatesRaw)) {
+            $payload[$key] = $updatesRaw[$key];
+        }
+    }
+
+    if (array_key_exists('handler_id', $payload)) {
+        $handlerId = $payload['handler_id'];
+        if ($handlerId !== null && !ticket_is_uuid(trim((string)$handlerId))) {
+            api_json(400, false, 'handler_id must be a UUID or null');
+        }
+    }
+
+    if (count($payload) === 0) {
+        api_json(400, false, 'No valid fields provided in updates');
+    }
+
+    $payload['last_update_at'] = gmdate('c');
+
+    [$code, $decoded, $raw] = supabase_request(
+        'PATCH',
+        $baseUrl . '/rest/v1/tickets?id=eq.' . rawurlencode($ticketId),
+        $serviceKey,
+        $payload,
+        true
+    );
+
+    if ($code < 200 || $code >= 300) {
+        $msg = is_array($decoded) ? json_encode($decoded, JSON_UNESCAPED_UNICODE) : (string)$raw;
+        throw new Exception('Failed to update ticket: ' . $msg);
+    }
+
+    api_json(200, true, 'Ticket updated', ['ticket' => get_first_row($decoded)]);
+}
+
+function handle_handler_add_comment(array $data): void {
+    $ctx = ticket_require_active_handler_context();
+    $baseUrl = (string)$ctx['base_url'];
+    $serviceKey = (string)$ctx['service_key'];
+    $handler = (array)$ctx['handler'];
+
+    $ticketId = trim((string)($data['ticket_id'] ?? ''));
+    if (!ticket_is_uuid($ticketId)) {
+        api_json(400, false, 'ticket_id must be a valid UUID');
+    }
+
+    $comment = trim((string)($data['comment'] ?? ''));
+    if ($comment === '') {
+        api_json(400, false, 'comment is required');
+    }
+    if (mb_strlen($comment) > 4000) {
+        api_json(400, false, 'comment exceeds 4000 characters');
+    }
+
+    $performedBy = trim((string)($handler['name'] ?? '')) ?: 'System';
+    $handlerId = trim((string)($handler['id'] ?? ''));
+    $handlerEmail = trim((string)($handler['email'] ?? ''));
+
+    [$commentCode, $commentDecoded, $commentRaw] = supabase_request(
+        'POST',
+        $baseUrl . '/rest/v1/ticket_comments',
+        $serviceKey,
+        [
+            'ticket_id' => $ticketId,
+            'comment' => $comment,
+            'author_name' => $performedBy,
+        ],
+        true
+    );
+    if ($commentCode < 200 || $commentCode >= 300) {
+        $msg = is_array($commentDecoded) ? json_encode($commentDecoded, JSON_UNESCAPED_UNICODE) : (string)$commentRaw;
+        throw new Exception('Failed to add ticket comment: ' . $msg);
+    }
+
+    try {
+        supabase_request(
+            'POST',
+            $baseUrl . '/rest/v1/ticket_actions',
+            $serviceKey,
+            [
+                'ticket_id' => $ticketId,
+                'action_type' => 'note_added',
+                'action' => 'Note Added',
+                'description' => 'Added investigation note: ' . mb_substr($comment, 0, 100) . '...',
+                'handler_id' => $handlerId !== '' ? $handlerId : null,
+                'handler_name' => $performedBy,
+                'handler_email' => $handlerEmail !== '' ? $handlerEmail : null,
+                'performed_by' => $performedBy,
+            ],
+            false
+        );
+    } catch (Throwable $e) {
+        error_log('[tickets.api] Could not write ticket_actions for handler comment: ' . api_redact_sensitive($e->getMessage()));
+    }
+
+    api_json(200, true, 'Comment added', [
+        'comment' => get_first_row($commentDecoded),
+        'performed_by' => $performedBy,
+    ]);
+}
+
+function handle_handler_add_message(array $data): void {
+    $ctx = ticket_require_active_handler_context();
+    $baseUrl = (string)$ctx['base_url'];
+    $serviceKey = (string)$ctx['service_key'];
+    $handler = (array)$ctx['handler'];
+
+    $ticketId = trim((string)($data['ticket_id'] ?? ''));
+    if (!ticket_is_uuid($ticketId)) {
+        api_json(400, false, 'ticket_id must be a valid UUID');
+    }
+
+    $sender = strtolower(trim((string)($data['sender'] ?? 'handler')));
+    if ($sender === '') {
+        api_json(400, false, 'sender is required');
+    }
+
+    $body = trim((string)($data['body'] ?? ''));
+    if ($body === '') {
+        api_json(400, false, 'body is required');
+    }
+    if (mb_strlen($body) > 4000) {
+        api_json(400, false, 'body exceeds 4000 characters');
+    }
+
+    $isInternal = !empty($data['is_internal']);
+    $discloseHandlerIdentity = !empty($data['disclose_handler_identity']);
+
+    $performedBy = trim((string)($handler['name'] ?? '')) ?: 'System';
+    $handlerId = trim((string)($handler['id'] ?? ''));
+    $handlerEmail = trim((string)($handler['email'] ?? ''));
+    $publicHandlerName = ($sender === 'handler' && $discloseHandlerIdentity) ? $performedBy : null;
+
+    [$msgCode, $msgDecoded, $msgRaw] = supabase_request(
+        'POST',
+        $baseUrl . '/rest/v1/messages',
+        $serviceKey,
+        [
+            'ticket_id' => $ticketId,
+            'sender' => $sender,
+            'body' => $body,
+            'is_internal' => $isInternal,
+            'handler_id' => $handlerId !== '' ? $handlerId : null,
+            'handler_name' => $publicHandlerName,
+        ],
+        true
+    );
+    if ($msgCode < 200 || $msgCode >= 300) {
+        $msg = is_array($msgDecoded) ? json_encode($msgDecoded, JSON_UNESCAPED_UNICODE) : (string)$msgRaw;
+        throw new Exception('Failed to add ticket message: ' . $msg);
+    }
+
+    supabase_request(
+        'PATCH',
+        $baseUrl . '/rest/v1/tickets?id=eq.' . rawurlencode($ticketId),
+        $serviceKey,
+        ['last_update_at' => gmdate('c')],
+        false
+    );
+
+    try {
+        supabase_request(
+            'POST',
+            $baseUrl . '/rest/v1/ticket_actions',
+            $serviceKey,
+            [
+                'ticket_id' => $ticketId,
+                'action_type' => 'message_sent',
+                'action' => 'Message Sent',
+                'description' => 'Sent message: ' . mb_substr($body, 0, 100) . '...',
+                'handler_id' => $handlerId !== '' ? $handlerId : null,
+                'handler_name' => $performedBy,
+                'handler_email' => $handlerEmail !== '' ? $handlerEmail : null,
+                'performed_by' => $performedBy,
+            ],
+            false
+        );
+    } catch (Throwable $e) {
+        error_log('[tickets.api] Could not write ticket_actions for handler message: ' . api_redact_sensitive($e->getMessage()));
+    }
+
+    api_json(200, true, 'Message added', [
+        'message' => get_first_row($msgDecoded),
+        'performed_by' => $performedBy,
+        'public_handler_name' => $publicHandlerName,
+    ]);
+}
+
 try {
     load_env_file(__DIR__ . '/../../.env.local', true);
     load_env_file(__DIR__ . '/../../.env', false);
@@ -594,6 +845,15 @@ try {
             break;
         case 'message':
             handle_reporter_message($data);
+            break;
+        case 'handler_update_ticket':
+            handle_handler_update_ticket($data);
+            break;
+        case 'handler_add_comment':
+            handle_handler_add_comment($data);
+            break;
+        case 'handler_add_message':
+            handle_handler_add_message($data);
             break;
         default:
             api_json(400, false, 'Unsupported action');

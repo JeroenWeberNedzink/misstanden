@@ -54,10 +54,78 @@ const isMissingTicketHandlersRelation = (err) => {
   );
 };
 
-const TICKET_HANDLERS_RECHECK_MS = 120_000;
+const TICKETS_API_URL = '/api/tickets.api.php';
+let ticketTokenProvider = null;
+
+const setTokenProvider = (provider) => {
+  ticketTokenProvider = typeof provider === 'function' ? provider : null;
+};
+
+const getAuthHeaders = async () => {
+  if (!ticketTokenProvider) return {};
+  try {
+    const token = await ticketTokenProvider();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+};
+
+const ticketApiPost = async (payload, { requireAuth = false } = {}) => {
+  const authHeaders = await getAuthHeaders();
+  if (requireAuth && !authHeaders.Authorization) {
+    throw new Error('Authorization token required');
+  }
+
+  const response = await fetch(TICKETS_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    throw new Error(json?.message || `Tickets API error (${response.status})`);
+  }
+  return json?.data;
+};
+
+const TICKET_HANDLERS_RECHECK_MS = 3_600_000;
+const TICKET_HANDLERS_STATE_KEY = 'ticket_handlers_relation_state_v1';
+const readTicketHandlersState = () => {
+  try {
+    if (typeof window === 'undefined' || !window.sessionStorage) {
+      return { available: null, checkedAt: 0 };
+    }
+    const raw = window.sessionStorage.getItem(TICKET_HANDLERS_STATE_KEY);
+    if (!raw) return { available: null, checkedAt: 0 };
+    const parsed = JSON.parse(raw);
+    const available = parsed?.available;
+    const checkedAt = Number(parsed?.checkedAt || 0);
+    if (available !== true && available !== false) return { available: null, checkedAt: 0 };
+    if (!Number.isFinite(checkedAt) || checkedAt <= 0) return { available: null, checkedAt: 0 };
+    return { available, checkedAt };
+  } catch {
+    return { available: null, checkedAt: 0 };
+  }
+};
+
+const persistTicketHandlersState = (state) => {
+  try {
+    if (typeof window === 'undefined' || !window.sessionStorage) return;
+    window.sessionStorage.setItem(TICKET_HANDLERS_STATE_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore storage errors in restricted browser contexts.
+  }
+};
+
+const initialTicketHandlersState = readTicketHandlersState();
 const ticketHandlersRelationState = {
-  available: null, // null = unknown, true = available, false = missing
-  checkedAt: 0,
+  available: initialTicketHandlersState.available, // null = unknown, true = available, false = missing
+  checkedAt: initialTicketHandlersState.checkedAt,
 };
 
 const shouldProbeTicketHandlersRelation = () => {
@@ -68,6 +136,7 @@ const shouldProbeTicketHandlersRelation = () => {
 const markTicketHandlersRelationState = (available) => {
   ticketHandlersRelationState.available = available;
   ticketHandlersRelationState.checkedAt = Date.now();
+  persistTicketHandlersState(ticketHandlersRelationState);
 };
 
 const friendlyHandlerError = (error, context = 'handlers') => {
@@ -1293,6 +1362,18 @@ async deleteHandler(handlerId, options = {}) {
   async updateTicket(ticketId, updates = {}) {
     if (!ticketId) throw new Error('ticketId is required');
 
+    if (ticketTokenProvider) {
+      const apiData = await ticketApiPost(
+        {
+          action: 'handler_update_ticket',
+          ticket_id: ticketId,
+          updates: toSnakeCase(updates || {}),
+        },
+        { requireAuth: true }
+      );
+      return toCamelCase(apiData?.ticket || apiData);
+    }
+
     const nowIso = new Date().toISOString();
     const payload = {
       ...updates,
@@ -1438,6 +1519,40 @@ async deleteHandler(handlerId, options = {}) {
     if (!ticketId) throw new Error('ticketId is required');
     if (!comment || !String(comment).trim()) throw new Error('comment is required');
 
+    const trimmedComment = String(comment).trim();
+    if (ticketTokenProvider) {
+      const apiData = await ticketApiPost(
+        {
+          action: 'handler_add_comment',
+          ticket_id: ticketId,
+          comment: trimmedComment,
+          author_name: authorName || null,
+        },
+        { requireAuth: true }
+      );
+
+      const result = toCamelCase(apiData?.comment || apiData);
+      const performedBy = String(apiData?.performed_by || authorName || 'System');
+
+      const { data: ticket } = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('id', ticketId)
+        .single();
+
+      if (ticket) {
+        const isInternal = true;
+        notificationService.notifyComment(
+          toCamelCase(ticket),
+          trimmedComment,
+          performedBy,
+          isInternal
+        ).catch(err => console.error('Failed to send comment notification:', err));
+      }
+
+      return result;
+    }
+
     // Get handler info for logging
     let handlerInfo = null;
     if (options.currentHandlerId) {
@@ -1451,7 +1566,7 @@ async deleteHandler(handlerId, options = {}) {
 
     const { data, error } = await supabase
       .from('ticket_comments')
-      .insert({ ticket_id: ticketId, comment: String(comment).trim(), author_name: handlerInfo?.name || authorName || null })
+      .insert({ ticket_id: ticketId, comment: trimmedComment, author_name: handlerInfo?.name || authorName || null })
       .select()
       .single();
 
@@ -1484,7 +1599,7 @@ async deleteHandler(handlerId, options = {}) {
       const isInternal = true; // Comments are typically internal/handler-only notes
       notificationService.notifyComment(
         toCamelCase(ticket),
-        String(comment).trim(),
+        trimmedComment,
         handlerInfo?.name || authorName || 'System',
         isInternal
       ).catch(err => console.error('Failed to send comment notification:', err));
@@ -1498,6 +1613,52 @@ async deleteHandler(handlerId, options = {}) {
     if (!sender) throw new Error('sender is required');
     if (!body || !String(body).trim()) throw new Error('body is required');
 
+    const trimmedBody = String(body).trim();
+    const senderKey = String(sender || '').toLowerCase();
+    const isHandlerSender = senderKey === 'handler';
+    const discloseHandlerIdentity = options?.discloseHandlerIdentity === true;
+
+    if (ticketTokenProvider) {
+      const apiData = await ticketApiPost(
+        {
+          action: 'handler_add_message',
+          ticket_id: ticketId,
+          sender,
+          body: trimmedBody,
+          is_internal: !!isInternal,
+          disclose_handler_identity: discloseHandlerIdentity,
+        },
+        { requireAuth: true }
+      );
+
+      const result = toCamelCase(apiData?.message || apiData);
+      const senderName =
+        (isHandlerSender && discloseHandlerIdentity
+          ? (apiData?.public_handler_name || null)
+          : null);
+
+      const { data: ticket } = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('id', ticketId)
+        .single();
+
+      if (ticket) {
+        notificationService.notifyMessage(
+          toCamelCase(ticket),
+          sender,
+          trimmedBody,
+          isInternal,
+          {
+            discloseHandlerIdentity,
+            senderName,
+          }
+        ).catch(err => console.error('Failed to send message notification:', err));
+      }
+
+      return result;
+    }
+
     // Get handler info for logging
     let handlerInfo = null;
     if (options.currentHandlerId) {
@@ -1509,9 +1670,6 @@ async deleteHandler(handlerId, options = {}) {
       handlerInfo = handler;
     }
 
-    const senderKey = String(sender || '').toLowerCase();
-    const isHandlerSender = senderKey === 'handler';
-    const discloseHandlerIdentity = options?.discloseHandlerIdentity === true;
     const handlerNameForReporter = isHandlerSender && discloseHandlerIdentity
       ? (handlerInfo?.name || null)
       : null;
@@ -1521,7 +1679,7 @@ async deleteHandler(handlerId, options = {}) {
       .insert({
         ticket_id: ticketId,
         sender,
-        body: String(body).trim(),
+        body: trimmedBody,
         is_internal: !!isInternal,
         handler_id: handlerInfo?.id || null,
         handler_name: handlerNameForReporter
@@ -1558,7 +1716,7 @@ async deleteHandler(handlerId, options = {}) {
       notificationService.notifyMessage(
         toCamelCase(ticket),
         sender,
-        String(body).trim(),
+        trimmedBody,
         isInternal,
         {
           discloseHandlerIdentity,
@@ -1832,6 +1990,7 @@ async deleteHandler(handlerId, options = {}) {
   },
 
   // ----- Utilities exposed -----
+  setTokenProvider,
   toCamelCase,
   toSnakeCase,
 };
