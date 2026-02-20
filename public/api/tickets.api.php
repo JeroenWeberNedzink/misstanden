@@ -36,6 +36,147 @@ function api_json(int $status, bool $success, string $message, $data = null): vo
     exit;
 }
 
+function ticket_client_ip(): string {
+    $candidates = [
+        $_SERVER['HTTP_CF_CONNECTING_IP'] ?? null,
+        $_SERVER['HTTP_X_FORWARDED_FOR'] ?? null,
+        $_SERVER['REMOTE_ADDR'] ?? null,
+    ];
+    foreach ($candidates as $raw) {
+        $value = trim((string)$raw);
+        if ($value === '') {
+            continue;
+        }
+        if (str_contains($value, ',')) {
+            $parts = explode(',', $value);
+            $value = trim((string)($parts[0] ?? ''));
+        }
+        if (filter_var($value, FILTER_VALIDATE_IP)) {
+            return $value;
+        }
+    }
+    return 'unknown';
+}
+
+function ticket_rate_limit_file(string $scope): string {
+    $dir = __DIR__ . '/../../run/rate-limits';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    return $dir . '/' . hash('sha256', $scope) . '.json';
+}
+
+function ticket_rate_limit_state(string $scope): array {
+    $file = ticket_rate_limit_file($scope);
+    $fp = @fopen($file, 'c+');
+    if (!$fp) {
+        return ['fp' => null, 'state' => ['window_start' => time(), 'count' => 0, 'blocked_until' => 0]];
+    }
+    if (!@flock($fp, LOCK_EX)) {
+        fclose($fp);
+        return ['fp' => null, 'state' => ['window_start' => time(), 'count' => 0, 'blocked_until' => 0]];
+    }
+    $raw = stream_get_contents($fp);
+    $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+    $state = is_array($decoded) ? $decoded : [];
+    return ['fp' => $fp, 'state' => [
+        'window_start' => (int)($state['window_start'] ?? time()),
+        'count' => (int)($state['count'] ?? 0),
+        'blocked_until' => (int)($state['blocked_until'] ?? 0),
+    ]];
+}
+
+function ticket_rate_limit_commit($fp, array $state): void {
+    if (!$fp) {
+        return;
+    }
+    ftruncate($fp, 0);
+    rewind($fp);
+    fwrite($fp, json_encode($state, JSON_UNESCAPED_UNICODE));
+    fflush($fp);
+    flock($fp, LOCK_UN);
+    fclose($fp);
+}
+
+function ticket_rate_limit_allow(string $scope, int $maxAttempts, int $windowSeconds): array {
+    $now = time();
+    $ctx = ticket_rate_limit_state($scope);
+    $fp = $ctx['fp'];
+    $state = $ctx['state'];
+
+    if ($state['blocked_until'] > $now) {
+        ticket_rate_limit_commit($fp, $state);
+        return ['allowed' => false, 'retry_after' => max(1, $state['blocked_until'] - $now)];
+    }
+
+    if (($now - $state['window_start']) >= $windowSeconds) {
+        $state['window_start'] = $now;
+        $state['count'] = 0;
+        $state['blocked_until'] = 0;
+    }
+
+    $state['count']++;
+    if ($state['count'] > $maxAttempts) {
+        $state['blocked_until'] = $now + $windowSeconds;
+        ticket_rate_limit_commit($fp, $state);
+        return ['allowed' => false, 'retry_after' => $windowSeconds];
+    }
+
+    ticket_rate_limit_commit($fp, $state);
+    return ['allowed' => true, 'retry_after' => 0];
+}
+
+function ticket_rate_limit_reset(string $scope): void {
+    $file = ticket_rate_limit_file($scope);
+    if (is_file($file)) {
+        @unlink($file);
+    }
+}
+
+function ticket_limit_scope_suffix(string $ticketInput): string {
+    $meta = normalize_ticket_input($ticketInput);
+    if (!empty($meta['ok'])) {
+        return (string)$meta['value'];
+    }
+    $raw = strtoupper(trim((string)$ticketInput));
+    return $raw !== '' ? $raw : 'unknown';
+}
+
+function ticket_enforce_request_rate_limit(string $action, string $ticketInput): void {
+    $ip = ticket_client_ip();
+    $ticketKey = ticket_limit_scope_suffix($ticketInput);
+
+    $ipScope = 'tickets:' . $action . ':ip:' . $ip;
+    $ticketScope = 'tickets:' . $action . ':ip_ticket:' . $ip . ':' . $ticketKey;
+
+    $ipCheck = ticket_rate_limit_allow($ipScope, 80, 300);
+    if (!$ipCheck['allowed']) {
+        api_json(429, false, 'Too many requests. Try again later.', ['retry_after' => $ipCheck['retry_after']]);
+    }
+
+    $ticketCheck = ticket_rate_limit_allow($ticketScope, 15, 300);
+    if (!$ticketCheck['allowed']) {
+        api_json(429, false, 'Too many requests. Try again later.', ['retry_after' => $ticketCheck['retry_after']]);
+    }
+}
+
+function ticket_register_failed_auth_attempt(string $ticketInput): void {
+    $ip = ticket_client_ip();
+    $ticketKey = ticket_limit_scope_suffix($ticketInput);
+    $failScope = 'tickets:auth_fail:' . $ip . ':' . $ticketKey;
+    $result = ticket_rate_limit_allow($failScope, 6, 900);
+    if (!$result['allowed']) {
+        api_json(429, false, 'Too many failed attempts. Try again later.', ['retry_after' => $result['retry_after']]);
+    }
+}
+
+function ticket_reset_failed_auth_attempts(string $ticketInput): void {
+    $ip = ticket_client_ip();
+    $ticketKey = ticket_limit_scope_suffix($ticketInput);
+    $failScope = 'tickets:auth_fail:' . $ip . ':' . $ticketKey;
+    ticket_rate_limit_reset($failScope);
+}
+
 function supabase_request(string $method, string $url, string $apikey, $payload = null, bool $returnRepresentation = false): array {
     $headers = [
         'apikey: ' . $apikey,
@@ -246,11 +387,16 @@ function handle_access(array $data): void {
         api_json(400, false, 'ticket_input and a valid 6-digit access_code are required');
     }
 
+    ticket_enforce_request_rate_limit('access', $ticketInput);
+
     $ticket = fetch_ticket_by_credentials($baseUrl, $serviceKey, $ticketInput, $accessCode);
     if (!$ticket) {
+        ticket_register_failed_auth_attempt($ticketInput);
+        usleep(random_int(150000, 350000));
         api_json(401, false, 'Invalid ticket ID or access code');
     }
 
+    ticket_reset_failed_auth_attempts($ticketInput);
     api_json(200, true, 'Ticket loaded', sanitize_reporter_ticket($ticket));
 }
 
@@ -272,10 +418,15 @@ function handle_reporter_message(array $data): void {
         api_json(400, false, 'Message body exceeds 1000 characters');
     }
 
+    ticket_enforce_request_rate_limit('message', $ticketInput);
+
     $ticket = fetch_ticket_by_credentials($baseUrl, $serviceKey, $ticketInput, $accessCode);
     if (!$ticket) {
+        ticket_register_failed_auth_attempt($ticketInput);
+        usleep(random_int(150000, 350000));
         api_json(401, false, 'Invalid ticket ID or access code');
     }
+    ticket_reset_failed_auth_attempts($ticketInput);
 
     $ticketId = (string)($ticket['id'] ?? '');
     if ($ticketId === '') {
