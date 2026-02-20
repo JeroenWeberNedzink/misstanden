@@ -190,6 +190,25 @@ Locale files:
 
 `public/api/translations.api.php` supports translation CRUD/import/export and creates file backups in `backups/translations`.
 
+## Recent Changes (2026-02)
+
+- Auth0 token model updated:
+  - Frontend API calls now request access tokens with `getAccessTokenSilently(...)` using `VITE_AUTH0_AUDIENCE`.
+  - API endpoints no longer accept ID tokens; ID tokens are UI-only.
+- PHP Auth0 verification hardened:
+  - Access tokens are validated against JWKS signature, issuer, audience, and time-based claims.
+  - ID-token-shaped claims are explicitly rejected.
+- Server-side admin authorization expanded:
+  - `translations.api.php` and `sla-backfill.api.php` now require authenticated admin context.
+- Supabase key safety tightened:
+  - Server APIs require a valid `service_role` key and do not fall back to anon keys for privileged operations.
+- Ticket portal hardening:
+  - Added server-side rate limiting and failed-attempt lockouts for reporter ticket access/message actions.
+- Attachment access hardening:
+  - Reporter/handler attachment links use short-lived signed URLs; storage paths are treated as private.
+- Error/PII handling improved:
+  - Internal exception details are no longer exposed to clients; responses include an `error_id` and logs are redacted.
+
 ## Security and Privacy Notes
 
 - Token model:
