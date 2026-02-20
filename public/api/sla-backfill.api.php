@@ -6,6 +6,7 @@ declare(strict_types=1);
  */
 
 require_once __DIR__ . '/_crypto.php';
+require_once __DIR__ . '/_admin_auth.php';
 
 // Headers
 header('Content-Type: application/json; charset=utf-8');
@@ -24,6 +25,15 @@ ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/../../php-errors.log');
 ini_set('display_errors', '0');
 error_reporting(E_ALL);
+
+function sla_json(int $status, bool $success, string $message, array $data = []): void {
+    http_response_code($status);
+    echo json_encode(array_merge([
+        'success' => $success,
+        'message' => $message,
+    ], $data), JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 function add_days_iso(?string $dateLike, $days): ?string {
     if (!$dateLike || !is_numeric($days)) return null;
@@ -62,6 +72,10 @@ try {
     load_env_file(__DIR__ . '/../../.env.local', true);
     load_env_file(__DIR__ . '/../../.env', false);
 
+    api_authz_require_admin(static function (int $status, string $message): void {
+        sla_json($status, false, $message);
+    });
+
     $supabaseUrl = getenv('VITE_SUPABASE_URL');
     $serviceKey =
         getenv('SUPABASE_SERVICE_ROLE_KEY') ?:
@@ -75,9 +89,7 @@ try {
     }
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        http_response_code(405);
-        echo json_encode(['success' => false, 'message' => 'Method not allowed'], JSON_UNESCAPED_UNICODE);
-        exit;
+        sla_json(405, false, 'Method not allowed');
     }
 
     $raw = file_get_contents('php://input');
@@ -153,14 +165,12 @@ try {
         $updated++;
     }
 
-    echo json_encode([
-        'success' => true,
+    sla_json(200, true, 'Backfill completed', [
         'updated' => $updated,
         'skipped' => $skipped,
         'limit' => $limit,
         'force' => $force
-    ], JSON_UNESCAPED_UNICODE);
+    ]);
 } catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    sla_json(500, false, $e->getMessage());
 }

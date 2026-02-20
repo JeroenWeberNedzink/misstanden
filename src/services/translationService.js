@@ -6,15 +6,43 @@
 import { supabase } from '../lib/supabase';
 
 const API_BASE = '/api/translations.api.php';
+let tokenProvider = null;
+
+const setTokenProvider = (provider) => {
+  tokenProvider = typeof provider === 'function' ? provider : null;
+};
+
+const getAuthHeaders = async () => {
+  if (!tokenProvider) return {};
+  try {
+    const token = await tokenProvider();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+};
+
+const fetchWithAuth = async (url, options = {}) => {
+  const authHeaders = await getAuthHeaders();
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      ...authHeaders,
+    },
+  });
+};
 
 export const translationService = {
+  setTokenProvider,
+
   /**
    * Get all translations for a language (returns flattened object)
    * @param {string} lang - Language code (en, nl, fr, de)
    * @returns {Promise<Object>} Flattened translations object
    */
   async getTranslations(lang = 'en') {
-    const res = await fetch(`${API_BASE}?action=list&lang=${lang}`);
+    const res = await fetchWithAuth(`${API_BASE}?action=list&lang=${lang}`);
 
     if (!res.ok) {
       throw new Error(`Failed to load translations for ${lang}`);
@@ -31,7 +59,7 @@ export const translationService = {
    * @returns {Promise<Object>} API response
    */
   async createKey(keyPath, translations) {
-    const res = await fetch(API_BASE, {
+    const res = await fetchWithAuth(API_BASE, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -57,7 +85,7 @@ export const translationService = {
    * @returns {Promise<Object>} API response
    */
   async updateValue(keyPath, lang, value) {
-    const res = await fetch(API_BASE, {
+    const res = await fetchWithAuth(API_BASE, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -81,7 +109,7 @@ export const translationService = {
    * @returns {Promise<Object>} API response
    */
   async deleteKey(keyPath) {
-    const res = await fetch(API_BASE, {
+    const res = await fetchWithAuth(API_BASE, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ keyPath })
@@ -101,7 +129,7 @@ export const translationService = {
    * @returns {Promise<Blob>} JSON file blob
    */
   async exportTranslations(lang) {
-    const res = await fetch(`${API_BASE}?action=export&lang=${lang}`);
+    const res = await fetchWithAuth(`${API_BASE}?action=export&lang=${lang}`);
 
     if (!res.ok) {
       throw new Error('Failed to export translations');
@@ -117,7 +145,7 @@ export const translationService = {
    * @returns {Promise<Object>} Import results (imported, updated, failed counts)
    */
   async importTranslations(lang, jsonData) {
-    const res = await fetch(API_BASE, {
+    const res = await fetchWithAuth(API_BASE, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -140,7 +168,7 @@ export const translationService = {
    * @returns {Promise<Array>} Array of objects with missing translation info
    */
   async detectMissing() {
-    const res = await fetch(`${API_BASE}?action=detect-missing`);
+    const res = await fetchWithAuth(`${API_BASE}?action=detect-missing`);
 
     if (!res.ok) {
       throw new Error('Failed to detect missing translations');

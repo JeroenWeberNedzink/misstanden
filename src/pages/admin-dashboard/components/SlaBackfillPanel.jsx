@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useAuth0 } from '@auth0/auth0-react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 
@@ -18,6 +19,7 @@ const formatDateTime = (value) => {
 };
 
 export default function SlaBackfillPanel({ onShowToast }) {
+  const { getIdTokenClaims } = useAuth0();
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
@@ -30,9 +32,14 @@ export default function SlaBackfillPanel({ onShowToast }) {
     setIsRunning(true);
     setError('');
     try {
+      const claims = await getIdTokenClaims();
+      const token = claims?.__raw || null;
       const resp = await fetch('/api/sla-backfill.api.php', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify(opts),
       });
       const json = await resp.json();

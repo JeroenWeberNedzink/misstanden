@@ -5,6 +5,7 @@ import Routes from "./Routes";
 import { runMigrations } from "./services/migrationService";
 import { workflowService } from "./services/workflowService";
 import { settingsService } from "./services/SettingsService";
+import { translationService } from "./services/translationService";
 import "./styles/tailwind.css";
 import "./styles/index.css";
 
@@ -19,10 +20,12 @@ function ServiceTokenBridge() {
 
     workflowService.setTokenProvider(provider);
     settingsService.setTokenProvider(provider);
+    translationService.setTokenProvider(provider);
 
     return () => {
       workflowService.setTokenProvider(null);
       settingsService.setTokenProvider(null);
+      translationService.setTokenProvider(null);
     };
   }, [getIdTokenClaims]);
 

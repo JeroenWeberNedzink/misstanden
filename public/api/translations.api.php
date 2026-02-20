@@ -15,6 +15,9 @@ declare(strict_types=1);
  * - POST ?action=import - Import JSON file
  */
 
+require_once __DIR__ . '/_crypto.php';
+require_once __DIR__ . '/_admin_auth.php';
+
 // CORS headers
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -36,6 +39,26 @@ error_reporting(E_ALL);
 // Constants
 define('TRANSLATIONS_DIR', __DIR__ . '/../../src/i18n/locales');
 define('BACKUP_DIR', __DIR__ . '/../../backups/translations');
+
+$translationActorId = null;
+
+function setTranslationActorId(?string $actorId): void {
+    global $translationActorId;
+    $translationActorId = is_string($actorId) && trim($actorId) !== '' ? trim($actorId) : null;
+}
+
+function getTranslationActorId(): ?string {
+    global $translationActorId;
+    return $translationActorId;
+}
+
+function validateLanguageCode(string $lang): string {
+    $clean = trim($lang);
+    if (!preg_match('/^[a-z]{2,5}(-[a-zA-Z]{2,5})?$/', $clean)) {
+        throw new Exception("Invalid language code format: $lang");
+    }
+    return $clean;
+}
 
 /**
  * Get list of supported languages (dynamically from filesystem)
@@ -118,6 +141,7 @@ function unflattenArray(array $array): array {
  * Read translation JSON file
  */
 function readTranslationFile(string $lang): array {
+    $lang = validateLanguageCode($lang);
     $filePath = TRANSLATIONS_DIR . "/$lang/translation.json";
 
     if (!file_exists($filePath)) {
@@ -141,10 +165,7 @@ function readTranslationFile(string $lang): array {
  * Write translation JSON file with backup
  */
 function writeTranslationFile(string $lang, array $data): void {
-    // Validate language code format (2-5 lowercase alphanumeric chars)
-    if (!preg_match('/^[a-z]{2,5}(-[a-zA-Z]{2,5})?$/', $lang)) {
-        throw new Exception("Invalid language code format: $lang");
-    }
+    $lang = validateLanguageCode($lang);
 
     $langDir = TRANSLATIONS_DIR . "/$lang";
     $filePath = "$langDir/translation.json";
@@ -220,7 +241,7 @@ function logAuditChange(string $keyPath, string $lang, string $action, ?string $
         'action' => $action,
         'old_value' => $oldValue,
         'new_value' => $newValue,
-        'user_id' => $userId ?? 'anonymous',
+        'user_id' => $userId ?? getTranslationActorId() ?? 'unknown',
         'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown'
     ];
 
@@ -248,6 +269,14 @@ function apiResponse(int $code, bool $success, string $message, $data = null): v
 
 // Main request handling
 try {
+    load_env_file(__DIR__ . '/../../.env.local', true);
+    load_env_file(__DIR__ . '/../../.env', false);
+
+    $adminCtx = api_authz_require_admin(static function (int $status, string $message): void {
+        apiResponse($status, false, $message);
+    });
+    setTranslationActorId((string)($adminCtx['handler']['id'] ?? ''));
+
     $method = $_SERVER['REQUEST_METHOD'];
     $action = $_GET['action'] ?? null;
 
