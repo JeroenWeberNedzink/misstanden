@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --port 3000 --host 127.0.0.1",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:no-rocket": "node scripts/check-no-rocket.mjs"
   },
   "dependencies": {
     "@auth0/auth0-react": "^2.12.0",

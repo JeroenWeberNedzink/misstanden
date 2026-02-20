@@ -120,7 +120,7 @@ Create `.env` (or `.env.local`) with at least:
 - `VITE_SUPABASE_ANON_KEY`
 - `VITE_AUTH0_DOMAIN`
 - `VITE_AUTH0_CLIENT_ID`
-- `VITE_AUTH0_AUDIENCE`
+- `VITE_AUTH0_AUDIENCE` (required for API access-token flow; no fallback is used)
 - `SUPABASE_SERVICE_ROLE_KEY` (required for server-side settings/workflow/ticket APIs)
 
 Recommended start (Windows PowerShell):
@@ -128,6 +128,14 @@ Recommended start (Windows PowerShell):
 ```powershell
 .\nz-startup.ps1
 ```
+
+Optional strict startup guard:
+
+```powershell
+.\nz-startup.ps1 -RequireAuth0Audience
+```
+
+Or set `NZ_REQUIRE_AUTH0_AUDIENCE=true` to make missing `VITE_AUTH0_AUDIENCE` fail startup automatically.
 
 This starts:
 - PHP API server on `http://127.0.0.1:8081`
@@ -147,7 +155,7 @@ Frontend-required:
 - `VITE_SUPABASE_ANON_KEY`
 - `VITE_AUTH0_DOMAIN`
 - `VITE_AUTH0_CLIENT_ID`
-- `VITE_AUTH0_AUDIENCE` (Auth0 API audience used to request access tokens for PHP APIs)
+- `VITE_AUTH0_AUDIENCE` (required Auth0 API audience used to request access tokens for PHP APIs; no `https://<domain>/mfa/` fallback)
 - `VITE_AUTH0_API_SCOPE` (space-separated API scopes for admin API calls)
 
 Important:
@@ -192,6 +200,7 @@ Locale files:
 
 ## Recent Changes (2026-02)
 
+- Removed Rocket scaffolding; do not reintroduce.
 - Auth0 token model updated:
   - Frontend API calls now request access tokens with `getAccessTokenSilently(...)` using `VITE_AUTH0_AUDIENCE`.
   - API endpoints no longer accept ID tokens; ID tokens are UI-only.
@@ -214,6 +223,7 @@ Locale files:
 - Token model:
   - Access token (`getAccessTokenSilently`) is used for all API authorization.
   - ID token is only used for UI identity and must not be sent to API endpoints.
+  - API access-token flows require `VITE_AUTH0_AUDIENCE`; fallback audience derivation is disabled.
 - Reporter email can be encrypted/hashed via `public/api/tickets.api.php` and `public/api/_crypto.php`.
 - Anonymous reporting is supported.
 - Assignment logic blocks inactive handlers from being assigned.
