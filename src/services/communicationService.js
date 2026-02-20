@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { format } from 'date-fns';
+import { normalizeHandlerRecords } from './utils/handlerNormalization';
 
 // Helper function to convert snake_case to camelCase
 const toCamelCase = (obj) => {
@@ -55,12 +56,11 @@ export const communicationService = {
   async getHandlersLite() {
     const { data, error } = await supabase
       .from('handlers')
-      .select('id,name,email,phone')
-      .eq('active', true)
+      .select('id,name,email,phone,active,roles,permissions,user_id,picture,created_at,updated_at,last_login')
       .order('name');
 
     throwIfError(error, 'getHandlersLite');
-    return toCamelCase(data || []);
+    return normalizeHandlerRecords(toCamelCase(data || []));
   },
 
   /**

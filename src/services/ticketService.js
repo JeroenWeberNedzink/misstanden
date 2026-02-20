@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { notificationService } from './notificationService';
 import { workflowService } from './workflowService';
 import { isReceiptConfirmationStatus } from '../utils/slaUtils';
+import { normalizeHandlerRecord, normalizeHandlerRecords, normalizePermissions } from './utils/handlerNormalization';
 
 // -----------------------------
 // Case conversion helpers
@@ -356,6 +357,7 @@ const decorateTicketsWithTicketHandlers = async (tickets = []) => {
 
   return list.map((ticket) => ({
     ...ticket,
+    handlers: ticket?.handlers ? normalizeHandlerRecord(ticket.handlers) : ticket?.handlers,
     ticketHandlers: map.get(ticket?.id) || [],
   }));
 };
@@ -558,31 +560,90 @@ const SELECT_TICKET_FULL = `
 export const ticketService = {
   // ----- Read/list -----
   async getAllTickets(filters = {}) {
+    const runTicketListQuery = async (query) => {
+      const { data, error } = await query;
+      throwIfError(error, 'getAllTickets');
+      const tickets = toCamelCase(data || []);
+      return decorateTicketsWithTicketHandlers(tickets);
+    };
+
     // Filter by handler's assigned workflows first if handlerId is provided
     if (filters.handlerId && filters.handlerId !== 'all') {
       // Get handler's assigned workflows
-      const { data: handlerWorkflows } = await supabase
+      const { data: handlerWorkflows, error: handlerWorkflowsError } = await supabase
         .from('handler_workflows')
         .select('workflow_id')
         .eq('handler_id', filters.handlerId);
 
+      if (handlerWorkflowsError) {
+        // Common in stricter RLS setups: fallback to tickets directly assigned to this handler.
+        console.warn('[ticketService] handler_workflows lookup failed, falling back to assigned tickets', handlerWorkflowsError);
+        let fallback = supabase
+          .from('tickets')
+          .select(SELECT_TICKET_LIST)
+          .eq('handler_id', filters.handlerId)
+          .order('submitted_at', { ascending: false });
+        if (filters.statusCode && filters.statusCode !== 'all') fallback = fallback.eq('status_code', filters.statusCode);
+        if (filters.severityCode && filters.severityCode !== 'all') fallback = fallback.eq('severity_code', filters.severityCode);
+        if (filters.workflowType && filters.workflowType !== 'all') fallback = fallback.eq('workflow_type', filters.workflowType);
+        if (filters.dateFrom) fallback = fallback.gte('submitted_at', new Date(filters.dateFrom).toISOString());
+        if (filters.dateTo) fallback = fallback.lte('submitted_at', getEndOfDayISO(filters.dateTo));
+        if (filters.search) {
+          const s = String(filters.search).trim();
+          fallback = fallback.or(`ticket_number.ilike.%${s}%,description.ilike.%${s}%,reporter_name.ilike.%${s}%`);
+        }
+        return runTicketListQuery(fallback);
+      }
+
       const workflowIds = (handlerWorkflows || []).map(hw => hw.workflow_id);
 
       if (workflowIds.length === 0) {
-        // Handler has no workflows assigned, return empty
-        return [];
+        // No workflow assignments yet: still return directly assigned tickets.
+        let fallback = supabase
+          .from('tickets')
+          .select(SELECT_TICKET_LIST)
+          .eq('handler_id', filters.handlerId)
+          .order('submitted_at', { ascending: false });
+        if (filters.statusCode && filters.statusCode !== 'all') fallback = fallback.eq('status_code', filters.statusCode);
+        if (filters.severityCode && filters.severityCode !== 'all') fallback = fallback.eq('severity_code', filters.severityCode);
+        if (filters.workflowType && filters.workflowType !== 'all') fallback = fallback.eq('workflow_type', filters.workflowType);
+        if (filters.dateFrom) fallback = fallback.gte('submitted_at', new Date(filters.dateFrom).toISOString());
+        if (filters.dateTo) fallback = fallback.lte('submitted_at', getEndOfDayISO(filters.dateTo));
+        if (filters.search) {
+          const s = String(filters.search).trim();
+          fallback = fallback.or(`ticket_number.ilike.%${s}%,description.ilike.%${s}%,reporter_name.ilike.%${s}%`);
+        }
+        return runTicketListQuery(fallback);
       }
 
       // Get workflow codes from workflow IDs
-      const { data: workflows } = await supabase
+      const { data: workflows, error: workflowsError } = await supabase
         .from('workflows')
         .select('code')
         .in('id', workflowIds);
 
+      if (workflowsError) {
+        throwIfError(workflowsError, 'getAllTickets(workflows)');
+      }
+
       const workflowCodes = (workflows || []).map(w => w.code);
 
       if (workflowCodes.length === 0) {
-        return [];
+        let fallback = supabase
+          .from('tickets')
+          .select(SELECT_TICKET_LIST)
+          .eq('handler_id', filters.handlerId)
+          .order('submitted_at', { ascending: false });
+        if (filters.statusCode && filters.statusCode !== 'all') fallback = fallback.eq('status_code', filters.statusCode);
+        if (filters.severityCode && filters.severityCode !== 'all') fallback = fallback.eq('severity_code', filters.severityCode);
+        if (filters.workflowType && filters.workflowType !== 'all') fallback = fallback.eq('workflow_type', filters.workflowType);
+        if (filters.dateFrom) fallback = fallback.gte('submitted_at', new Date(filters.dateFrom).toISOString());
+        if (filters.dateTo) fallback = fallback.lte('submitted_at', getEndOfDayISO(filters.dateTo));
+        if (filters.search) {
+          const s = String(filters.search).trim();
+          fallback = fallback.or(`ticket_number.ilike.%${s}%,description.ilike.%${s}%,reporter_name.ilike.%${s}%`);
+        }
+        return runTicketListQuery(fallback);
       }
 
       // Build query with workflow filter
@@ -601,10 +662,7 @@ export const ticketService = {
         q = q.or(`ticket_number.ilike.%${s}%,description.ilike.%${s}%,reporter_name.ilike.%${s}%`);
       }
 
-      const { data, error } = await q;
-      throwIfError(error, 'getAllTickets');
-      const tickets = toCamelCase(data || []);
-      return decorateTicketsWithTicketHandlers(tickets);
+      return runTicketListQuery(q);
     }
 
     // Normal flow without handler filter
@@ -622,10 +680,7 @@ export const ticketService = {
       q = q.or(`ticket_number.ilike.%${s}%,description.ilike.%${s}%`);
     }
 
-    const { data, error } = await q;
-    throwIfError(error, 'getAllTickets');
-    const tickets = toCamelCase(data || []);
-    return decorateTicketsWithTicketHandlers(tickets);
+    return runTicketListQuery(q);
   },
 
   async getTicketById(ticketId, options = {}) {
@@ -1045,7 +1100,7 @@ async updateHandler(handlerId, updates = {}) {
     }
   }
 
-  return toCamelCase(data);
+  return normalizeHandlerRecord(toCamelCase(data));
 },
 
   // Optional but usually handy:
@@ -1119,7 +1174,7 @@ async createHandler(handlerData = {}) {
     }
   }
 
-  return toCamelCase(data);
+  return normalizeHandlerRecord(toCamelCase(data));
 },
 
 async deleteHandler(handlerId, options = {}) {
@@ -1498,7 +1553,7 @@ async deleteHandler(handlerId, options = {}) {
     throwIfError(error, 'getAllHandlers');
 
     // Enrich handlers with permissions from new RBAC system
-    const handlers = toCamelCase(data);
+    const handlers = normalizeHandlerRecords(toCamelCase(data) || []);
 
     // For each handler, fetch their permissions from the RBAC system
     const enrichedHandlers = await Promise.all(
@@ -1516,7 +1571,7 @@ async deleteHandler(handlerId, options = {}) {
 
           // Merge with existing permissions (if any) from handlers table
           const mergedPermissions = {
-            ...(handler.permissions || {}),
+            ...normalizePermissions(handler.permissions),
             ...permissionsObj
           };
 
@@ -1549,7 +1604,7 @@ async deleteHandler(handlerId, options = {}) {
       .single();
 
     throwIfError(error, 'getHandlerById');
-    return toCamelCase(data);
+    return normalizeHandlerRecord(toCamelCase(data));
   },
 
   async getWorkflows(includeInactive = false) {

@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { normalizeHandlerRecord } from './utils/handlerNormalization';
 
 // Helper function to convert snake_case to camelCase
 const toCamelCase = (obj) => {
@@ -38,7 +39,7 @@ export const handlerProfileService = {
       ?.single();
 
     if (error) throw error;
-    return toCamelCase(data);
+    return normalizeHandlerRecord(toCamelCase(data));
   },
 
   // Get handler availability status
@@ -76,7 +77,7 @@ export const handlerProfileService = {
       ?.single();
 
     if (error) throw error;
-    return toCamelCase(data);
+    return normalizeHandlerRecord(toCamelCase(data));
   },
 
   // Update availability status

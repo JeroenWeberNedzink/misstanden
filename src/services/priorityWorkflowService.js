@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { normalizeHandlerRecord, normalizeHandlerRecords } from './utils/handlerNormalization';
 
 // Helper function to convert snake_case to camelCase
 const toCamelCase = (obj) => {
@@ -33,7 +34,8 @@ export const priorityWorkflowService = {
           id,
           name,
           email,
-          role
+          roles,
+          active
         )
       `)
       ?.in('severity_code', ['critical', 'high']);
@@ -61,7 +63,10 @@ export const priorityWorkflowService = {
     if (error) throw error;
 
     // Convert to camelCase
-    const cases = toCamelCase(data);
+    const cases = (toCamelCase(data) || []).map((ticket) => ({
+      ...ticket,
+      handlers: ticket?.handlers ? normalizeHandlerRecord(ticket.handlers) : ticket?.handlers,
+    }));
 
     // Calculate priority scores and sort
     return cases?.map(ticket => {
@@ -103,12 +108,12 @@ export const priorityWorkflowService = {
   async getActiveHandlers() {
     const { data, error } = await supabase
       ?.from('handlers')
-      ?.select('id, name, email')
+      ?.select('id, name, email, active, roles, permissions, user_id, picture, created_at, updated_at, last_login')
       ?.eq('active', true)
       ?.order('name');
 
     if (error) throw error;
-    return toCamelCase(data);
+    return normalizeHandlerRecords(toCamelCase(data) || []);
   },
 
   // Update ticket priority
