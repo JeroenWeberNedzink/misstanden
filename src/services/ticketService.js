@@ -18,14 +18,34 @@ const isUniqueViolation = (err) => {
 const isForeignKeyViolation = (err) =>
   err?.code === '23503' || String(err?.message || '').toLowerCase().includes('foreign key');
 
+const isSchemaCacheMissingTable = (err) => {
+  const msg = String(err?.message || '').toLowerCase();
+  return (
+    err?.code === 'PGRST205' ||
+    (
+      msg.includes('schema cache') &&
+      (msg.includes('could not find the table') || msg.includes('not found'))
+    )
+  );
+};
+
 const isMissingRelation = (err) => {
   const msg = String(err?.message || '').toLowerCase();
-  return err?.code === '42P01' || (msg.includes('relation') && msg.includes('does not exist'));
+  return (
+    err?.code === '42P01' ||
+    isSchemaCacheMissingTable(err) ||
+    (msg.includes('relation') && msg.includes('does not exist')) ||
+    (msg.includes('table') && msg.includes('does not exist'))
+  );
 };
 
 const isMissingTicketHandlersRelation = (err) => {
   const msg = String(err?.message || '').toLowerCase();
+  const hint = String(err?.hint || '').toLowerCase();
   if (isMissingRelation(err)) return true;
+  if (err?.code === 'PGRST205' && (msg.includes('ticket_handlers') || hint.includes('ticket_handlers'))) {
+    return true;
+  }
   if (!msg.includes('ticket_handlers')) return false;
   return (
     msg.includes('does not exist') ||
@@ -400,7 +420,13 @@ const syncTicketHandlers = async (ticketId, nextHandlerIds = []) => {
       .delete()
       .eq('ticket_id', ticketId)
       .in('handler_id', toRemove);
-    throwIfError(removeError, 'syncTicketHandlers(remove)');
+    if (removeError) {
+      if (isMissingTicketHandlersRelation(removeError) || isMissingRelation(removeError)) {
+        markTicketHandlersRelationState(false);
+        return { available: false, addedIds: [], removedIds: [], previousIds: existingIds, nextIds: normalized };
+      }
+      throwIfError(removeError, 'syncTicketHandlers(remove)');
+    }
   }
 
   if (toAdd.length > 0) {
@@ -412,7 +438,13 @@ const syncTicketHandlers = async (ticketId, nextHandlerIds = []) => {
     const { error: addError } = await supabase
       .from('ticket_handlers')
       .insert(rows);
-    throwIfError(addError, 'syncTicketHandlers(add)');
+    if (addError) {
+      if (isMissingTicketHandlersRelation(addError) || isMissingRelation(addError)) {
+        markTicketHandlersRelationState(false);
+        return { available: false, addedIds: [], removedIds: [], previousIds: existingIds, nextIds: normalized };
+      }
+      throwIfError(addError, 'syncTicketHandlers(add)');
+    }
   }
 
   return {
