@@ -60,7 +60,11 @@ export const settingsService = {
           ...authHeaders,
         },
       });
-      return normalizeRows(data?.rows || []);
+      return {
+        ...normalizeRows(data?.rows || []),
+        isAdmin: !!data?.is_admin,
+        warning: data?.warning || null,
+      };
     } catch (error) {
       // Graceful fallback for non-admin sessions: retry without sensitive flag.
       const msg = String(error?.message || '').toLowerCase();
@@ -79,7 +83,11 @@ export const settingsService = {
         const retryParams = new URLSearchParams();
         if (category) retryParams.set('category', category);
         const retryData = await fetchJson(`${API_URL}?${retryParams.toString()}`, { method: 'GET' });
-        return normalizeRows(retryData?.rows || []);
+        return {
+          ...normalizeRows(retryData?.rows || []),
+          isAdmin: !!retryData?.is_admin,
+          warning: retryData?.warning || null,
+        };
       }
       throw error;
     }

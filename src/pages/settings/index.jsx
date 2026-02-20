@@ -24,6 +24,28 @@ const isEqualJson = (a, b) => {
   }
 };
 
+const formatCategoryLabel = (category) => {
+  return String(category || '')
+    .split(/[_.]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
+
+const getCategoryDisplayMeta = (category, categoryMeta) => {
+  if (categoryMeta[category]) return categoryMeta[category];
+  return {
+    label: formatCategoryLabel(category) || category,
+    icon: 'Folder',
+    priority: 900,
+    description: '',
+    color: 'from-slate-500 to-gray-600',
+    bgColor: 'bg-card',
+    iconBg: 'bg-slate-100',
+    iconColor: 'text-slate-700',
+  };
+};
+
 const getCategoryMeta = (t) => ({
   general: {
     label: t('settings.categories.general'),
@@ -181,7 +203,7 @@ export default function SystemSettingsAdmin() {
   const [original, setOriginal] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('all'); // 'all', 'security', 'email_notifications'
-  const [pageMode, setPageMode] = useState('admin'); // 'settings' | 'admin'
+  const [pageMode, setPageMode] = useState('settings'); // 'settings' | 'admin'
   const [selectedCategory, setSelectedCategory] = useState(null); // For focused category view
 
   const [isLoading, setIsLoading] = useState(true);
@@ -199,12 +221,22 @@ export default function SystemSettingsAdmin() {
   }, [rows]);
 
   const categories = useMemo(() => {
-    const found = Object.keys(byCategory);
-    const specialCategories = Object.keys(categoryMeta).filter(k => categoryMeta[k].isSpecial);
-    const ordered = Object.keys(categoryMeta)
-      .filter((k) => found.includes(k) || specialCategories.includes(k))
+    const found = Object.keys(byCategory).filter(Boolean);
+    const nonBundleMetaKeys = Object.keys(categoryMeta).filter((k) => !categoryMeta[k]?.isBundle);
+
+    const knownFound = nonBundleMetaKeys
+      .filter((k) => found.includes(k))
       .sort((a, b) => (categoryMeta[a]?.priority || 999) - (categoryMeta[b]?.priority || 999));
-    return ordered;
+
+    const unknownFound = found
+      .filter((k) => !nonBundleMetaKeys.includes(k))
+      .sort((a, b) => a.localeCompare(b));
+
+    const specialWithoutRows = nonBundleMetaKeys
+      .filter((k) => categoryMeta[k]?.isSpecial && !found.includes(k))
+      .sort((a, b) => (categoryMeta[a]?.priority || 999) - (categoryMeta[b]?.priority || 999));
+
+    return [...knownFound, ...unknownFound, ...specialWithoutRows];
   }, [byCategory, categoryMeta]);
 
   const bundledCategoryIds = useMemo(() => {
@@ -262,7 +294,7 @@ export default function SystemSettingsAdmin() {
     setIsLoading(true);
     setError('');
     try {
-      const { rows: dataRows } = await settingsService.getSettings();
+      const { rows: dataRows, warning } = await settingsService.getSettings();
       setRows(dataRows);
 
       const o = {};
@@ -273,6 +305,9 @@ export default function SystemSettingsAdmin() {
       }
       setOriginal(o);
       setDraft(d);
+      if (warning) {
+        setError(`Settings API warning: ${warning}`);
+      }
     } catch (e) {
       console.error(e);
       setError(e?.message || t('settings.messages.errorLoading'));
@@ -287,11 +322,11 @@ export default function SystemSettingsAdmin() {
 
   useEffect(() => {
     const modeParam = new URLSearchParams(location.search).get('mode');
-    if (modeParam === 'settings') {
-      setPageMode('settings');
+    if (modeParam === 'admin') {
+      setPageMode('admin');
       return;
     }
-    setPageMode('admin');
+    setPageMode('settings');
   }, [location.search]);
 
   const save = async () => {
@@ -536,7 +571,7 @@ export default function SystemSettingsAdmin() {
                   </span>
                 </div>
                 {filteredCategories.map((category) => {
-                  const meta = categoryMeta[category] || { label: category, icon: 'Folder' };
+                  const meta = getCategoryDisplayMeta(category, categoryMeta);
                   const categoryRows = filteredRows.filter(r => r.category === category);
 
                   if (categoryRows.length === 0) return null;
@@ -620,7 +655,7 @@ export default function SystemSettingsAdmin() {
                         </div>
 
                         {bundle.categories.map((category) => {
-                          const categoryMetaItem = categoryMeta[category] || { label: category, icon: 'Folder' };
+                          const categoryMetaItem = getCategoryDisplayMeta(category, categoryMeta);
                           const categoryRows = byCategory[category] || [];
 
                           return (
@@ -654,7 +689,7 @@ export default function SystemSettingsAdmin() {
                     );
                   }
 
-                  const meta = categoryMeta[selectedCategory] || { label: selectedCategory, icon: 'Folder' };
+                  const meta = getCategoryDisplayMeta(selectedCategory, categoryMeta);
                   const categoryRows = byCategory[selectedCategory] || [];
                   const changedInCategory = categoryRows.filter(row => {
                     try {
@@ -726,7 +761,7 @@ export default function SystemSettingsAdmin() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {displayCategories.map((category) => {
                     const bundle = bundleMetaMap.get(category);
-                    const meta = bundle?.meta || categoryMeta[category] || { label: category, icon: 'Folder' };
+                    const meta = bundle?.meta || getCategoryDisplayMeta(category, categoryMeta);
                     const categoryRows = bundle
                       ? bundle.categories.flatMap((c) => byCategory[c] || [])
                       : (byCategory[category] || []);
