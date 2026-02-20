@@ -123,8 +123,9 @@ function api_authz_require_admin(callable $deny): array {
     }
 
     $auth0Domain = api_authz_env_required('VITE_AUTH0_DOMAIN');
+    $auth0Audience = api_authz_env_required('VITE_AUTH0_AUDIENCE');
     $auth0ClientId = api_authz_env_required('VITE_AUTH0_CLIENT_ID');
-    $claims = auth0_verify_id_token($token, $auth0Domain, $auth0ClientId);
+    $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
 
     $baseUrl = rtrim(api_authz_env_required('VITE_SUPABASE_URL'), '/');
     $serviceKey = supabase_get_service_role_key();

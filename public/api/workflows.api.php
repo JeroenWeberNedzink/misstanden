@@ -111,7 +111,12 @@ function wf_require_admin(string $baseUrl, string $serviceKey): array {
     $token = auth0_get_bearer_token();
     if ($token === '') wf_json(401, false, 'Authorization token required');
 
-    $claims = auth0_verify_id_token($token, wf_env('VITE_AUTH0_DOMAIN'), wf_env('VITE_AUTH0_CLIENT_ID'));
+    $claims = auth0_verify_access_token(
+        $token,
+        wf_env('VITE_AUTH0_DOMAIN'),
+        wf_env('VITE_AUTH0_AUDIENCE'),
+        wf_env('VITE_AUTH0_CLIENT_ID')
+    );
     $sub = trim((string)($claims['sub'] ?? ''));
     $email = trim((string)($claims['email'] ?? ''));
 

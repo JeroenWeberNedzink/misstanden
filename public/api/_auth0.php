@@ -80,7 +80,24 @@ function auth0_fetch_jwks(string $domain): array {
     return $decoded['keys'];
 }
 
-function auth0_verify_id_token(string $jwt, string $domain, string $clientId): array {
+function auth0_normalize_aud_list($aud): array {
+    if (is_string($aud) && trim($aud) !== '') {
+        return [trim($aud)];
+    }
+    if (!is_array($aud)) {
+        return [];
+    }
+    $list = [];
+    foreach ($aud as $item) {
+        $value = trim((string)$item);
+        if ($value !== '') {
+            $list[] = $value;
+        }
+    }
+    return array_values(array_unique($list));
+}
+
+function auth0_verify_access_token(string $jwt, string $domain, string $expectedAudience, string $clientId = ''): array {
     $parts = explode('.', $jwt);
     if (count($parts) !== 3) {
         throw new Exception('Invalid JWT format');
@@ -99,6 +116,11 @@ function auth0_verify_id_token(string $jwt, string $domain, string $clientId): a
     $kid = (string)($header['kid'] ?? '');
     if ($alg !== 'RS256' || $kid === '') {
         throw new Exception('Unsupported token header');
+    }
+
+    $typ = strtolower(trim((string)($header['typ'] ?? '')));
+    if ($typ !== '' && $typ !== 'jwt' && $typ !== 'at+jwt') {
+        throw new Exception('Unsupported token type');
     }
 
     $jwks = auth0_fetch_jwks($domain);
@@ -122,8 +144,10 @@ function auth0_verify_id_token(string $jwt, string $domain, string $clientId): a
     $now = time();
     $exp = (int)($payload['exp'] ?? 0);
     $nbf = (int)($payload['nbf'] ?? 0);
+    $iat = (int)($payload['iat'] ?? 0);
     $iss = (string)($payload['iss'] ?? '');
     $aud = $payload['aud'] ?? null;
+    $sub = trim((string)($payload['sub'] ?? ''));
 
     if ($exp <= ($now - 60)) {
         throw new Exception('Token expired');
@@ -131,23 +155,41 @@ function auth0_verify_id_token(string $jwt, string $domain, string $clientId): a
     if ($nbf > ($now + 60)) {
         throw new Exception('Token not active yet');
     }
+    if ($iat > ($now + 60)) {
+        throw new Exception('Invalid token issue time');
+    }
+    if ($sub === '') {
+        throw new Exception('Invalid token subject');
+    }
 
     $expectedIss = 'https://' . rtrim($domain, '/') . '/';
     if ($iss !== $expectedIss) {
         throw new Exception('Invalid token issuer');
     }
 
-    $audValid = false;
-    if (is_string($aud)) {
-        $audValid = ($aud === $clientId);
-    } elseif (is_array($aud)) {
-        $audValid = in_array($clientId, $aud, true);
+    if (array_key_exists('nonce', $payload) || array_key_exists('at_hash', $payload) || array_key_exists('c_hash', $payload)) {
+        throw new Exception('ID tokens are not accepted by this API');
     }
-    if (!$audValid) {
+
+    $audList = auth0_normalize_aud_list($aud);
+    if (!$audList) {
+        throw new Exception('Invalid token audience');
+    }
+
+    $audHasExpected = in_array($expectedAudience, $audList, true);
+    if (!$audHasExpected) {
+        $looksLikeIdToken = $clientId !== '' && in_array($clientId, $audList, true);
+        if ($looksLikeIdToken) {
+            throw new Exception('ID tokens are not accepted by this API');
+        }
         throw new Exception('Invalid token audience');
     }
 
     return $payload;
+}
+
+function auth0_verify_id_token(string $jwt, string $domain, string $clientId): array {
+    throw new Exception('ID tokens are not accepted by this API');
 }
 
 function auth0_get_bearer_token(): string {
