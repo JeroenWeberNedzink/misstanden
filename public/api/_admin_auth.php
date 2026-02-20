@@ -123,7 +123,7 @@ function api_authz_require_admin(callable $deny): array {
     }
 
     $auth0Domain = api_authz_env_required('VITE_AUTH0_DOMAIN');
-    $auth0Audience = auth0_expected_api_audience($auth0Domain);
+    $auth0Audience = auth0_expected_api_audience();
     $auth0ClientId = api_authz_env_required('VITE_AUTH0_CLIENT_ID');
     $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
 

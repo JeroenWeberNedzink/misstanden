@@ -111,7 +111,7 @@ function wf_require_admin(string $baseUrl, string $serviceKey): array {
     $token = auth0_get_bearer_token();
     if ($token === '') wf_json(401, false, 'Authorization token required');
     $auth0Domain = wf_env('VITE_AUTH0_DOMAIN');
-    $auth0Audience = auth0_expected_api_audience($auth0Domain);
+    $auth0Audience = auth0_expected_api_audience();
 
     $claims = auth0_verify_access_token(
         $token,

@@ -1,3 +1,7 @@
+param(
+    [switch]$RequireAuth0Audience
+)
+
 $ErrorActionPreference = "Stop"
 
 # -----------------------------
@@ -38,6 +42,68 @@ function Prepare-Log($path) {
     }
 }
 
+function Is-Truthy($value) {
+    $text = ([string]$value).Trim().ToLowerInvariant()
+    return @('1', 'true', 'yes', 'on') -contains $text
+}
+
+function Read-DotEnvValue($filePath, $key) {
+    if (-not (Test-Path $filePath)) { return '' }
+    $pattern = '^\s*(?:export\s+)?' + [regex]::Escape($key) + '\s*=\s*(.*)$'
+    foreach ($line in (Get-Content $filePath -Encoding utf8)) {
+        $trimmed = $line.Trim()
+        if ($trimmed -eq '' -or $trimmed.StartsWith('#')) { continue }
+        if ($trimmed -notmatch $pattern) { continue }
+
+        $rawValue = ''
+        if ($Matches.Count -gt 1) {
+            $rawValue = [string]$Matches[1]
+        }
+        $rawValue = $rawValue.Trim()
+        if ($rawValue -eq '') { return '' }
+
+        if (($rawValue.StartsWith('"') -and $rawValue.EndsWith('"')) -or ($rawValue.StartsWith("'") -and $rawValue.EndsWith("'"))) {
+            return $rawValue.Substring(1, $rawValue.Length - 2).Trim()
+        }
+
+        $inlineCommentAt = $rawValue.IndexOf(' #')
+        if ($inlineCommentAt -ge 0) {
+            $rawValue = $rawValue.Substring(0, $inlineCommentAt)
+        }
+        return $rawValue.Trim()
+    }
+    return ''
+}
+
+function Resolve-ConfigValue($key, $rootDir) {
+    $fromProcess = ([string]([Environment]::GetEnvironmentVariable($key))).Trim()
+    if ($fromProcess -ne '') {
+        return [PSCustomObject]@{
+            Value  = $fromProcess
+            Source = 'process env'
+            Path   = ''
+        }
+    }
+
+    foreach ($relative in @('.env.local', '.env')) {
+        $path = Join-Path $rootDir $relative
+        $value = Read-DotEnvValue $path $key
+        if ($value -ne '') {
+            return [PSCustomObject]@{
+                Value  = $value
+                Source = $relative
+                Path   = $path
+            }
+        }
+    }
+
+    return [PSCustomObject]@{
+        Value  = ''
+        Source = 'missing'
+        Path   = ''
+    }
+}
+
 # -----------------------------
 # Paths
 # -----------------------------
@@ -55,6 +121,19 @@ if (-not (Test-Path $PublicDir)) { Die "public folder not found: $PublicDir" }
 $PHP_HOST  = if ($env:PHP_HOST) { $env:PHP_HOST } else { "127.0.0.1" }
 $PHP_PORT  = if ($env:PHP_PORT) { [int]$env:PHP_PORT } else { 8081 }
 $VITE_PORT = if ($env:VITE_PORT){ [int]$env:VITE_PORT } else { 3000 }
+
+# Guard: API token audience must be configured for Auth0 access-token API flows.
+$strictAudienceGuard = $RequireAuth0Audience -or (Is-Truthy $env:NZ_REQUIRE_AUTH0_AUDIENCE)
+$audienceConfig = Resolve-ConfigValue 'VITE_AUTH0_AUDIENCE' $RootDir
+if ([string]::IsNullOrWhiteSpace($audienceConfig.Value)) {
+    $message = 'Missing VITE_AUTH0_AUDIENCE (required for API access-token flow; no fallback is used)'
+    if ($strictAudienceGuard) {
+        Die "$message. Set VITE_AUTH0_AUDIENCE in process env, .env.local, or .env."
+    }
+    Warn "$message. Continuing in dev mode. Use -RequireAuth0Audience or set NZ_REQUIRE_AUTH0_AUDIENCE=true to hard fail."
+} else {
+    Info "Auth0 API audience detected from $($audienceConfig.Source)"
+}
 
 # -----------------------------
 # Logs (stdout / stderr separate)

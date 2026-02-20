@@ -1,6 +1,5 @@
 const API_AUDIENCE = String(import.meta.env?.VITE_AUTH0_AUDIENCE || '').trim();
 const API_SCOPE = String(import.meta.env?.VITE_AUTH0_API_SCOPE || '').trim();
-const AUTH0_DOMAIN = String(import.meta.env?.VITE_AUTH0_DOMAIN || '').trim();
 
 const mergeScope = (baseScope = '', extraScope = '') => {
   const parts = `${baseScope} ${extraScope}`
@@ -11,9 +10,7 @@ const mergeScope = (baseScope = '', extraScope = '') => {
 };
 
 export const getApiAudience = () => {
-  if (API_AUDIENCE) return API_AUDIENCE;
-  if (AUTH0_DOMAIN) return `https://${AUTH0_DOMAIN}/mfa/`;
-  return '';
+  return API_AUDIENCE;
 };
 export const getApiScope = () => API_SCOPE;
 
