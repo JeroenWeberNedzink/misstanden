@@ -10,6 +10,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_supabase.php';
+require_once __DIR__ . '/_errors.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -555,7 +556,7 @@ function handle_reporter_message(array $data): void {
     try {
         supabase_request('POST', $baseUrl . '/rest/v1/ticket_actions', $serviceKey, $actionPayload, false);
     } catch (Throwable $e) {
-        error_log('[tickets.api] Could not write ticket_actions for reporter message: ' . $e->getMessage());
+        error_log('[tickets.api] Could not write ticket_actions for reporter message: ' . api_redact_sensitive($e->getMessage()));
     }
 
     $ticketAfter = fetch_ticket_by_credentials($baseUrl, $serviceKey, $ticketInput, $accessCode);
@@ -598,5 +599,6 @@ try {
             api_json(400, false, 'Unsupported action');
     }
 } catch (Throwable $e) {
-    api_json(500, false, $e->getMessage());
+    $errorId = api_log_exception('tickets.api', $e);
+    api_json(500, false, 'Internal server error', ['error_id' => $errorId]);
 }

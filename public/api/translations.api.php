@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_admin_auth.php';
+require_once __DIR__ . '/_errors.php';
 
 // CORS headers
 header('Content-Type: application/json; charset=utf-8');
@@ -411,7 +412,7 @@ try {
                     logAuditChange($keyPath, $lang, 'CREATE', null, $value);
                 } catch (Exception $e) {
                     // Skip languages that can't be read/written
-                    error_log("Failed to create translation for $lang: " . $e->getMessage());
+                    error_log("Failed to create translation for $lang: " . api_redact_sensitive($e->getMessage()));
                 }
             }
 
@@ -537,7 +538,7 @@ try {
                 }
             } catch (Exception $e) {
                 // Skip languages that can't be read/written
-                error_log("Failed to delete translation for $lang: " . $e->getMessage());
+                error_log("Failed to delete translation for $lang: " . api_redact_sensitive($e->getMessage()));
             }
         }
 
@@ -548,6 +549,6 @@ try {
     }
 
 } catch (Exception $e) {
-    error_log("Translation API Error: " . $e->getMessage());
-    apiResponse(500, false, 'Server error: ' . $e->getMessage());
+    $errorId = api_log_exception('translations.api', $e);
+    apiResponse(500, false, 'Internal server error', ['error_id' => $errorId]);
 }

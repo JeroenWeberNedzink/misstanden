@@ -59,8 +59,7 @@ loadEnvFile(__DIR__ . '/../../.env.local', true);
 loadEnvFile(__DIR__ . '/../../.env', false); // optional: let .env.local win
 
 require_once __DIR__ . '/_crypto.php';
-error_log("MAIL_DEV_SINK getenv=" . var_export(getenv('MAIL_DEV_SINK'), true));
-error_log("MAIL_DEV_SINK _ENV=" . var_export($_ENV['MAIL_DEV_SINK'] ?? null, true));
+require_once __DIR__ . '/_errors.php';
 // ---------- Preflight ----------
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -426,10 +425,11 @@ try {
     ], $logger->all());
 
 } catch (\Throwable $e) {
-    ApiResponse::json(500, false, 'Failed to send email: ' . $e->getMessage(), [], $debugMode ? [
+    $errorId = api_log_exception('mail.api', $e);
+    ApiResponse::json(500, false, 'Failed to send email', ['error_id' => $errorId], $debugMode ? [
         'exception' => [
             'type' => get_class($e),
-            'message' => $e->getMessage(),
+            'message' => api_redact_sensitive($e->getMessage()),
             'file' => $e->getFile(),
             'line' => $e->getLine(),
         ],

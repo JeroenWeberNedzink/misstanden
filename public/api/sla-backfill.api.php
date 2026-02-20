@@ -8,6 +8,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_admin_auth.php';
 require_once __DIR__ . '/_supabase.php';
+require_once __DIR__ . '/_errors.php';
 
 // Headers
 header('Content-Type: application/json; charset=utf-8');
@@ -168,5 +169,6 @@ try {
         'force' => $force
     ]);
 } catch (Exception $e) {
-    sla_json(500, false, $e->getMessage());
+    $errorId = api_log_exception('sla-backfill.api', $e);
+    sla_json(500, false, 'Internal server error', ['error_id' => $errorId]);
 }

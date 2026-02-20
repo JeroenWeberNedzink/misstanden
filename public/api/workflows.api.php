@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_auth0.php';
 require_once __DIR__ . '/_supabase.php';
+require_once __DIR__ . '/_errors.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -521,5 +522,6 @@ try {
 
     wf_json(400, false, 'Unsupported action');
 } catch (Throwable $e) {
-    wf_json(500, false, $e->getMessage());
+    $errorId = api_log_exception('workflows.api', $e);
+    wf_json(500, false, 'Internal server error', ['error_id' => $errorId]);
 }
