@@ -12,13 +12,29 @@ import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import Icon from '../../components/AppIcon';
 import Select from '../../components/ui/Select';
+import { getApiAccessToken } from '../../lib/auth0ApiToken';
 
 const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
+const parseRoles = (rawRoles) => {
+  if (Array.isArray(rawRoles)) return rawRoles.map((r) => String(r || '').trim()).filter(Boolean);
+  if (typeof rawRoles === 'string') {
+    const trimmed = rawRoles.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed.map((r) => String(r || '').trim()).filter(Boolean);
+    } catch {
+      // Continue with scalar role fallback.
+    }
+    return [trimmed];
+  }
+  return [];
+};
 
 export default function HandlerDashboard() {
   const [tickets, setTickets] = useState([]);
-  const { user } = useAuth0();
+  const { user, getAccessTokenSilently } = useAuth0();
   const [currentHandlerId, setCurrentHandlerId] = useState(null);
   const [currentHandlerRole, setCurrentHandlerRole] = useState(null);
   const [workflows, setWorkflows] = useState([]);
@@ -48,10 +64,10 @@ export default function HandlerDashboard() {
   }, [user]);
 
   useEffect(() => {
-    if (currentHandlerId) {
+    if (currentHandlerId && currentHandlerRole) {
       loadData();
     }
-  }, [currentHandlerId]);
+  }, [currentHandlerId, currentHandlerRole]);
 
   const normalizeStatuses = (raw) => {
     const arr = Array.isArray(raw) ? raw : [];
@@ -121,29 +137,45 @@ export default function HandlerDashboard() {
   };
 
   const loadHandlerProfile = async () => {
-    if (!user?.email) return;
+    if (!user) return;
 
     try {
-      // Find handler by email
-      const handlers = await ticketService.getAllHandlers();
-      const handler = handlers?.find(h => h?.email?.toLowerCase() === user?.email?.toLowerCase());
+      let handler = null;
 
-      if (handler?.id) {
-        setCurrentHandlerId(handler.id);
-
-        // Determine role from roles array (supports both old 'role' and new 'roles' fields)
-        let role = 'handler';
-        if (handler.roles && Array.isArray(handler.roles)) {
-          role = handler.roles.includes('ADMIN') ? 'admin' : 'handler';
-        } else if (handler.role) {
-          role = handler.role; // Fallback to old role field during migration
+      // Preferred flow: resolve handler context via authenticated backend endpoint.
+      try {
+        const token = await getApiAccessToken(getAccessTokenSilently);
+        const resp = await fetch('/api/me.api.php', {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const payload = await resp.json().catch(() => null);
+        if (resp.ok && payload?.success && payload?.data?.handler) {
+          handler = payload.data.handler;
         }
-
-        setCurrentHandlerRole(role);
-        console.log('[HandlerDashboard] Handler loaded:', { id: handler.id, role, roles: handler.roles });
-      } else {
-        console.warn('Handler not found for user:', user.email);
+      } catch (apiErr) {
+        console.warn('[HandlerDashboard] /api/me.api.php lookup failed, fallback to direct handler lookup', apiErr);
       }
+
+      // Fallback for local/dev where API token or endpoint may be unavailable.
+      if (!handler && user?.email) {
+        const handlers = await ticketService.getAllHandlers();
+        const email = safeLower(user.email);
+        handler = handlers?.find((h) => safeLower(h?.email) === email) || null;
+      }
+
+      if (!handler?.id) {
+        console.warn('[HandlerDashboard] Handler not found for current user', { email: user?.email, sub: user?.sub });
+        return;
+      }
+
+      const roles = parseRoles(handler.roles);
+      const role = roles.some((r) => r.toUpperCase() === 'ADMIN') ? 'admin' : 'handler';
+      setCurrentHandlerId(handler.id);
+      setCurrentHandlerRole(role);
+      console.log('[HandlerDashboard] Handler loaded:', { id: handler.id, role, roles });
     } catch (err) {
       console.error('Error loading handler profile:', err);
     }
@@ -153,30 +185,64 @@ export default function HandlerDashboard() {
     if (!currentHandlerId) return;
 
     try {
-      // Get tickets filtered by handler's assigned workflows
-      const ticketsData = await ticketService?.getAllTickets({ handlerId: currentHandlerId });
+      const isAdmin = currentHandlerRole === 'admin';
+      const ticketsData = await ticketService?.getAllTickets(isAdmin ? {} : { handlerId: currentHandlerId });
 
-      // Get handler's assigned workflows
-      const { data: handlerWorkflows } = await supabase
-        .from('handler_workflows')
-        .select('workflow_id')
-        .eq('handler_id', currentHandlerId);
-
-      const workflowIds = (handlerWorkflows || []).map(hw => hw.workflow_id);
-
-      console.log('[HandlerDashboard] Handler workflows:', workflowIds);
-
-      // Get only workflows that the handler has access to
       let workflowsData = [];
-      if (workflowIds.length > 0) {
-        const { data: workflows } = await supabase
+      if (isAdmin) {
+        const { data: workflows, error: workflowsError } = await supabase
           .from('workflows')
           .select('*')
-          .in('id', workflowIds)
           .eq('active', true)
           .order('display_order');
+        if (workflowsError) {
+          console.warn('[HandlerDashboard] Could not load workflows for admin:', workflowsError);
+        } else {
+          workflowsData = ticketService.toCamelCase(workflows || []);
+        }
+      } else {
+        const { data: handlerWorkflows, error: hwError } = await supabase
+          .from('handler_workflows')
+          .select('workflow_id')
+          .eq('handler_id', currentHandlerId);
 
-        workflowsData = ticketService.toCamelCase(workflows || []);
+        const workflowIds = (handlerWorkflows || []).map((hw) => hw.workflow_id).filter(Boolean);
+        console.log('[HandlerDashboard] Handler workflows:', workflowIds);
+
+        if (hwError) {
+          console.warn('[HandlerDashboard] Could not load handler_workflows, deriving workflows from loaded tickets:', hwError);
+        }
+
+        if (workflowIds.length > 0) {
+          const { data: workflows, error: workflowsError } = await supabase
+            .from('workflows')
+            .select('*')
+            .in('id', workflowIds)
+            .eq('active', true)
+            .order('display_order');
+          if (workflowsError) {
+            console.warn('[HandlerDashboard] Could not load workflows by handler_workflows:', workflowsError);
+          } else {
+            workflowsData = ticketService.toCamelCase(workflows || []);
+          }
+        } else {
+          const workflowCodes = Array.from(
+            new Set((ticketsData || []).map((t) => safeTrim(t?.workflowType)).filter(Boolean))
+          );
+          if (workflowCodes.length > 0) {
+            const { data: workflowsByCode, error: workflowsByCodeError } = await supabase
+              .from('workflows')
+              .select('*')
+              .in('code', workflowCodes)
+              .eq('active', true)
+              .order('display_order');
+            if (workflowsByCodeError) {
+              console.warn('[HandlerDashboard] Could not load workflows by ticket workflow_type:', workflowsByCodeError);
+            } else {
+              workflowsData = ticketService.toCamelCase(workflowsByCode || []);
+            }
+          }
+        }
       }
 
       // Attach DB-driven statuses to workflows (from workflow_statuses table)

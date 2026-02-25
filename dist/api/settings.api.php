@@ -15,6 +15,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_auth0.php';
+require_once __DIR__ . '/_supabase.php';
+require_once __DIR__ . '/_errors.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -103,11 +105,7 @@ function settings_get_supabase_url(): string {
 }
 
 function settings_get_supabase_service_key(): string {
-    $key = getenv('SUPABASE_SERVICE_ROLE_KEY') ?: getenv('SUPABASE_SERVICE_KEY') ?: '';
-    if ($key === '') {
-        throw new Exception('Missing Supabase service key configuration (set SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY)');
-    }
-    return $key;
+    return supabase_get_service_role_key();
 }
 
 function settings_is_local_dev(): bool {
@@ -194,8 +192,9 @@ function settings_require_admin_context(): array {
     }
 
     $auth0Domain = settings_get_env_required('VITE_AUTH0_DOMAIN');
+    $auth0Audience = auth0_expected_api_audience();
     $auth0ClientId = settings_get_env_required('VITE_AUTH0_CLIENT_ID');
-    $claims = auth0_verify_id_token($token, $auth0Domain, $auth0ClientId);
+    $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
 
     $baseUrl = settings_get_supabase_url();
     $serviceKey = settings_get_supabase_service_key();
@@ -370,5 +369,6 @@ try {
 
     settings_api_json(405, false, 'Method not allowed');
 } catch (Throwable $e) {
-    settings_api_json(500, false, $e->getMessage());
+    $errorId = api_log_exception('settings.api', $e);
+    settings_api_json(500, false, 'Internal server error', ['error_id' => $errorId]);
 }

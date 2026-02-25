@@ -10,6 +10,8 @@ declare(strict_types=1);
  * - delete_all
  */
 
+require_once __DIR__ . '/_errors.php';
+
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
@@ -206,10 +208,22 @@ try {
 
     throw new Exception('Unknown action');
 } catch (Throwable $e) {
+    $safeClientMessages = [
+        'Invalid JSON payload',
+        'action and access_token are required',
+        'otp is required',
+        'Unknown action',
+    ];
+    $message = in_array($e->getMessage(), $safeClientMessages, true)
+        ? $e->getMessage()
+        : 'MFA request failed';
+    $errorId = api_log_exception('mfa.api', $e, ['action' => (string)($action ?? '')]);
+
     http_response_code(500);
     $payload = [
         'success' => false,
-        'message' => $e->getMessage()
+        'message' => $message,
+        'error_id' => $errorId,
     ];
     if ($debugMode) {
         $payload['debug'] = [

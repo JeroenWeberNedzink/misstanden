@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_auth0.php';
+require_once __DIR__ . '/_supabase.php';
+require_once __DIR__ . '/_errors.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -37,9 +39,7 @@ function wf_url(): string {
 }
 
 function wf_key(): string {
-    $key = getenv('SUPABASE_SERVICE_ROLE_KEY') ?: getenv('SUPABASE_SERVICE_KEY') ?: '';
-    if ($key === '') throw new Exception('Missing Supabase service role key');
-    return $key;
+    return supabase_get_service_role_key();
 }
 
 function wf_uuid(string $v): bool {
@@ -107,11 +107,75 @@ function wf_is_admin(array $handler): bool {
     return !empty($p['admin']) || !empty($p['manage_workflows']) || !empty($p['manage_users']) || !empty($p['manage_settings']);
 }
 
+function wf_roles_array($raw): array {
+    if (is_string($raw)) {
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) $raw = $decoded;
+        else $raw = [$raw];
+    }
+    if (!is_array($raw)) return [];
+
+    $roles = [];
+    foreach ($raw as $r) {
+        $role = strtoupper(trim((string)$r));
+        if ($role === '') continue;
+        if (!in_array($role, $roles, true)) $roles[] = $role;
+    }
+    return $roles;
+}
+
+function wf_primary_role(array $roles): ?string {
+    $priority = ['SUPER_ADMIN', 'ADMIN', 'HANDLER', 'USER'];
+    foreach ($priority as $candidate) {
+        if (in_array($candidate, $roles, true)) return $candidate;
+    }
+    return $roles[0] ?? null;
+}
+
+function wf_normalize_handler_row(array $handler): array {
+    $roles = wf_roles_array($handler['roles'] ?? ($handler['role'] ?? []));
+    $handler['roles'] = $roles;
+
+    $role = trim((string)($handler['role'] ?? ''));
+    $handler['role'] = $role !== '' ? strtoupper($role) : wf_primary_role($roles);
+    return $handler;
+}
+
+function wf_normalize_handler_rows(array $rows): array {
+    $out = [];
+    foreach ($rows as $row) {
+        $out[] = is_array($row) ? wf_normalize_handler_row($row) : $row;
+    }
+    return $out;
+}
+
+function wf_normalize_routing_rows(array $rows): array {
+    $out = [];
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            $out[] = $row;
+            continue;
+        }
+        if (isset($row['handlers']) && is_array($row['handlers'])) {
+            $row['handlers'] = wf_normalize_handler_row($row['handlers']);
+        }
+        $out[] = $row;
+    }
+    return $out;
+}
+
 function wf_require_admin(string $baseUrl, string $serviceKey): array {
     $token = auth0_get_bearer_token();
     if ($token === '') wf_json(401, false, 'Authorization token required');
+    $auth0Domain = wf_env('VITE_AUTH0_DOMAIN');
+    $auth0Audience = auth0_expected_api_audience();
 
-    $claims = auth0_verify_id_token($token, wf_env('VITE_AUTH0_DOMAIN'), wf_env('VITE_AUTH0_CLIENT_ID'));
+    $claims = auth0_verify_access_token(
+        $token,
+        $auth0Domain,
+        $auth0Audience,
+        wf_env('VITE_AUTH0_CLIENT_ID')
+    );
     $sub = trim((string)($claims['sub'] ?? ''));
     $email = trim((string)($claims['email'] ?? ''));
 
@@ -166,15 +230,17 @@ try {
             wf_json(200, true, 'Workflows loaded', ['rows' => wf_or_fail('List workflows', $code, $decoded, $raw)]);
         }
         if ($action === 'active_handlers') {
-            [$code, $decoded, $raw] = wf_req('GET', $baseUrl . '/rest/v1/handlers?select=id,name,email,role,active&active=eq.true&order=name.asc', $serviceKey);
-            wf_json(200, true, 'Handlers loaded', ['rows' => wf_or_fail('List handlers', $code, $decoded, $raw)]);
+            [$code, $decoded, $raw] = wf_req('GET', $baseUrl . '/rest/v1/handlers?select=id,name,email,roles,active&active=eq.true&order=name.asc', $serviceKey);
+            $rows = wf_or_fail('List handlers', $code, $decoded, $raw);
+            wf_json(200, true, 'Handlers loaded', ['rows' => wf_normalize_handler_rows($rows)]);
         }
         if ($action === 'routing_rules') {
             $workflowId = trim((string)($_GET['workflow_id'] ?? ''));
             if (!wf_uuid($workflowId)) throw new Exception('workflow_id must be UUID');
-            $select = rawurlencode('id,handler_id,workflow_id,handlers:handler_id(id,name,email,role,active)');
+            $select = rawurlencode('id,handler_id,workflow_id,handlers:handler_id(id,name,email,roles,active)');
             [$code, $decoded, $raw] = wf_req('GET', $baseUrl . '/rest/v1/handler_workflows?select=' . $select . '&workflow_id=eq.' . rawurlencode($workflowId), $serviceKey);
-            wf_json(200, true, 'Routing rules loaded', ['rows' => wf_or_fail('List routing rules', $code, $decoded, $raw)]);
+            $rows = wf_or_fail('List routing rules', $code, $decoded, $raw);
+            wf_json(200, true, 'Routing rules loaded', ['rows' => wf_normalize_routing_rows($rows)]);
         }
         if ($action === 'status_list') {
             $workflowId = trim((string)($_GET['workflow_id'] ?? ''));
@@ -522,5 +588,6 @@ try {
 
     wf_json(400, false, 'Unsupported action');
 } catch (Throwable $e) {
-    wf_json(500, false, $e->getMessage());
+    $errorId = api_log_exception('workflows.api', $e);
+    wf_json(500, false, 'Internal server error', ['error_id' => $errorId]);
 }
