@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { normalizeHandlerRecord, normalizeHandlerRecords } from './utils/handlerNormalization';
+import { ticketService } from './ticketService';
 
 // Helper function to convert snake_case to camelCase
 const toCamelCase = (obj) => {
@@ -106,53 +107,38 @@ export const priorityWorkflowService = {
 
   // Get all active handlers for filter
   async getActiveHandlers() {
-    const { data, error } = await supabase
-      ?.from('handlers')
-      ?.select('id, name, email, active, roles, permissions, user_id, picture, created_at, updated_at, last_login')
-      ?.eq('active', true)
-      ?.order('name');
+    try {
+      const handlers = await ticketService.getAllHandlers({
+        includeInactive: false,
+        enrichPermissions: false,
+      });
+      return normalizeHandlerRecords(toCamelCase(handlers) || []);
+    } catch (err) {
+      const { data, error } = await supabase
+        ?.from('handlers')
+        ?.select('id, name, email, active, roles, permissions, user_id, picture, created_at, updated_at, last_login')
+        ?.eq('active', true)
+        ?.order('name');
 
-    if (error) throw error;
-    return normalizeHandlerRecords(toCamelCase(data) || []);
+      if (error) throw err;
+      return normalizeHandlerRecords(toCamelCase(data) || []);
+    }
   },
 
   // Update ticket priority
   async updateTicketPriority(ticketId, severityCode) {
-    const { data, error } = await supabase
-      ?.from('tickets')
-      ?.update({ severity_code: severityCode })
-      ?.eq('id', ticketId)
-      ?.select()
-      ?.single();
-
-    if (error) throw error;
-    return toCamelCase(data);
+    const updated = await ticketService.updateTicket(ticketId, { severityCode });
+    return toCamelCase(updated);
   },
 
   // Reassign ticket to different handler
   async reassignTicket(ticketId, newHandlerId) {
     const normalizedHandlerId = newHandlerId || null;
-
-    if (normalizedHandlerId) {
-      const { data: handler, error: handlerError } = await supabase
-        ?.from('handlers')
-        ?.select('id, active')
-        ?.eq('id', normalizedHandlerId)
-        ?.maybeSingle();
-
-      if (handlerError) throw handlerError;
-      if (!handler?.id) throw new Error('Selected handler no longer exists');
-      if (handler.active === false) throw new Error('Inactive handlers cannot be assigned');
+    if (!normalizedHandlerId) {
+      const updated = await ticketService.setTicketHandlers(ticketId, []);
+      return toCamelCase(updated);
     }
-
-    const { data, error } = await supabase
-      ?.from('tickets')
-      ?.update({ handler_id: normalizedHandlerId })
-      ?.eq('id', ticketId)
-      ?.select()
-      ?.single();
-
-    if (error) throw error;
-    return toCamelCase(data);
+    const updated = await ticketService.assignHandler(ticketId, normalizedHandlerId);
+    return toCamelCase(updated);
   }
 };

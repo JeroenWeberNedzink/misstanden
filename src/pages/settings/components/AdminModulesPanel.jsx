@@ -99,17 +99,22 @@ const AdminModulesPanel = () => {
       setLoading(true);
       setError('');
 
-      const [usersData, permsData, rolesData, workflowsData] = await Promise.all([
+      const [usersResult, permsResult, rolesResult, workflowsResult] = await Promise.allSettled([
         ticketService.getAllHandlers(),
         permissionService.getAllPermissions(),
         permissionService.getAllRoles(),
         workflowService.getWorkflowsWithStats(),
       ]);
 
-      setUsers(usersData || []);
-      setPermissions(permsData || []);
-      setRoles(rolesData || []);
-      setWorkflows(workflowsData || []);
+      setUsers(usersResult.status === 'fulfilled' ? (usersResult.value || []) : []);
+      setPermissions(permsResult.status === 'fulfilled' ? (permsResult.value || []) : []);
+      setRoles(rolesResult.status === 'fulfilled' ? (rolesResult.value || []) : []);
+      setWorkflows(workflowsResult.status === 'fulfilled' ? (workflowsResult.value || []) : []);
+
+      const failed = [usersResult, permsResult, rolesResult, workflowsResult].filter((r) => r.status === 'rejected');
+      if (failed.length > 0) {
+        setError(`Niet alle admin-gegevens konden geladen worden (${failed.length}/4 mislukt).`);
+      }
     } catch (err) {
       console.error('Error loading admin data:', err);
       setError('Fout bij laden van gegevens');

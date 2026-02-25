@@ -36,9 +36,10 @@ export const handlerProfileService = {
       ?.from('handlers')
       ?.select('*')
       ?.eq('user_id', userId)
-      ?.single();
+      ?.maybeSingle();
 
-    if (error) throw error;
+    if (error && error?.code !== 'PGRST116') throw error;
+    if (!data) return null;
     return normalizeHandlerRecord(toCamelCase(data));
   },
 
@@ -48,7 +49,7 @@ export const handlerProfileService = {
       ?.from('user_availability')
       ?.select('*')
       ?.eq('user_id', userId)
-      ?.single();
+      ?.maybeSingle();
 
     if (error && error?.code !== 'PGRST116') throw error; // Ignore "not found" errors
     return toCamelCase(data);
@@ -60,7 +61,7 @@ export const handlerProfileService = {
       ?.from('handler_notification_settings')
       ?.select('*')
       ?.eq('handler_id', handlerId)
-      ?.single();
+      ?.maybeSingle();
 
     if (error && error?.code !== 'PGRST116') throw error;
     return toCamelCase(data);
@@ -74,9 +75,10 @@ export const handlerProfileService = {
       ?.update(snakeData)
       ?.eq('id', handlerId)
       ?.select()
-      ?.single();
+      ?.maybeSingle();
 
     if (error) throw error;
+    if (!data) throw new Error('Handler profile not found or not accessible');
     return normalizeHandlerRecord(toCamelCase(data));
   },
 
@@ -89,7 +91,7 @@ export const handlerProfileService = {
       ?.from('user_availability')
       ?.select('user_id')
       ?.eq('user_id', userId)
-      ?.single();
+      ?.maybeSingle();
 
     let result;
     if (existing) {
@@ -99,7 +101,7 @@ export const handlerProfileService = {
         ?.update(snakeData)
         ?.eq('user_id', userId)
         ?.select()
-        ?.single();
+        ?.maybeSingle();
       
       if (error) throw error;
       result = data;
@@ -109,7 +111,7 @@ export const handlerProfileService = {
         ?.from('user_availability')
         ?.insert({ user_id: userId, ...snakeData })
         ?.select()
-        ?.single();
+        ?.maybeSingle();
       
       if (error) throw error;
       result = data;
@@ -144,7 +146,7 @@ export const handlerProfileService = {
       ?.from('handler_notification_settings')
       ?.select('id')
       ?.eq('handler_id', handlerId)
-      ?.single();
+      ?.maybeSingle();
 
     let result;
     if (existing) {
@@ -154,7 +156,7 @@ export const handlerProfileService = {
         ?.update(snakeData)
         ?.eq('handler_id', handlerId)
         ?.select()
-        ?.single();
+        ?.maybeSingle();
 
       if (error) throw error;
       result = data;
@@ -164,7 +166,7 @@ export const handlerProfileService = {
         ?.from('handler_notification_settings')
         ?.insert({ handler_id: handlerId, ...snakeData })
         ?.select()
-        ?.single();
+        ?.maybeSingle();
 
       if (error) throw error;
       result = data;

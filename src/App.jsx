@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useState } from "react";
 import { Auth0Provider, useAuth0 } from "@auth0/auth0-react";
 import { SettingsProvider } from "./contexts/SettingsContext";
 import Routes from "./Routes";
@@ -7,27 +7,54 @@ import { workflowService } from "./services/workflowService";
 import { settingsService } from "./services/SettingsService";
 import { translationService } from "./services/translationService";
 import { ticketService } from "./services/ticketService";
+import { permissionService } from "./services/permissionService";
+import { auditLogService } from "./services/auditLogService";
 import { getApiAccessToken, getApiAudience, getApiScope } from "./lib/auth0ApiToken";
 import "./styles/tailwind.css";
 import "./styles/index.css";
 
+const parseJwtExpiryMs = (token) => {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length < 2) return 0;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    const exp = Number(payload?.exp || 0);
+    return Number.isFinite(exp) && exp > 0 ? exp * 1000 : 0;
+  } catch {
+    return 0;
+  }
+};
+
 function ServiceTokenBridge() {
   const { getAccessTokenSilently } = useAuth0();
 
-  useEffect(() => {
-    const provider = async () => getApiAccessToken(getAccessTokenSilently);
+  useLayoutEffect(() => {
+    let cachedToken = '';
+    let cachedExpMs = 0;
+    const provider = async () => {
+      const now = Date.now();
+      if (cachedToken && cachedExpMs - now > 30_000) {
+        return cachedToken;
+      }
+
+      let token = '';
+      try {
+        token = await getApiAccessToken(getAccessTokenSilently);
+      } catch (error) {
+        token = await getApiAccessToken(getAccessTokenSilently, { cacheMode: 'off' });
+      }
+
+      cachedToken = token;
+      cachedExpMs = parseJwtExpiryMs(token) || (now + 60_000);
+      return token;
+    };
 
     workflowService.setTokenProvider(provider);
     settingsService.setTokenProvider(provider);
     translationService.setTokenProvider(provider);
     ticketService.setTokenProvider(provider);
-
-    return () => {
-      workflowService.setTokenProvider(null);
-      settingsService.setTokenProvider(null);
-      translationService.setTokenProvider(null);
-      ticketService.setTokenProvider(null);
-    };
+    permissionService.setTokenProvider(provider);
+    auditLogService.setTokenProvider(provider);
   }, [getAccessTokenSilently]);
 
   return null;

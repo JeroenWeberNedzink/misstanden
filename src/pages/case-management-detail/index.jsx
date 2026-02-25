@@ -14,6 +14,7 @@ import CaseManagementPanel from './components/CaseManagementPanel';
 import SLACompactCard from './components/SLACompactCard';
 import Icon from '../../components/AppIcon';
 import { ticketService } from '../../services/ticketService';
+import { getApiAccessToken } from '../../lib/auth0ApiToken';
 import { addHours, getFirstResponseAt, getFirstResponseHoursForTicket, toDateSafe } from '../../utils/slaUtils';
 
 const fmtDateTime = (value, locale) => {
@@ -54,7 +55,11 @@ const resolveAssignedHandler = (ticket, handlers = [], fallbackLabel = '-') => {
 
   if (map.size === 0 && primaryAssignedToId) {
     const match = (handlers || []).find((h) => h?.id === primaryAssignedToId);
-    if (match) put(match);
+    if (match) {
+      put(match);
+    } else {
+      put({ id: primaryAssignedToId, name: null, email: null });
+    }
   }
 
   const assignedHandlers = Array.from(map.values());
@@ -66,7 +71,9 @@ const resolveAssignedHandler = (ticket, handlers = [], fallbackLabel = '-') => {
   const assignedTo =
     assignedToNames.length > 0
       ? assignedToNames.join(', ')
-      : fallbackLabel;
+      : assignedToIds.length > 0
+        ? `#${String(assignedToIds[0]).slice(0, 8)}`
+        : fallbackLabel;
 
   return {
     assignedToId: primaryAssignedToId || assignedToIds[0] || null,
@@ -74,6 +81,44 @@ const resolveAssignedHandler = (ticket, handlers = [], fallbackLabel = '-') => {
     assignedHandlers,
     assignedTo,
   };
+};
+
+const toHandlerOption = (handler, fallbackRole) => {
+  const id = String(handler?.id || '').trim();
+  if (!id) return null;
+  return {
+    id,
+    name: String(handler?.name || handler?.email || '').trim() || id,
+    email: String(handler?.email || '').trim().toLowerCase() || null,
+    role: handler?.role || fallbackRole,
+    active: handler?.active !== false,
+  };
+};
+
+const mergeHandlerOptions = (baseHandlers = [], extraHandlers = []) => {
+  const out = [];
+  const byId = new Map();
+
+  const upsert = (handler) => {
+    if (!handler?.id) return;
+    const id = String(handler.id).trim();
+    if (!id) return;
+    const existing = byId.get(id);
+    if (!existing) {
+      const next = { ...handler, id };
+      byId.set(id, next);
+      out.push(next);
+      return;
+    }
+    existing.name = existing.name || handler.name;
+    existing.email = existing.email || handler.email || null;
+    existing.role = existing.role || handler.role;
+    existing.active = existing.active !== false && handler.active !== false;
+  };
+
+  (baseHandlers || []).forEach(upsert);
+  (extraHandlers || []).forEach(upsert);
+  return out;
 };
 
 const isTerminalStatusValue = (value) => {
@@ -134,7 +179,8 @@ export default function CaseManagementDetail() {
   const navigate = useNavigate();
   const isMountedRef = useRef(true);
   const { t, i18n } = useTranslation();
-  const { user } = useAuth0();
+  const { user, getAccessTokenSilently } = useAuth0();
+  const availableHandlersRef = useRef([]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -142,6 +188,10 @@ export default function CaseManagementDetail() {
       isMountedRef.current = false;
     };
   }, [t]);
+
+  useEffect(() => {
+    availableHandlersRef.current = availableHandlers || [];
+  }, [availableHandlers]);
 
   const showToast = useCallback((message) => {
     setToastMessage(message);
@@ -309,29 +359,52 @@ export default function CaseManagementDetail() {
   // --- load handler profile ---
   useEffect(() => {
     (async () => {
-      if (!user?.email) return;
+      if (!user) return;
       try {
-        const handlers = await ticketService.getAllHandlers();
-        const handler = handlers?.find(h => h?.email?.toLowerCase() === user?.email?.toLowerCase());
+        let handler = null;
+
+        try {
+          const token = await getApiAccessToken(getAccessTokenSilently);
+          const resp = await fetch('/api/me.api.php', {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+          const payload = await resp.json().catch(() => null);
+          if (resp.ok && payload?.success && payload?.data?.handler) {
+            handler = payload.data.handler;
+          }
+        } catch (apiErr) {
+          console.warn('[CaseManagementDetail] /api/me.api.php lookup failed, fallback to direct handler lookup', apiErr);
+        }
+
+        if (!handler && user?.email) {
+          const handlers = await ticketService.getAllHandlers();
+          handler = handlers?.find((h) => h?.email?.toLowerCase() === user?.email?.toLowerCase());
+        }
+
         if (handler?.id) setCurrentHandlerId(handler.id);
+        const fallbackRole = t('caseManagement.handler');
+        const currentOption = toHandlerOption(handler, fallbackRole);
+        if (currentOption && isMountedRef.current) {
+          setAvailableHandlers((prev) => mergeHandlerOptions(prev, [currentOption]));
+        }
       } catch (err) {
         console.error('Error loading handler profile:', err);
       }
     })();
-  }, [user?.email]);
+  }, [user, getAccessTokenSilently, t]);
 
   const loadHandlers = useCallback(async () => {
     try {
       const handlers = await ticketService.getAllHandlers({ includeInactive: true });
       if (!isMountedRef.current) return;
-      setAvailableHandlers(
-        (handlers ?? []).map((h) => ({
-          id: h?.id,
-          name: h?.name,
-          role: h?.role || t('caseManagement.handler'),
-          active: h?.active !== false,
-        }))
-      );
+      const fallbackRole = t('caseManagement.handler');
+      const mapped = (handlers ?? [])
+        .map((h) => toHandlerOption(h, fallbackRole))
+        .filter(Boolean);
+      setAvailableHandlers((prev) => mergeHandlerOptions(prev, mapped));
     } catch (err) {
       console.error('Error loading handlers:', err);
     }
@@ -351,6 +424,20 @@ export default function CaseManagementDetail() {
       const fullTicket = await ticketService.getTicketById(ticketId);
       if (!isMountedRef.current) return;
 
+      const fallbackRole = t('caseManagement.handler');
+      const ticketHandlers = [];
+      const directHandler = toHandlerOption(fullTicket?.handlers, fallbackRole);
+      if (directHandler) ticketHandlers.push(directHandler);
+      for (const entry of fullTicket?.ticketHandlers || []) {
+        const fromRelation = toHandlerOption(entry?.handler, fallbackRole);
+        if (fromRelation) ticketHandlers.push(fromRelation);
+      }
+      if (ticketHandlers.length > 0) {
+        setAvailableHandlers((prev) => mergeHandlerOptions(prev, ticketHandlers));
+      }
+
+      const handlersForFormatting = mergeHandlerOptions(availableHandlersRef.current, ticketHandlers);
+
       let statuses = [];
       try {
         const wfCode = fullTicket?.workflowType || fullTicket?.workflow_type;
@@ -366,7 +453,7 @@ export default function CaseManagementDetail() {
       const statusMeta = resolveStatusMeta(fullTicket, statuses);
 
       // core
-      setCaseData(formatCase(fullTicket, statusMeta, availableHandlers));
+      setCaseData(formatCase(fullTicket, statusMeta, handlersForFormatting));
 
       const allAttachments = fullTicket?.attachments ?? [];
       const publicAttachments = allAttachments.filter(

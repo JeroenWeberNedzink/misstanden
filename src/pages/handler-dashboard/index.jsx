@@ -283,7 +283,7 @@ export default function HandlerDashboard() {
 
   const handleAssignHandler = async (ticketId, handlerId) => {
     try {
-      await ticketService?.assignHandler(ticketId, handlerId);
+      await ticketService?.assignHandler(ticketId, handlerId, null, { currentHandlerId });
       await loadData();
     } catch (err) {
       console.error('Error assigning handler:', err);

@@ -1,4 +1,6 @@
 import { supabase } from '../lib/supabase';
+const WORKFLOW_API_URL = '/api/workflows.api.php';
+let permissionTokenProvider = null;
 
 // Helper function to convert snake_case to camelCase
 const toCamelCase = (obj) => {
@@ -28,20 +30,91 @@ const toSnakeCase = (obj) => {
   return snakeObj;
 };
 
+const setTokenProvider = (provider) => {
+  permissionTokenProvider = typeof provider === 'function' ? provider : null;
+};
+
+const getAuthHeaders = async () => {
+  if (!permissionTokenProvider) return {};
+  try {
+    const token = await permissionTokenProvider();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+};
+
+const getAuthHeadersWithRetry = async (requireAdmin = false) => {
+  let headers = await getAuthHeaders();
+  if (requireAdmin && !headers.Authorization) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    headers = await getAuthHeaders();
+  }
+  return headers;
+};
+
+const apiGet = async (action, params = {}, { requireAdmin = true } = {}) => {
+  const authHeaders = await getAuthHeadersWithRetry(requireAdmin);
+  if (requireAdmin && !authHeaders.Authorization) {
+    throw new Error('Authorization token required');
+  }
+
+  const query = new URLSearchParams({ action, ...params }).toString();
+  const response = await fetch(`${WORKFLOW_API_URL}?${query}`, {
+    method: 'GET',
+    headers: authHeaders,
+  });
+
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    throw new Error(json?.message || `Workflows API error (${response.status})`);
+  }
+
+  return json?.data;
+};
+
+const apiPost = async (action, payload = {}, { requireAdmin = true } = {}) => {
+  const authHeaders = await getAuthHeadersWithRetry(requireAdmin);
+  if (requireAdmin && !authHeaders.Authorization) {
+    throw new Error('Authorization token required');
+  }
+
+  const response = await fetch(WORKFLOW_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders,
+    },
+    body: JSON.stringify({ action, ...payload }),
+  });
+
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    throw new Error(json?.message || `Workflows API error (${response.status})`);
+  }
+
+  return json?.data;
+};
+
 export const permissionService = {
+  setTokenProvider,
   // ==================== Permissions Management ====================
 
   /**
    * Get all available permissions
    */
   async getAllPermissions() {
-    const { data, error } = await supabase
-      .from('permissions')
-      .select('*')
-      .order('category, name');
-
-    if (error) throw error;
-    return toCamelCase(data || []);
+    try {
+      const data = await apiGet('permissions_list');
+      return toCamelCase(data?.rows || []);
+    } catch (apiErr) {
+      const { data, error } = await supabase
+        .from('permissions')
+        .select('*')
+        .order('category, name');
+      if (error) throw apiErr;
+      return toCamelCase(data || []);
+    }
   },
 
   /**
@@ -73,15 +146,8 @@ export const permissionService = {
       category: permissionData.category || 'general',
       isSystem: permissionData.isSystem || false,
     });
-
-    const { data, error } = await supabase
-      .from('permissions')
-      .insert(payload)
-      .select('*')
-      .single();
-
-    if (error) throw error;
-    return toCamelCase(data);
+    const data = await apiPost('permission_create', { payload });
+    return toCamelCase(data?.row || data);
   },
 
   /**
@@ -89,29 +155,15 @@ export const permissionService = {
    */
   async updatePermission(permissionId, permissionData) {
     const payload = toSnakeCase(permissionData);
-
-    const { data, error } = await supabase
-      .from('permissions')
-      .update(payload)
-      .eq('id', permissionId)
-      .select('*')
-      .single();
-
-    if (error) throw error;
-    return toCamelCase(data);
+    const data = await apiPost('permission_update', { id: permissionId, patch: payload });
+    return toCamelCase(data?.row || data);
   },
 
   /**
    * Delete a permission (only if not system)
    */
   async deletePermission(permissionId) {
-    const { error } = await supabase
-      .from('permissions')
-      .delete()
-      .eq('id', permissionId)
-      .eq('is_system', false); // Only allow deleting non-system permissions
-
-    if (error) throw error;
+    await apiPost('permission_delete', { id: permissionId });
     return { success: true };
   },
 
@@ -121,54 +173,33 @@ export const permissionService = {
    * Get all roles
    */
   async getAllRoles() {
-    const { data, error } = await supabase
-      .from('roles')
-      .select('*')
-      .order('name');
-
-    if (error) throw error;
-    return toCamelCase(data || []);
+    try {
+      const data = await apiGet('roles_list');
+      return toCamelCase(data?.rows || []);
+    } catch (apiErr) {
+      const { data, error } = await supabase
+        .from('roles')
+        .select('*')
+        .order('name');
+      if (error) throw apiErr;
+      return toCamelCase(data || []);
+    }
   },
 
   /**
    * Get role by code
    */
   async getRoleByCode(roleCode) {
-    const { data, error } = await supabase
-      .from('roles')
-      .select('*')
-      .eq('code', roleCode)
-      .single();
-
-    if (error) throw error;
-    return toCamelCase(data);
+    const roles = await this.getAllRoles();
+    return roles.find((role) => String(role?.code || '') === String(roleCode || '')) || null;
   },
 
   /**
    * Get role with its permissions
    */
   async getRoleWithPermissions(roleId) {
-    const { data, error } = await supabase
-      .from('roles')
-      .select(`
-        *,
-        role_permissions (
-          permission_id,
-          permissions (
-            id,
-            code,
-            name,
-            description,
-            category
-          )
-        )
-      `)
-      .eq('id', roleId)
-      .single();
-
-    if (error) throw error;
-
-    const role = toCamelCase(data);
+    const data = await apiGet('role_with_permissions', { role_id: roleId });
+    const role = toCamelCase(data?.row || data);
 
     // Flatten permissions structure
     if (role.rolePermissions) {
@@ -192,15 +223,8 @@ export const permissionService = {
       isSystem: roleData.isSystem || false,
       isDefault: roleData.isDefault || false,
     });
-
-    const { data, error } = await supabase
-      .from('roles')
-      .insert(payload)
-      .select('*')
-      .single();
-
-    if (error) throw error;
-    return toCamelCase(data);
+    const data = await apiPost('role_create', { payload });
+    return toCamelCase(data?.row || data);
   },
 
   /**
@@ -208,29 +232,15 @@ export const permissionService = {
    */
   async updateRole(roleId, roleData) {
     const payload = toSnakeCase(roleData);
-
-    const { data, error } = await supabase
-      .from('roles')
-      .update(payload)
-      .eq('id', roleId)
-      .select('*')
-      .single();
-
-    if (error) throw error;
-    return toCamelCase(data);
+    const data = await apiPost('role_update', { id: roleId, patch: payload });
+    return toCamelCase(data?.row || data);
   },
 
   /**
    * Delete a role (only if not system)
    */
   async deleteRole(roleId) {
-    const { error } = await supabase
-      .from('roles')
-      .delete()
-      .eq('id', roleId)
-      .eq('is_system', false);
-
-    if (error) throw error;
+    await apiPost('role_delete', { id: roleId });
     return { success: true };
   },
 
@@ -238,28 +248,10 @@ export const permissionService = {
    * Assign permissions to a role
    */
   async setRolePermissions(roleId, permissionIds) {
-    // First, delete existing role permissions
-    const { error: deleteError } = await supabase
-      .from('role_permissions')
-      .delete()
-      .eq('role_id', roleId);
-
-    if (deleteError) throw deleteError;
-
-    // Then insert new permissions
-    if (permissionIds && permissionIds.length > 0) {
-      const inserts = permissionIds.map(permissionId => ({
-        role_id: roleId,
-        permission_id: permissionId,
-      }));
-
-      const { error: insertError } = await supabase
-        .from('role_permissions')
-        .insert(inserts);
-
-      if (insertError) throw insertError;
-    }
-
+    await apiPost('role_set_permissions', {
+      role_id: roleId,
+      permission_ids: Array.isArray(permissionIds) ? permissionIds : [],
+    });
     return { success: true };
   },
 
@@ -404,18 +396,15 @@ export const permissionService = {
    * Get permission statistics
    */
   async getPermissionStats() {
-    const [permissions, roles, rolePermissions, handlerRoles] = await Promise.all([
-      supabase.from('permissions').select('id', { count: 'exact', head: true }),
-      supabase.from('roles').select('id', { count: 'exact', head: true }),
-      supabase.from('role_permissions').select('id', { count: 'exact', head: true }),
-      supabase.from('handler_roles').select('id', { count: 'exact', head: true }),
+    const [permissions, roles] = await Promise.all([
+      this.getAllPermissions().catch(() => []),
+      this.getAllRoles().catch(() => []),
     ]);
-
     return {
-      totalPermissions: permissions.count || 0,
-      totalRoles: roles.count || 0,
-      totalRolePermissions: rolePermissions.count || 0,
-      totalHandlerRoles: handlerRoles.count || 0,
+      totalPermissions: Array.isArray(permissions) ? permissions.length : 0,
+      totalRoles: Array.isArray(roles) ? roles.length : 0,
+      totalRolePermissions: 0,
+      totalHandlerRoles: 0,
     };
   },
 };

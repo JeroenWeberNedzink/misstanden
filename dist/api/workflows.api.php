@@ -214,6 +214,32 @@ function wf_clean_uuid_array($raw): array {
     return $out;
 }
 
+function wf_query_bool(string $key, bool $default = false): bool {
+    if (!array_key_exists($key, $_GET)) return $default;
+    $raw = strtolower(trim((string)($_GET[$key] ?? '')));
+    if ($raw === '') return $default;
+    return in_array($raw, ['1', 'true', 'yes', 'on'], true);
+}
+
+function wf_query_int(string $key, int $default = 0): int {
+    if (!array_key_exists($key, $_GET)) return $default;
+    return (int)($_GET[$key] ?? $default);
+}
+
+function wf_clean_id_array($raw): array {
+    if (!is_array($raw)) return [];
+    $seen = [];
+    $out = [];
+    foreach ($raw as $item) {
+        $id = trim((string)$item);
+        if ($id === '') continue;
+        if (isset($seen[$id])) continue;
+        $seen[$id] = true;
+        $out[] = $id;
+    }
+    return $out;
+}
+
 try {
     load_env_file(__DIR__ . '/../../.env.local', true);
     load_env_file(__DIR__ . '/../../.env', false);
@@ -232,6 +258,36 @@ try {
         if ($action === 'active_handlers') {
             [$code, $decoded, $raw] = wf_req('GET', $baseUrl . '/rest/v1/handlers?select=id,name,email,roles,active&active=eq.true&order=name.asc', $serviceKey);
             $rows = wf_or_fail('List handlers', $code, $decoded, $raw);
+            wf_json(200, true, 'Handlers loaded', ['rows' => wf_normalize_handler_rows($rows)]);
+        }
+        if ($action === 'all_handlers') {
+            $includeInactive = wf_query_bool('include_inactive', false);
+            $select = 'id,name,email,phone,active,roles,permissions,user_id,picture,created_at,updated_at,last_login';
+            $url = $baseUrl . '/rest/v1/handlers?select=' . rawurlencode($select) . '&order=name.asc';
+            if (!$includeInactive) {
+                $url .= '&active=eq.true';
+            }
+            [$code, $decoded, $raw] = wf_req('GET', $url, $serviceKey);
+            $rows = wf_or_fail('List all handlers', $code, $decoded, $raw);
+            wf_json(200, true, 'All handlers loaded', ['rows' => wf_normalize_handler_rows($rows)]);
+        }
+        if ($action === 'handlers_by_ids') {
+            $includeInactive = wf_query_bool('include_inactive', true);
+            $rawIds = trim((string)($_GET['ids'] ?? ''));
+            $ids = wf_clean_uuid_array(array_filter(array_map('trim', explode(',', $rawIds)), static fn($x) => $x !== ''));
+            if (!$ids) {
+                wf_json(200, true, 'Handlers loaded', ['rows' => []]);
+            }
+
+            $ids = array_slice($ids, 0, 100);
+            $inValues = '(' . implode(',', array_map(static fn($x) => '"' . $x . '"', $ids)) . ')';
+            $select = 'id,name,email,phone,active,roles,permissions,user_id,picture,created_at,updated_at,last_login';
+            $url = $baseUrl . '/rest/v1/handlers?select=' . rawurlencode($select) . '&id=in.' . rawurlencode($inValues) . '&order=name.asc';
+            if (!$includeInactive) {
+                $url .= '&active=eq.true';
+            }
+            [$code, $decoded, $raw] = wf_req('GET', $url, $serviceKey);
+            $rows = wf_or_fail('List handlers by ids', $code, $decoded, $raw);
             wf_json(200, true, 'Handlers loaded', ['rows' => wf_normalize_handler_rows($rows)]);
         }
         if ($action === 'routing_rules') {
@@ -254,6 +310,58 @@ try {
             $rows = wf_or_fail('Load handler workflows', $code, $decoded, $raw);
             $workflowIds = array_values(array_filter(array_map(static fn($r) => trim((string)($r['workflow_id'] ?? '')), $rows), static fn($x) => wf_uuid($x)));
             wf_json(200, true, 'Handler workflows loaded', ['handler_id' => $handlerId, 'workflow_ids' => $workflowIds]);
+        }
+        if ($action === 'permissions_list') {
+            [$code, $decoded, $raw] = wf_req('GET', $baseUrl . '/rest/v1/permissions?select=*&order=category.asc,name.asc', $serviceKey);
+            $rows = wf_or_fail('List permissions', $code, $decoded, $raw);
+            wf_json(200, true, 'Permissions loaded', ['rows' => $rows]);
+        }
+        if ($action === 'roles_list') {
+            [$code, $decoded, $raw] = wf_req('GET', $baseUrl . '/rest/v1/roles?select=*&order=name.asc', $serviceKey);
+            $rows = wf_or_fail('List roles', $code, $decoded, $raw);
+            wf_json(200, true, 'Roles loaded', ['rows' => $rows]);
+        }
+        if ($action === 'role_with_permissions') {
+            $roleId = trim((string)($_GET['role_id'] ?? ''));
+            if ($roleId === '') throw new Exception('role_id is required');
+            $select = rawurlencode('*,role_permissions(permission_id,permissions(id,code,name,description,category,is_system))');
+            [$code, $decoded, $raw] = wf_req('GET', $baseUrl . '/rest/v1/roles?select=' . $select . '&id=eq.' . rawurlencode($roleId) . '&limit=1', $serviceKey);
+            $rows = wf_or_fail('Load role with permissions', $code, $decoded, $raw);
+            $row = wf_row($rows);
+            if (!$row) throw new Exception('Role not found');
+            wf_json(200, true, 'Role loaded', ['row' => $row]);
+        }
+        if ($action === 'audit_logs') {
+            $dateFrom = trim((string)($_GET['date_from'] ?? ''));
+            $dateTo = trim((string)($_GET['date_to'] ?? ''));
+            $schemaName = trim((string)($_GET['schema_name'] ?? 'all'));
+            $tableName = trim((string)($_GET['table_name'] ?? 'all'));
+            $operation = strtoupper(trim((string)($_GET['operation'] ?? 'all')));
+            $search = trim((string)($_GET['search'] ?? ''));
+            $limit = max(1, min(2000, wf_query_int('limit', 500)));
+            $offset = max(0, wf_query_int('offset', 0));
+
+            $url = $baseUrl . '/rest/v1/audit_logs?select=*&order=occurred_at.desc';
+            if ($dateFrom !== '') $url .= '&occurred_at=gte.' . rawurlencode($dateFrom);
+            if ($dateTo !== '') $url .= '&occurred_at=lte.' . rawurlencode($dateTo);
+            if ($schemaName !== '' && strtolower($schemaName) !== 'all') {
+                $url .= '&schema_name=eq.' . rawurlencode($schemaName);
+            }
+            if ($tableName !== '' && strtolower($tableName) !== 'all') {
+                $url .= '&table_name=eq.' . rawurlencode($tableName);
+            }
+            if ($operation !== '' && strtolower($operation) !== 'all') {
+                $url .= '&operation=eq.' . rawurlencode($operation);
+            }
+            if ($search !== '') {
+                $needle = str_replace('*', '', $search);
+                $url .= '&row_id=ilike.' . rawurlencode('*' . $needle . '*');
+            }
+            $url .= '&limit=' . $limit . '&offset=' . $offset;
+
+            [$code, $decoded, $raw] = wf_req('GET', $url, $serviceKey);
+            $rows = wf_or_fail('List audit logs', $code, $decoded, $raw);
+            wf_json(200, true, 'Audit logs loaded', ['rows' => $rows]);
         }
         wf_json(400, false, 'Unsupported action');
     }
@@ -416,6 +524,105 @@ try {
         if (!wf_uuid($handlerId)) throw new Exception('handler_id must be UUID');
         wf_or_fail('Clear handler workflows', ...wf_req('DELETE', $baseUrl . '/rest/v1/handler_workflows?handler_id=eq.' . rawurlencode($handlerId), $serviceKey));
         wf_json(200, true, 'Handler workflows cleared', ['handler_id' => $handlerId, 'deleted' => true]);
+    }
+
+    if ($action === 'permission_create') {
+        $payloadRaw = is_array($body['payload'] ?? null) ? $body['payload'] : [];
+        $payload = [
+            'code' => trim((string)($payloadRaw['code'] ?? '')),
+            'name' => trim((string)($payloadRaw['name'] ?? '')),
+            'description' => isset($payloadRaw['description']) ? (string)$payloadRaw['description'] : null,
+            'category' => trim((string)($payloadRaw['category'] ?? 'general')),
+            'is_system' => !empty($payloadRaw['is_system']),
+        ];
+        if ($payload['code'] === '' || $payload['name'] === '') {
+            throw new Exception('Permission code and name are required');
+        }
+        [$codeHttp, $decoded, $raw] = wf_req('POST', $baseUrl . '/rest/v1/permissions', $serviceKey, $payload, true);
+        wf_json(200, true, 'Permission created', ['row' => wf_row(wf_or_fail('Create permission', $codeHttp, $decoded, $raw))]);
+    }
+
+    if ($action === 'permission_update') {
+        $id = trim((string)($body['id'] ?? ''));
+        $patchRaw = is_array($body['patch'] ?? null) ? $body['patch'] : [];
+        if ($id === '' || !$patchRaw) throw new Exception('Invalid permission update payload');
+
+        $allowed = ['code', 'name', 'description', 'category', 'is_system'];
+        $payload = [];
+        foreach ($allowed as $field) {
+            if (array_key_exists($field, $patchRaw)) $payload[$field] = $patchRaw[$field];
+        }
+        if (!$payload) throw new Exception('No valid fields to update');
+
+        [$codeHttp, $decoded, $raw] = wf_req('PATCH', $baseUrl . '/rest/v1/permissions?id=eq.' . rawurlencode($id), $serviceKey, $payload, true);
+        wf_json(200, true, 'Permission updated', ['row' => wf_row(wf_or_fail('Update permission', $codeHttp, $decoded, $raw))]);
+    }
+
+    if ($action === 'permission_delete') {
+        $id = trim((string)($body['id'] ?? ''));
+        if ($id === '') throw new Exception('id is required');
+        wf_or_fail('Delete permission', ...wf_req('DELETE', $baseUrl . '/rest/v1/permissions?id=eq.' . rawurlencode($id) . '&is_system=eq.false', $serviceKey));
+        wf_json(200, true, 'Permission deleted', ['deleted' => true]);
+    }
+
+    if ($action === 'role_create') {
+        $payloadRaw = is_array($body['payload'] ?? null) ? $body['payload'] : [];
+        $payload = [
+            'code' => trim((string)($payloadRaw['code'] ?? '')),
+            'name' => trim((string)($payloadRaw['name'] ?? '')),
+            'description' => isset($payloadRaw['description']) ? (string)$payloadRaw['description'] : null,
+            'is_system' => !empty($payloadRaw['is_system']),
+            'is_default' => !empty($payloadRaw['is_default']),
+        ];
+        if ($payload['code'] === '' || $payload['name'] === '') {
+            throw new Exception('Role code and name are required');
+        }
+        [$codeHttp, $decoded, $raw] = wf_req('POST', $baseUrl . '/rest/v1/roles', $serviceKey, $payload, true);
+        wf_json(200, true, 'Role created', ['row' => wf_row(wf_or_fail('Create role', $codeHttp, $decoded, $raw))]);
+    }
+
+    if ($action === 'role_update') {
+        $id = trim((string)($body['id'] ?? ''));
+        $patchRaw = is_array($body['patch'] ?? null) ? $body['patch'] : [];
+        if ($id === '' || !$patchRaw) throw new Exception('Invalid role update payload');
+
+        $allowed = ['code', 'name', 'description', 'is_system', 'is_default'];
+        $payload = [];
+        foreach ($allowed as $field) {
+            if (array_key_exists($field, $patchRaw)) $payload[$field] = $patchRaw[$field];
+        }
+        if (!$payload) throw new Exception('No valid fields to update');
+
+        [$codeHttp, $decoded, $raw] = wf_req('PATCH', $baseUrl . '/rest/v1/roles?id=eq.' . rawurlencode($id), $serviceKey, $payload, true);
+        wf_json(200, true, 'Role updated', ['row' => wf_row(wf_or_fail('Update role', $codeHttp, $decoded, $raw))]);
+    }
+
+    if ($action === 'role_delete') {
+        $id = trim((string)($body['id'] ?? ''));
+        if ($id === '') throw new Exception('id is required');
+        wf_or_fail('Delete role', ...wf_req('DELETE', $baseUrl . '/rest/v1/roles?id=eq.' . rawurlencode($id) . '&is_system=eq.false', $serviceKey));
+        wf_json(200, true, 'Role deleted', ['deleted' => true]);
+    }
+
+    if ($action === 'role_set_permissions') {
+        $roleId = trim((string)($body['role_id'] ?? ''));
+        if ($roleId === '') throw new Exception('role_id is required');
+        $permissionIds = wf_clean_id_array($body['permission_ids'] ?? []);
+
+        wf_or_fail('Clear role permissions', ...wf_req('DELETE', $baseUrl . '/rest/v1/role_permissions?role_id=eq.' . rawurlencode($roleId), $serviceKey));
+
+        if (count($permissionIds) > 0) {
+            $rows = array_map(static fn($permissionId) => [
+                'role_id' => $roleId,
+                'permission_id' => $permissionId,
+            ], $permissionIds);
+            wf_or_fail('Insert role permissions', ...wf_req('POST', $baseUrl . '/rest/v1/role_permissions', $serviceKey, $rows, true));
+        }
+
+        wf_json(200, true, 'Role permissions updated', [
+            'role_id' => $roleId,
+            'permission_ids' => $permissionIds,
+        ]);
     }
 
     if ($action === 'create_status') {

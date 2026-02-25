@@ -54,7 +54,29 @@ const isMissingTicketHandlersRelation = (err) => {
   );
 };
 
+const isAuthOrRlsError = (err) => {
+  const msg = String(err?.message || '').toLowerCase();
+  const details = String(err?.details || '').toLowerCase();
+  const hint = String(err?.hint || '').toLowerCase();
+  const status = Number(err?.status || 0);
+  const code = String(err?.code || '').toUpperCase();
+
+  if (status === 401 || status === 403) return true;
+  if (code === '42501') return true; // insufficient_privilege / policy blocked
+
+  return (
+    msg.includes('row-level security') ||
+    details.includes('row-level security') ||
+    hint.includes('row-level security') ||
+    msg.includes('permission denied') ||
+    msg.includes('not authenticated') ||
+    msg.includes('jwt') ||
+    msg.includes('unauthorized')
+  );
+};
+
 const TICKETS_API_URL = '/api/tickets.api.php';
+const WORKFLOWS_API_URL = '/api/workflows.api.php';
 let ticketTokenProvider = null;
 
 const setTokenProvider = (provider) => {
@@ -71,8 +93,17 @@ const getAuthHeaders = async () => {
   }
 };
 
+const getAuthHeadersWithRetry = async (requireAuth = false) => {
+  let headers = await getAuthHeaders();
+  if (requireAuth && !headers.Authorization) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    headers = await getAuthHeaders();
+  }
+  return headers;
+};
+
 const ticketApiPost = async (payload, { requireAuth = false } = {}) => {
-  const authHeaders = await getAuthHeaders();
+  const authHeaders = await getAuthHeadersWithRetry(requireAuth);
   if (requireAuth && !authHeaders.Authorization) {
     throw new Error('Authorization token required');
   }
@@ -90,6 +121,26 @@ const ticketApiPost = async (payload, { requireAuth = false } = {}) => {
   if (!response.ok || !json?.success) {
     throw new Error(json?.message || `Tickets API error (${response.status})`);
   }
+  return json?.data;
+};
+
+const workflowApiGet = async (action, params = {}, { requireAuth = false } = {}) => {
+  const authHeaders = await getAuthHeadersWithRetry(requireAuth);
+  if (requireAuth && !authHeaders.Authorization) {
+    throw new Error('Authorization token required');
+  }
+
+  const query = new URLSearchParams({ action, ...params }).toString();
+  const response = await fetch(`${WORKFLOWS_API_URL}?${query}`, {
+    method: 'GET',
+    headers: authHeaders,
+  });
+
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    throw new Error(json?.message || `Workflows API error (${response.status})`);
+  }
+
   return json?.data;
 };
 
@@ -394,6 +445,74 @@ const normalizeHandlerIds = (handlerIds) => {
   return out;
 };
 
+const loadHandlersByIdsWithFallback = async (handlerIds = []) => {
+  const normalizedIds = normalizeHandlerIds(handlerIds);
+  if (normalizedIds.length === 0) return [];
+
+  let rows = [];
+  let directError = null;
+
+  try {
+    const { data, error } = await supabase
+      .from('handlers')
+      .select('id, name, email, active')
+      .in('id', normalizedIds);
+
+    if (error) throw error;
+    rows = Array.isArray(data) ? data : [];
+  } catch (err) {
+    directError = err;
+  }
+
+  const missingIds = normalizedIds.filter((id) => !(rows || []).some((row) => row?.id === id));
+  const shouldTryApi =
+    Boolean(ticketTokenProvider) &&
+    (Boolean(directError) || missingIds.length > 0);
+
+  if (shouldTryApi) {
+    try {
+      const idsForApi = missingIds.length > 0 ? missingIds : normalizedIds;
+      const apiData = await workflowApiGet(
+        'handlers_by_ids',
+        {
+          ids: idsForApi.join(','),
+          include_inactive: '1',
+        },
+        { requireAuth: true }
+      );
+      const apiRows = Array.isArray(apiData?.rows) ? apiData.rows : [];
+      const allowed = new Set(normalizedIds);
+      const apiMatches = apiRows
+        .filter((row) => allowed.has(String(row?.id || '').trim()))
+        .map((row) => ({
+          id: row?.id,
+          name: row?.name ?? null,
+          email: row?.email ?? null,
+          active: row?.active ?? null,
+        }));
+
+      if (apiMatches.length > 0) {
+        const byId = new Map();
+        for (const row of rows || []) byId.set(String(row?.id || '').trim(), row);
+        for (const row of apiMatches) byId.set(String(row?.id || '').trim(), row);
+        rows = Array.from(byId.values());
+        directError = null;
+      }
+    } catch (apiErr) {
+      if (directError) {
+        throwIfError(directError, 'loadHandlersByIdsWithFallback');
+      }
+      console.warn('[ticketService] Handler API fallback failed during assignment validation', apiErr);
+    }
+  }
+
+  if (directError && rows.length === 0) {
+    throwIfError(directError, 'loadHandlersByIdsWithFallback');
+  }
+
+  return rows;
+};
+
 const getTicketHandlersMap = async (ticketIds = []) => {
   const ids = Array.from(new Set((ticketIds || []).filter(Boolean)));
   if (ids.length === 0) {
@@ -413,6 +532,12 @@ const getTicketHandlersMap = async (ticketIds = []) => {
   if (error) {
     if (isMissingTicketHandlersRelation(error)) {
       markTicketHandlersRelationState(false);
+      return { map: new Map(), available: false };
+    }
+    if (isAuthOrRlsError(error)) {
+      // Avoid repeatedly probing a relation the current user cannot read.
+      markTicketHandlersRelationState(false);
+      console.warn('[ticketService] ticket_handlers lookup blocked by policy, continuing without relation map', error);
       return { map: new Map(), available: false };
     }
     throwIfError(error, 'getTicketHandlersMap');
@@ -461,7 +586,7 @@ const syncTicketHandlers = async (ticketId, nextHandlerIds = []) => {
   const normalized = normalizeHandlerIds(nextHandlerIds);
 
   if (!shouldProbeTicketHandlersRelation()) {
-    return { available: false, addedIds: [], removedIds: [], previousIds: [], nextIds: normalized };
+    return { available: false, restricted: false, addedIds: [], removedIds: [], previousIds: [], nextIds: normalized };
   }
 
   const { data: existingRows, error: existingError } = await supabase
@@ -472,7 +597,11 @@ const syncTicketHandlers = async (ticketId, nextHandlerIds = []) => {
   if (existingError) {
     if (isMissingTicketHandlersRelation(existingError)) {
       markTicketHandlersRelationState(false);
-      return { available: false, addedIds: [], removedIds: [], previousIds: [], nextIds: normalized };
+      return { available: false, restricted: false, addedIds: [], removedIds: [], previousIds: [], nextIds: normalized };
+    }
+    if (isAuthOrRlsError(existingError)) {
+      console.warn('[ticketService] ticket_handlers sync blocked by policy (fetch existing), continuing with primary handler only', existingError);
+      return { available: false, restricted: true, addedIds: [], removedIds: [], previousIds: [], nextIds: normalized };
     }
     throwIfError(existingError, 'syncTicketHandlers(fetch existing)');
   }
@@ -492,7 +621,11 @@ const syncTicketHandlers = async (ticketId, nextHandlerIds = []) => {
     if (removeError) {
       if (isMissingTicketHandlersRelation(removeError) || isMissingRelation(removeError)) {
         markTicketHandlersRelationState(false);
-        return { available: false, addedIds: [], removedIds: [], previousIds: existingIds, nextIds: normalized };
+        return { available: false, restricted: false, addedIds: [], removedIds: [], previousIds: existingIds, nextIds: normalized };
+      }
+      if (isAuthOrRlsError(removeError)) {
+        console.warn('[ticketService] ticket_handlers sync blocked by policy (remove), continuing with primary handler only', removeError);
+        return { available: false, restricted: true, addedIds: [], removedIds: [], previousIds: existingIds, nextIds: normalized };
       }
       throwIfError(removeError, 'syncTicketHandlers(remove)');
     }
@@ -510,7 +643,11 @@ const syncTicketHandlers = async (ticketId, nextHandlerIds = []) => {
     if (addError) {
       if (isMissingTicketHandlersRelation(addError) || isMissingRelation(addError)) {
         markTicketHandlersRelationState(false);
-        return { available: false, addedIds: [], removedIds: [], previousIds: existingIds, nextIds: normalized };
+        return { available: false, restricted: false, addedIds: [], removedIds: [], previousIds: existingIds, nextIds: normalized };
+      }
+      if (isAuthOrRlsError(addError)) {
+        console.warn('[ticketService] ticket_handlers sync blocked by policy (add), continuing with primary handler only', addError);
+        return { available: false, restricted: true, addedIds: [], removedIds: [], previousIds: existingIds, nextIds: normalized };
       }
       throwIfError(addError, 'syncTicketHandlers(add)');
     }
@@ -518,6 +655,7 @@ const syncTicketHandlers = async (ticketId, nextHandlerIds = []) => {
 
   return {
     available: true,
+    restricted: false,
     addedIds: toAdd,
     removedIds: toRemove,
     previousIds: existingIds,
@@ -1073,14 +1211,7 @@ export const ticketService = {
       update.status = resolved.enumLabel;
     }
 
-    const { data: updatedTicket, error: updateError } = await supabase
-      .from('tickets')
-      .update(update)
-      .eq('id', ticketId)
-      .select()
-      .single();
-
-    throwIfError(updateError, 'updateTicketProgress(update tickets)');
+    const updatedTicket = await this.updateTicket(ticketId, update);
 
     const note = payload.note ? String(payload.note).trim() : '';
     if (note) {
@@ -1362,27 +1493,15 @@ async deleteHandler(handlerId, options = {}) {
   async updateTicket(ticketId, updates = {}) {
     if (!ticketId) throw new Error('ticketId is required');
 
-    if (ticketTokenProvider) {
-      const apiData = await ticketApiPost(
-        {
-          action: 'handler_update_ticket',
-          ticket_id: ticketId,
-          updates: toSnakeCase(updates || {}),
-        },
-        { requireAuth: true }
-      );
-      return toCamelCase(apiData?.ticket || apiData);
-    }
-
-    const nowIso = new Date().toISOString();
-    const payload = {
-      ...updates,
-      last_update_at: nowIso,
-    };
-
-    const { data, error } = await supabase.from('tickets').update(payload).eq('id', ticketId).select().single();
-    throwIfError(error, 'updateTicket');
-    return toCamelCase(data);
+    const apiData = await ticketApiPost(
+      {
+        action: 'handler_update_ticket',
+        ticket_id: ticketId,
+        updates: toSnakeCase(updates || {}),
+      },
+      { requireAuth: true }
+    );
+    return toCamelCase(apiData?.ticket || apiData);
   },
 
   // ----- Assignment -----
@@ -1391,30 +1510,60 @@ async deleteHandler(handlerId, options = {}) {
 
     const nowIso = new Date().toISOString();
     const normalizedHandlerIds = normalizeHandlerIds(handlerIds);
+    const trustedHandlerIds = new Set(normalizeHandlerIds(options?.currentHandlerId));
     const primaryHandlerId = normalizedHandlerIds[0] || null;
     const handlerMap = new Map();
-    const { data: ticketBefore, error: ticketBeforeError } = await supabase
+    let ticketBefore = null;
+    const { data: ticketBeforeData, error: ticketBeforeError } = await supabase
       .from('tickets')
       .select('handler_id')
       .eq('id', ticketId)
-      .single();
-    throwIfError(ticketBeforeError, 'setTicketHandlers(fetch current ticket)');
+      .maybeSingle();
+    if (ticketBeforeError) {
+      if (isAuthOrRlsError(ticketBeforeError)) {
+        console.warn('[ticketService] Could not read current ticket assignment due to policy, continuing', ticketBeforeError);
+      } else {
+        throwIfError(ticketBeforeError, 'setTicketHandlers(fetch current ticket)');
+      }
+    } else {
+      if (!ticketBeforeData) {
+        if (ticketTokenProvider) {
+          // In strict RLS setups a visible ticket can still resolve as no row in direct client queries.
+          console.warn('[ticketService] Ticket lookup returned 0 rows during assignment; continuing via API update path');
+        } else {
+          const e = new Error('Ticket bestaat niet meer.');
+          e.code = 'TICKET_NOT_FOUND';
+          throw e;
+        }
+      }
+      ticketBefore = ticketBeforeData;
+    }
 
     if (normalizedHandlerIds.length > 0) {
-      const { data: handlers, error: handlerError } = await supabase
-        .from('handlers')
-        .select('id, name, email, active')
-        .in('id', normalizedHandlerIds);
-
-      throwIfError(handlerError, 'setTicketHandlers(fetch handlers)');
+      let handlers = [];
+      try {
+        handlers = await loadHandlersByIdsWithFallback(normalizedHandlerIds);
+      } catch (handlerError) {
+        if (isAuthOrRlsError(handlerError)) {
+          console.warn('[ticketService] Handler validation query blocked by policy, trusting current handler where possible', handlerError);
+        } else {
+          throwIfError(handlerError, 'setTicketHandlers(fetch handlers)');
+        }
+      }
 
       for (const handler of handlers || []) {
-        handlerMap.set(handler?.id, handler);
+        const normalizedId = String(handler?.id || '').trim();
+        if (normalizedId) {
+          handlerMap.set(normalizedId, handler);
+        }
       }
 
       for (const handlerId of normalizedHandlerIds) {
         const handler = handlerMap.get(handlerId);
         if (!handler?.id) {
+          if (trustedHandlerIds.has(handlerId)) {
+            continue;
+          }
           const e = new Error('Geselecteerde handler bestaat niet meer.');
           e.code = 'HANDLER_NOT_FOUND';
           throw e;
@@ -1430,29 +1579,37 @@ async deleteHandler(handlerId, options = {}) {
 
     const syncResult = await syncTicketHandlers(ticketId, normalizedHandlerIds);
     if (!syncResult.available && normalizedHandlerIds.length > 1) {
-      const e = new Error('Multi-handler toewijzing vereist migratie "ticket_handlers".');
-      e.code = 'TICKET_HANDLERS_MIGRATION_REQUIRED';
+      const blockedByPolicy = Boolean(syncResult.restricted);
+      const e = new Error(
+        blockedByPolicy
+          ? 'Multi-handler toewijzing is met de huidige toegangsrechten niet toegestaan.'
+          : 'Multi-handler toewijzing vereist migratie "ticket_handlers".'
+      );
+      e.code = blockedByPolicy
+        ? 'TICKET_HANDLERS_PERMISSION_REQUIRED'
+        : 'TICKET_HANDLERS_MIGRATION_REQUIRED';
       throw e;
     }
 
-    const { data, error } = await supabase
-      .from('tickets')
-      .update({ handler_id: primaryHandlerId, last_update_at: nowIso })
-      .eq('id', ticketId)
-      .select()
-      .single();
-
-    throwIfError(error, 'setTicketHandlers');
+    const updatedTicket = await this.updateTicket(ticketId, { handlerId: primaryHandlerId });
 
     // Get handler info for logging
     let handlerInfo = null;
     if (options.currentHandlerId) {
-      const { data: handler } = await supabase
+      const { data: handler, error: handlerInfoError } = await supabase
         .from('handlers')
         .select('id, name, email')
         .eq('id', options.currentHandlerId)
-        .single();
-      handlerInfo = handler;
+        .maybeSingle();
+      if (handlerInfoError) {
+        if (isAuthOrRlsError(handlerInfoError)) {
+          console.warn('[ticketService] Could not read current handler info due to policy, continuing', handlerInfoError);
+        } else {
+          console.warn('[ticketService] Failed to read current handler info for assignment log, continuing', handlerInfoError);
+        }
+      } else {
+        handlerInfo = handler;
+      }
     }
 
     // Log assignment action
@@ -1472,7 +1629,7 @@ async deleteHandler(handlerId, options = {}) {
       if (actionError) console.warn('setTicketHandlers: failed to write ticket_actions note:', actionError);
     }
 
-    let result = toCamelCase(data);
+    let result = toCamelCase(updatedTicket);
     result = await decorateTicketWithTicketHandlers(result);
 
     // Send assignment notification only to newly added handlers.
@@ -1735,47 +1892,105 @@ async deleteHandler(handlerId, options = {}) {
       : options.activeOnly !== undefined
         ? !Boolean(options.activeOnly)
         : true;
+    const preferApi = options.preferApi === true;
 
-    let query = supabase.from('handlers').select('*').order('name');
-    if (!includeInactive) query = query.eq('active', true);
+    let rows = [];
+    let directError = null;
+    let usedApiFallback = false;
 
-    const { data, error } = await query;
-    throwIfError(error, 'getAllHandlers');
+    if (preferApi && ticketTokenProvider) {
+      try {
+        const apiData = await workflowApiGet(
+          'all_handlers',
+          { include_inactive: includeInactive ? '1' : '0' },
+          { requireAuth: true }
+        );
+        const apiRows = Array.isArray(apiData?.rows) ? apiData.rows : [];
+        rows = apiRows;
+        usedApiFallback = true;
+      } catch (apiErr) {
+        console.warn('[ticketService] API-first load for getAllHandlers failed; trying direct Supabase query', apiErr);
+      }
+    }
 
-    // Enrich handlers with permissions from new RBAC system
-    const handlers = normalizeHandlerRecords(toCamelCase(data) || []);
+    if (rows.length === 0) {
+      try {
+        let query = supabase.from('handlers').select('*').order('name');
+        if (!includeInactive) query = query.eq('active', true);
+        const { data, error } = await query;
+        throwIfError(error, 'getAllHandlers');
+        rows = Array.isArray(data) ? data : [];
+      } catch (err) {
+        directError = err;
+      }
+    }
 
-    // For each handler, fetch their permissions from the RBAC system
+    const shouldTryApiFallback =
+      Boolean(ticketTokenProvider) &&
+      (directError || rows.length === 0);
+
+    if (shouldTryApiFallback) {
+      try {
+        const apiData = await workflowApiGet(
+          'all_handlers',
+          { include_inactive: includeInactive ? '1' : '0' },
+          { requireAuth: true }
+        );
+        const apiRows = Array.isArray(apiData?.rows) ? apiData.rows : [];
+        if (apiRows.length > 0 || rows.length === 0) {
+          rows = apiRows;
+          usedApiFallback = true;
+          directError = null;
+        }
+      } catch (apiErr) {
+        if (directError) {
+          throwIfError(directError, 'getAllHandlers');
+        }
+        console.warn('[ticketService] API fallback for getAllHandlers failed; using direct query result', apiErr);
+      }
+    }
+
+    if (directError && rows.length === 0) {
+      throwIfError(directError, 'getAllHandlers');
+    }
+
+    // Enrich handlers with permissions from new RBAC system.
+    // Skip enrichment when using API fallback in policy-restricted setups to avoid noisy RPC failures.
+    const handlers = normalizeHandlerRecords(toCamelCase(rows) || []);
+    const shouldEnrichPermissions =
+      options.enrichPermissions !== false &&
+      !usedApiFallback;
+
+    if (!shouldEnrichPermissions || handlers.length === 0) {
+      return handlers;
+    }
+
     const enrichedHandlers = await Promise.all(
       handlers.map(async (handler) => {
         try {
-          // Get permissions from new RBAC system
           const { data: permsData } = await supabase
             .rpc('get_handler_permissions', { handler_uuid: handler.id });
 
-          // Convert to permissions object
           const permissionsObj = {};
-          (permsData || []).forEach(perm => {
+          (permsData || []).forEach((perm) => {
             permissionsObj[perm.permission_code] = true;
           });
 
-          // Merge with existing permissions (if any) from handlers table
           const mergedPermissions = {
             ...normalizePermissions(handler.permissions),
-            ...permissionsObj
+            ...permissionsObj,
           };
 
           return {
             ...handler,
-            permissions: mergedPermissions
+            permissions: mergedPermissions,
           };
         } catch (err) {
           console.error(`[ticketService] RBAC enrichment failed for handler ${handler.id}:`, err);
           console.error(`[ticketService] Handler email: ${handler.email}, falling back to legacy permissions`);
-          // Return handler with existing permissions if RBAC fetch fails
           return {
             ...handler,
-            __rbac_enrichment_failed: true // Debug flag for troubleshooting
+            __rbac_enrichment_failed: true,
           };
         }
       })
