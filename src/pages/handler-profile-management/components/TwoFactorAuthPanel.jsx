@@ -8,7 +8,7 @@ import * as mfaService from '../../../services/mfaService';
 
 const TwoFactorAuthPanel = () => {
   const { t } = useTranslation();
-  const { user, getAccessTokenSilently, loginWithRedirect } = useAuth0();
+  const { getAccessTokenSilently, loginWithRedirect } = useAuth0();
 
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [isSetupMode, setIsSetupMode] = useState(false);
@@ -20,6 +20,7 @@ const TwoFactorAuthPanel = () => {
   const [error, setError] = useState('');
   const [showBackupCodes, setShowBackupCodes] = useState(false);
   const [mfaUnavailable, setMfaUnavailable] = useState(false);
+  const [authenticators, setAuthenticators] = useState([]);
 
   useEffect(() => {
     checkMFAStatus();
@@ -30,14 +31,16 @@ const TwoFactorAuthPanel = () => {
       return await getAccessTokenSilently({
         authorizationParams: {
           audience: `https://${import.meta.env.VITE_AUTH0_DOMAIN}/mfa/`,
-          scope
+          scope: `openid profile email offline_access ${scope}`.trim()
         },
         cacheMode: 'off'
       });
     } catch (err) {
-      const message = err?.error || err?.message || '';
+      const message = `${err?.error || ''} ${err?.message || ''}`.toLowerCase();
       const needsReauth =
         message.includes('invalid_grant') ||
+        message.includes('missing refresh token') ||
+        message.includes('missing_refresh_token') ||
         message.includes('refresh token') ||
         message.includes('login_required') ||
         message.includes('consent_required');
@@ -46,9 +49,10 @@ const TwoFactorAuthPanel = () => {
         await loginWithRedirect({
           authorizationParams: {
             audience: `https://${import.meta.env.VITE_AUTH0_DOMAIN}/mfa/`,
-            scope,
-            prompt: 'login'
-          }
+            scope: `openid profile email offline_access ${scope}`.trim(),
+            prompt: 'consent'
+          },
+          appState: { returnTo: window.location.pathname }
         });
         return null;
       }
@@ -62,8 +66,10 @@ const TwoFactorAuthPanel = () => {
       setIsLoading(true);
       const token = await getMfaToken('read:authenticators');
       if (!token) return;
-      const status = await mfaService.checkMFAStatus(token);
-      setIs2FAEnabled(status);
+      const authList = await mfaService.getMFAAuthenticators(token);
+      const list = Array.isArray(authList) ? authList : [];
+      setAuthenticators(list);
+      setIs2FAEnabled(list.some((auth) => Boolean(auth?.active)));
     } catch (err) {
       console.error('Error checking MFA status:', err);
       const msg = err?.message || '';
@@ -87,7 +93,12 @@ const TwoFactorAuthPanel = () => {
       setIsSetupMode(true);
     } catch (err) {
       console.error('Error starting 2FA setup:', err);
-      const msg = err?.message || t('settings.twoFactor.errorEnabling');
+      const raw = String(err?.message || '');
+      const lowered = raw.toLowerCase();
+      const msg =
+        lowered.includes('refresh token') || lowered.includes('missing refresh token')
+          ? 'Sessie verlopen voor MFA. Log opnieuw in om 2FA te configureren.'
+          : raw || t('settings.twoFactor.errorEnabling');
       setError(msg);
       if (msg.includes('404')) {
         setMfaUnavailable(true);
@@ -112,12 +123,18 @@ const TwoFactorAuthPanel = () => {
         setIs2FAEnabled(true);
         setIsSetupMode(false);
         setVerificationCode('');
+        checkMFAStatus();
       } else {
         setError(t('settings.twoFactor.invalidCode'));
       }
     } catch (err) {
       console.error('Error verifying 2FA code:', err);
-      const msg = t('settings.twoFactor.errorEnabling');
+      const raw = String(err?.message || '');
+      const lowered = raw.toLowerCase();
+      const msg =
+        lowered.includes('refresh token') || lowered.includes('missing refresh token')
+          ? 'Sessie verlopen voor MFA. Log opnieuw in om 2FA te configureren.'
+          : raw || t('settings.twoFactor.errorEnabling');
       setError(msg);
     } finally {
       setIsLoading(false);
@@ -140,6 +157,7 @@ const TwoFactorAuthPanel = () => {
         setIs2FAEnabled(false);
         setShowBackupCodes(false);
         setBackupCodes([]);
+        setAuthenticators([]);
       }
     } catch (err) {
       console.error('Error disabling 2FA:', err);
@@ -162,19 +180,26 @@ const TwoFactorAuthPanel = () => {
 
   if (isLoading && !isSetupMode) {
     return (
-      <div className="mb-6 p-6 rounded-lg bg-card border border-border flex items-center justify-center gap-2 text-sm text-muted-foreground">
+      <div className="p-5 rounded-xl bg-card border border-border shadow-sm flex items-center justify-center gap-2 text-sm text-muted-foreground">
         <Icon name="Loader" size={16} className="animate-spin" />
         {t('common.loading')}
       </div>
     );
   }
 
+  const authLabel = (auth) => {
+    if (auth?.authenticator_type === 'otp') return 'Authenticator app (TOTP)';
+    if (auth?.authenticator_type === 'recovery-code') return 'Recovery codes';
+    if (auth?.authenticator_type === 'oob' && auth?.oob_channel === 'email') return 'E-mail verificatie';
+    return auth?.authenticator_type || 'Authenticator';
+  };
+
   return (
-    <div className="mb-6 p-6 rounded-lg bg-card border border-border">
+    <div className="p-5 rounded-xl bg-card border border-border shadow-sm">
       {/* Header */}
       <div className="flex items-center gap-2 mb-4">
         <Icon name="Shield" size={20} color="var(--color-primary)" />
-        <h2 className="text-xl font-semibold text-foreground">Two-Factor Authentication (2FA)</h2>
+        <h2 className="text-lg font-semibold text-foreground">Two-Factor Authentication (2FA)</h2>
       </div>
 
       <div className="flex items-center justify-between mb-4">
@@ -247,6 +272,25 @@ const TwoFactorAuthPanel = () => {
               </div>
             </div>
           </div>
+
+          {authenticators.length > 0 && (
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Actieve methoden</p>
+              <div className="space-y-1.5">
+                {authenticators.map((auth) => (
+                  <div key={auth.id} className="flex items-center justify-between gap-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="text-foreground truncate">{authLabel(auth)}</p>
+                      {auth?.name && <p className="text-xs text-muted-foreground truncate">{auth.name}</p>}
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${auth?.active ? 'bg-success/10 text-success border border-success/20' : 'bg-muted text-muted-foreground border border-border'}`}>
+                      {auth?.active ? 'Actief' : 'Inactief'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-3">
             <Button

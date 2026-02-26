@@ -1,7 +1,6 @@
 // src/pages/handler/HandlerProfileManagement.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
-import { useTranslation } from 'react-i18next';
 import { Helmet } from 'react-helmet';
 import AuthContextNavigator from '../../components/navigation/AuthContextNavigator';
 import { handlerProfileService } from '../../services/handlerProfileService';
@@ -10,6 +9,7 @@ import Icon from '../../components/AppIcon';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import TwoFactorAuthPanel from './components/TwoFactorAuthPanel';
+import { getApiAccessToken } from '../../lib/auth0ApiToken';
 
 /**
  * Single-page version:
@@ -18,10 +18,39 @@ import TwoFactorAuthPanel from './components/TwoFactorAuthPanel';
  * - Two-Factor Authentication (2FA)
  * - NO NotificationPreferencesPanel (for now)
  */
+const permissionLabelMap = {
+  canViewTickets: 'Tickets bekijken',
+  canEditTickets: 'Tickets bewerken',
+  canDeleteTickets: 'Tickets verwijderen',
+  canManageUsers: 'Gebruikers beheren',
+  canExportData: 'Data exporteren',
+  canManageWorkflows: 'Workflows beheren',
+};
+
+const roleLabelMap = {
+  ADMIN: 'Administrator',
+  HANDLER: 'Handler',
+  SUPER_ADMIN: 'Super Admin',
+  USER: 'Gebruiker',
+};
+
+const formatRoleLabel = (role) => {
+  const code = String(role || '').toUpperCase().trim();
+  if (!code) return 'Handler';
+  return roleLabelMap[code] || code;
+};
+
+const summarizePermissions = (permissions) => {
+  if (!permissions || typeof permissions !== 'object') return [];
+
+  return Object.entries(permissions)
+    .filter(([key, value]) => !/^\d+$/.test(key) && value === true)
+    .map(([key]) => permissionLabelMap[key] || key)
+    .sort((a, b) => a.localeCompare(b, 'nl-NL'));
+};
 
 const HandlerProfileManagement = () => {
-  const { user } = useAuth0();
-  const { t } = useTranslation();
+  const { user, getAccessTokenSilently } = useAuth0();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -36,6 +65,18 @@ const HandlerProfileManagement = () => {
   // Global email channel toggle (stored in notification settings table)
   const [emailChannel, setEmailChannel] = useState({ emailEnabled: true });
 
+  const roles = useMemo(() => {
+    const list = Array.isArray(handlerProfile?.roles) ? handlerProfile.roles : [];
+    if (list.length > 0) return list.map((role) => String(role || '').toUpperCase());
+    if (handlerProfile?.role) return [String(handlerProfile.role).toUpperCase()];
+    return ['HANDLER'];
+  }, [handlerProfile?.role, handlerProfile?.roles]);
+
+  const enabledPermissionLabels = useMemo(
+    () => summarizePermissions(handlerProfile?.permissions),
+    [handlerProfile?.permissions]
+  );
+
   useEffect(() => {
     if (user?.sub) loadProfileData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -46,17 +87,47 @@ const HandlerProfileManagement = () => {
       setLoading(true);
       setError('');
 
-      // 1) Handler profile
-      const profile = await handlerProfileService?.getHandlerByUserId(user?.sub);
+      // 1) Handler profile (prefer backend context for RLS-safe lookup)
+      let profile = null;
+      try {
+        const token = await getApiAccessToken(getAccessTokenSilently);
+        const response = await fetch('/api/me.api.php', {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const payload = await response.json().catch(() => null);
+        if (response.ok && payload?.success && payload?.data?.handler) {
+          profile = payload.data.handler;
+        }
+      } catch (apiError) {
+        console.warn('[HandlerProfile] /api/me.api.php lookup failed, fallback to direct lookup:', apiError);
+      }
+
+      if (!profile) {
+        profile = await handlerProfileService?.getHandlerByUserId(user?.sub);
+      }
+
+      if (!profile && user?.email) {
+        profile = await handlerProfileService?.getHandlerByEmail(user.email);
+      }
+
       setHandlerProfile(profile);
 
       setContactInfo({
         phone: profile?.phone || '',
-        email: profile?.email || ''
+        email: profile?.email || user?.email || ''
       });
 
+      if (!profile?.id) {
+        setEmailChannel({ emailEnabled: true });
+        setError('Geen gekoppeld handler-profiel gevonden voor dit account. Neem contact op met een administrator.');
+        return;
+      }
+
       // 2) Notification settings (only use emailEnabled for now)
-      const notifSettings = await handlerProfileService?.getNotificationSettings(profile?.id);
+      const notifSettings = await handlerProfileService?.getNotificationSettings(profile.id);
       if (notifSettings) {
         setEmailChannel({
           emailEnabled: notifSettings?.emailEnabled ?? true
@@ -133,147 +204,109 @@ const HandlerProfileManagement = () => {
 
       <AuthContextNavigator>
         <div className="min-h-screen app-page-gradient bg-background">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+            <AccountOverviewPanel
+              user={user}
+              handlerProfile={handlerProfile}
+              roles={roles}
+              permissionCount={enabledPermissionLabels.length}
+            />
 
-            {/* Profile Header */}
-            <div className="mb-8 bg-card border border-border rounded-xl p-6">
-              <div className="flex items-start gap-6">
-                <div className="flex-shrink-0">
-                  {user?.picture ? (
-                    <img
-                      src={user.picture}
-                      alt={user?.name || 'User'}
-                      className="w-24 h-24 rounded-full border-4 border-primary/20 object-cover"
-                    />
-                  ) : (
-                    <div className="w-24 h-24 rounded-full bg-primary/10 border-4 border-primary/20 flex items-center justify-center">
-                      <Icon name="User" size={40} color="var(--color-primary)" />
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-1">
-                    {user?.name || handlerProfile?.name || 'Handler'}
-                  </h1>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    {user?.email || handlerProfile?.email}
-                  </p>
-
-                  <div className="flex flex-wrap gap-3">
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50">
-                      <Icon name="Shield" size={16} color="var(--color-primary)" />
-                      <span className="text-sm font-medium text-foreground">
-                        {handlerProfile?.role || 'Handler'}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50">
-                      <div className={`w-2 h-2 rounded-full ${handlerProfile?.active ? 'bg-success' : 'bg-destructive'}`} />
-                      <span className="text-sm font-medium text-foreground">
-                        {handlerProfile?.active ? 'Actief' : 'Inactief'}
-                      </span>
-                    </div>
-
-                    {user?.sub && (
-                      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50">
-                        <Icon name="CheckCircle" size={16} color="var(--color-success)" />
-                        <span className="text-sm font-medium text-foreground">
-                          OAuth Verbonden
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Error/Success */}
             {error && (
-              <div className="mb-6 p-4 rounded-lg bg-destructive/10 border border-destructive/20 flex items-start gap-3">
-                <Icon name="AlertCircle" size={20} color="var(--color-destructive)" className="flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-destructive">Fout</p>
-                  <p className="text-sm text-destructive/80">{error}</p>
+              <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 flex items-start gap-3 shadow-sm">
+                <Icon name="AlertTriangle" size={18} color="var(--color-destructive)" className="flex-shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-destructive">Fout</p>
+                  <p className="text-sm text-destructive/90">{error}</p>
                 </div>
               </div>
             )}
 
             {successMessage && (
-              <div className="mb-6 p-4 rounded-lg bg-success/10 border border-success/20 flex items-start gap-3">
-                <Icon name="CheckCircle" size={20} color="var(--color-success)" className="flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-success">Succes</p>
-                  <p className="text-sm text-success/80">{successMessage}</p>
+              <div className="rounded-xl border border-success/30 bg-success/10 px-4 py-3 flex items-start gap-3 shadow-sm">
+                <Icon name="CheckCircle" size={18} color="var(--color-success)" className="flex-shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-success">Opgeslagen</p>
+                  <p className="text-sm text-success/90">{successMessage}</p>
                 </div>
               </div>
             )}
 
-            {/* Panels */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              <ContactInfoPanel contactInfo={contactInfo} setContactInfo={setContactInfo} />
-            </div>
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+              <div className="xl:col-span-2 space-y-6">
+                <ContactInfoPanel contactInfo={contactInfo} setContactInfo={setContactInfo} />
 
-            {/* Email Preferences Panel */}
-            <div className="mb-6">
-              <EmailPreferencesPanel
-                handlerId={handlerProfile?.id}
-                contactInfo={contactInfo}
-                emailEnabled={emailChannel.emailEnabled}
-                setEmailEnabled={(enabled) => setEmailChannel({ emailEnabled: enabled })}
-              />
-            </div>
+                <EmailPreferencesPanel
+                  handlerId={handlerProfile?.id}
+                  contactInfo={contactInfo}
+                  emailEnabled={emailChannel.emailEnabled}
+                  setEmailEnabled={(enabled) => setEmailChannel({ emailEnabled: enabled })}
+                />
+              </div>
 
-            {/* Two-Factor Authentication Panel */}
-            <TwoFactorAuthPanel />
+              <div className="space-y-6">
+                <AccessSummaryPanel
+                  user={user}
+                  roles={roles}
+                  enabledPermissionLabels={enabledPermissionLabels}
+                  handlerProfile={handlerProfile}
+                />
 
-            {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 mt-8">
-              <Button
-                variant="default"
-                size="lg"
-                iconName="Save"
-                iconPosition="left"
-                onClick={handleSaveChanges}
-                loading={saving}
-                disabled={saving}
-                className="flex-1 sm:flex-none"
-              >
-                Wijzigingen Opslaan
-              </Button>
-              <Button
-                variant="outline"
-                size="lg"
-                iconName="RotateCcw"
-                iconPosition="left"
-                onClick={handleResetToDefaults}
-                disabled={saving}
-                className="flex-1 sm:flex-none"
-              >
-                Reset naar Standaard
-              </Button>
-            </div>
+                <TwoFactorAuthPanel />
 
-            {/* Integration Status */}
-            <div className="mt-8 p-4 rounded-lg bg-muted/50 border border-border">
-              <div className="flex items-start gap-3">
-                <Icon name="Info" size={20} color="var(--color-primary)" className="flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-foreground mb-2">Integratie Status</p>
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Icon name="Mail" size={16} color="var(--color-success)" />
-                      <p className="text-xs text-muted-foreground">Email Service: Actief</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Icon name="MessageSquare" size={16} color="var(--color-muted-foreground)" />
-                      <p className="text-xs text-muted-foreground">SMS/Push: Nog niet actief</p>
+                <div className="p-4 rounded-xl bg-card border border-border shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <Icon name="Info" size={18} color="var(--color-primary)" className="flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-foreground mb-2">Integratie Status</p>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 text-sm text-foreground">
+                          <Icon name="Mail" size={14} color="var(--color-success)" />
+                          <span>Email Service: Actief</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Icon name="MessageSquare" size={14} color="var(--color-muted-foreground)" />
+                          <span>SMS/Push: Nog niet actief</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
+            <div className="sticky bottom-3 z-20">
+              <div className="rounded-xl border border-border bg-card/95 backdrop-blur px-4 py-3 shadow-lg flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  Sla uw profielwijzigingen op om contactgegevens en notificatiegedrag direct toe te passen.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                  <Button
+                    variant="default"
+                    size="default"
+                    iconName="Save"
+                    iconPosition="left"
+                    onClick={handleSaveChanges}
+                    loading={saving}
+                    disabled={saving}
+                    className="w-full sm:w-auto"
+                  >
+                    Wijzigingen Opslaan
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="default"
+                    iconName="RotateCcw"
+                    iconPosition="left"
+                    onClick={handleResetToDefaults}
+                    disabled={saving}
+                    className="w-full sm:w-auto"
+                  >
+                    Reset naar Standaard
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </AuthContextNavigator>
@@ -284,18 +317,153 @@ const HandlerProfileManagement = () => {
 export default HandlerProfileManagement;
 
 /* ----------------------------- Small panels ----------------------------- */
+const compactId = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '-';
+  if (raw.length <= 16) return raw;
+  return `${raw.slice(0, 8)}...${raw.slice(-6)}`;
+};
+
+const StatTile = ({ label, value, icon, compact = false }) => (
+  <div className="rounded-xl border border-border bg-muted/30 px-3 py-2.5">
+    <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+      <Icon name={icon} size={12} />
+      <span>{label}</span>
+    </div>
+    <p className={`mt-1 ${compact ? 'text-xs' : 'text-lg'} font-semibold text-foreground break-all`}>{value}</p>
+  </div>
+);
+
+const AccountOverviewPanel = ({ user, handlerProfile, roles, permissionCount }) => {
+  const displayName = user?.name || handlerProfile?.name || 'Handler';
+  const displayEmail = handlerProfile?.email || user?.email || '-';
+  const primaryRole = formatRoleLabel(handlerProfile?.role || roles?.[0]);
+
+  return (
+    <section className="rounded-2xl border border-border bg-card/95 backdrop-blur shadow-sm overflow-hidden">
+      <div className="p-6 md:p-7">
+        <div className="flex flex-col md:flex-row md:items-start gap-5">
+          <div className="flex-shrink-0">
+            {user?.picture ? (
+              <img
+                src={user.picture}
+                alt={displayName}
+                className="w-20 h-20 rounded-2xl border border-primary/20 object-cover shadow-sm"
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-2xl border border-primary/20 bg-primary/10 flex items-center justify-center">
+                <span className="text-2xl font-semibold text-primary">
+                  {String(displayName)
+                    .split(' ')
+                    .map((part) => part.charAt(0))
+                    .join('')
+                    .slice(0, 2)
+                    .toUpperCase()}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl md:text-3xl font-semibold text-foreground tracking-tight">
+              {displayName}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1 break-all">{displayEmail}</p>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                <Icon name="Shield" size={12} />
+                {primaryRole}
+              </span>
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${handlerProfile?.active ? 'bg-success/10 text-success border-success/20' : 'bg-destructive/10 text-destructive border-destructive/20'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${handlerProfile?.active ? 'bg-success' : 'bg-destructive'}`} />
+                {handlerProfile?.active ? 'Actief' : 'Inactief'}
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border">
+                <Icon name="CheckCircle" size={12} />
+                OAuth verbonden
+              </span>
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${user?.email_verified ? 'bg-success/10 text-success border-success/20' : 'bg-warning/10 text-warning border-warning/20'}`}>
+                <Icon name={user?.email_verified ? 'CheckCircle' : 'AlertCircle'} size={12} />
+                {user?.email_verified ? 'E-mail geverifieerd' : 'E-mail niet geverifieerd'}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 md:w-56">
+            <StatTile label="Rollen" value={String(roles?.length || 0)} icon="Users" />
+            <StatTile label="Rechten" value={String(permissionCount || 0)} icon="Key" />
+            <StatTile label="Handler ID" value={compactId(handlerProfile?.id)} icon="Fingerprint" compact />
+            <StatTile label="User ID" value={compactId(handlerProfile?.user_id || user?.sub)} icon="Link2" compact />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+const AccessSummaryPanel = ({ user, roles, enabledPermissionLabels, handlerProfile }) => {
+  const roleList = roles?.length ? roles : ['HANDLER'];
+
+  return (
+    <section className="rounded-xl border border-border bg-card shadow-sm p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <Icon name="ShieldCheck" size={18} color="var(--color-primary)" />
+        <h2 className="text-lg font-semibold text-foreground">Toegang & identiteit</h2>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Rollen</p>
+          <div className="flex flex-wrap gap-2">
+            {roleList.map((role) => (
+              <span
+                key={role}
+                className="px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20"
+              >
+                {formatRoleLabel(role)}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Actieve rechten</p>
+          <div className="space-y-1.5">
+            {enabledPermissionLabels.length > 0 ? (
+              enabledPermissionLabels.map((label) => (
+                <div key={label} className="text-sm text-foreground flex items-center gap-2">
+                  <Icon name="CheckCircle" size={14} color="var(--color-success)" />
+                  <span>{label}</span>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">Geen expliciete rechten gevonden.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-muted/30 p-3">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Account koppeling</p>
+          <p className="text-xs text-foreground mt-1 break-all">sub: {handlerProfile?.user_id || user?.sub || '-'}</p>
+          <p className="text-xs text-muted-foreground mt-1">Gebruik deze koppeling voor support en debugging.</p>
+        </div>
+      </div>
+    </section>
+  );
+};
 
 const ContactInfoPanel = ({ contactInfo, setContactInfo }) => {
   return (
-    <div className="mb-6 p-6 rounded-lg bg-card border border-border">
+    <div className="p-5 rounded-xl bg-card border border-border shadow-sm">
       <div className="flex items-center gap-2 mb-4">
         <Icon name="Phone" size={20} color="var(--color-primary)" />
-        <h2 className="text-xl font-semibold text-foreground">Contactinformatie</h2>
+        <h2 className="text-lg font-semibold text-foreground">Contactinformatie</h2>
       </div>
-      <p className="text-sm text-muted-foreground mb-6">
+      <p className="text-sm text-muted-foreground mb-5">
         Beheer uw contactgegevens voor e-mailcommunicatie.
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <Input
           label="Telefoonnummer"
           type="tel"
@@ -486,7 +654,7 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
 
   if (loading) {
     return (
-      <div className="mb-4 p-4 rounded-lg bg-card border border-border">
+      <div className="p-4 rounded-xl bg-card border border-border shadow-sm">
         <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-8">
           <Icon name="Loader" size={16} className="animate-spin" />
           Email voorkeuren laden...
@@ -498,11 +666,11 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
   const categories = Object.keys(preferencesByCategory);
 
   return (
-    <div className="mb-6 p-4 rounded-lg bg-card border border-border">
+    <div className="p-5 rounded-xl bg-card border border-border shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Icon name="Mail" size={20} color="var(--color-primary)" />
-          <h2 className="text-xl font-semibold text-foreground">Email Voorkeuren</h2>
+          <h2 className="text-lg font-semibold text-foreground">Email voorkeuren</h2>
         </div>
         <div className="flex items-center gap-2">
           <Button
