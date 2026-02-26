@@ -447,7 +447,7 @@
         "filesWillBeUploaded": "Uw bestanden worden geï¿½pload met uw melding",
         "incidentType": "Incidenttype",
         "anonymousReport": "Anonieme Melding",
-        "anonymousDescription": "Deze melding wordt anoniem ingediend zonder contactgegevens.",
+        "anonymousDescription": "Deze melding wordt anoniem ingediend. Uw e-mailadres wordt versleuteld opgeslagen voor veilige communicatie en blijft verborgen voor handlers.",
         "workflowOptions": {
             "klokkenluidersmeldingen": {
                 "name": "Klokkenluidersmeldingen",

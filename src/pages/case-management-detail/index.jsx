@@ -381,6 +381,7 @@ export default function CaseManagementDetail() {
       reporterDetails: {
         name: fullTicket?.reporterName || t('caseManagement.anonymous'),
         email: fullTicket?.reporterEmail || '',
+        hasSecureEmail: Boolean(fullTicket?.reporterEmailEncrypted || fullTicket?.reporter_email_encrypted),
         phone: fullTicket?.reporterPhone || null,
         phoneVerified: fullTicket?.reporterPhoneVerified || false,
       },
@@ -1087,7 +1088,7 @@ export default function CaseManagementDetail() {
 
               <CommunicationPanel
                 messages={communicationMessages}
-                canContact={Boolean(caseData?.reporterDetails?.email)}
+                canContact={Boolean(caseData?.reporterDetails?.email || caseData?.reporterDetails?.hasSecureEmail)}
                 onSendMessage={handleSendMessage}
                 isLoading={isRelationsLoading}
               />

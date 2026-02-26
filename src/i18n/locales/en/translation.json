@@ -423,7 +423,7 @@
         "filesWillBeUploaded": "Your files will be uploaded with your report",
         "incidentType": "Incident Type",
         "anonymousReport": "Anonymous Report",
-        "anonymousDescription": "This report will be submitted anonymously without any contact information.",
+        "anonymousDescription": "This report will be submitted anonymously. Your email is stored encrypted for secure communication and remains hidden from handlers.",
         "locationRequired": "Location is required",
         "preview": "Preview",
         "previewUnavailable": "Preview unavailable for this file.",

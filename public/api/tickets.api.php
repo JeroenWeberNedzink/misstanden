@@ -649,12 +649,8 @@ function handle_create(array $data): void {
     $isAnonymous = !empty($data['is_anonymous']);
     $requireEmailVerification = ticket_setting_bool($settings, ['tickets.require_email_verification'], true);
 
-    if ($isAnonymous) {
-        $email = null;
-    } else {
-        if ($requireEmailVerification && $email === '') {
-            throw new Exception('reporter_email is required for non-anonymous reports');
-        }
+    if ($requireEmailVerification && $email === '') {
+        throw new Exception('reporter_email is required by system policy');
     }
 
     $defaultPriority = ticket_normalize_severity(
@@ -705,10 +701,10 @@ function handle_create(array $data): void {
         'severity_code' => $severityCode,
         'reporter_name' => $data['reporter_name'] ?? null,
         'reporter_phone' => $data['reporter_phone'] ?? null,
-        'email_notify' => !$isAnonymous && $email !== '' ? !empty($data['email_notify']) : false,
+        'email_notify' => $email !== '' ? !empty($data['email_notify']) : false,
         'status_email_notify' => array_key_exists('status_email_notify', $data)
-            ? (!$isAnonymous && $email !== '' ? !empty($data['status_email_notify']) : false)
-            : (!$isAnonymous && $email !== ''),
+            ? ($email !== '' ? !empty($data['status_email_notify']) : false)
+            : ($email !== ''),
         'status_code' => $data['status_code'] ?? null,
         'current_stage' => $data['current_stage'] ?? null,
         'metadata' => $incomingMetadata,
