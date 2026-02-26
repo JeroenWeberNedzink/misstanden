@@ -39,6 +39,24 @@ function api_json(int $status, bool $success, string $message, $data = null): vo
     exit;
 }
 
+function api_strlen(string $value): int {
+    if (function_exists('mb_strlen')) {
+        return (int)mb_strlen($value, 'UTF-8');
+    }
+    return (int)strlen($value);
+}
+
+function api_substr(string $value, int $start, ?int $length = null): string {
+    if (function_exists('mb_substr')) {
+        return $length === null
+            ? (string)mb_substr($value, $start, null, 'UTF-8')
+            : (string)mb_substr($value, $start, $length, 'UTF-8');
+    }
+    return $length === null
+        ? (string)substr($value, $start)
+        : (string)substr($value, $start, $length);
+}
+
 function ticket_client_ip(): string {
     $candidates = [
         $_SERVER['HTTP_CF_CONNECTING_IP'] ?? null,
@@ -769,7 +787,7 @@ function handle_reporter_message(array $data): void {
     if ($body === '') {
         api_json(400, false, 'Message body is required');
     }
-    if (mb_strlen($body) > 1000) {
+    if (api_strlen($body) > 1000) {
         api_json(400, false, 'Message body exceeds 1000 characters');
     }
 
@@ -922,7 +940,7 @@ function handle_handler_add_comment(array $data): void {
     if ($comment === '') {
         api_json(400, false, 'comment is required');
     }
-    if (mb_strlen($comment) > 4000) {
+    if (api_strlen($comment) > 4000) {
         api_json(400, false, 'comment exceeds 4000 characters');
     }
 
@@ -956,7 +974,7 @@ function handle_handler_add_comment(array $data): void {
                     'ticket_id' => $ticketId,
                     'action_type' => 'note_added',
                     'action' => 'Note Added',
-                    'description' => 'Added investigation note: ' . mb_substr($comment, 0, 100) . '...',
+                    'description' => 'Added investigation note: ' . api_substr($comment, 0, 100) . '...',
                     'handler_id' => $handlerId !== '' ? $handlerId : null,
                     'handler_name' => $performedBy,
                     'handler_email' => $handlerEmail !== '' ? $handlerEmail : null,
@@ -995,7 +1013,7 @@ function handle_handler_add_message(array $data): void {
     if ($body === '') {
         api_json(400, false, 'body is required');
     }
-    if (mb_strlen($body) > 4000) {
+    if (api_strlen($body) > 4000) {
         api_json(400, false, 'body exceeds 4000 characters');
     }
 
@@ -1044,7 +1062,7 @@ function handle_handler_add_message(array $data): void {
                     'ticket_id' => $ticketId,
                     'action_type' => 'message_sent',
                     'action' => 'Message Sent',
-                    'description' => 'Sent message: ' . mb_substr($body, 0, 100) . '...',
+                    'description' => 'Sent message: ' . api_substr($body, 0, 100) . '...',
                     'handler_id' => $handlerId !== '' ? $handlerId : null,
                     'handler_name' => $performedBy,
                     'handler_email' => $handlerEmail !== '' ? $handlerEmail : null,
@@ -1079,7 +1097,7 @@ function handle_reporter_add_attachment(array $data): void {
     $mimeType = trim((string)($data['mime_type'] ?? 'application/octet-stream'));
     $sizeBytes = isset($data['size_bytes']) ? (int)$data['size_bytes'] : null;
 
-    if ($fileName === '' || mb_strlen($fileName) > 255) {
+    if ($fileName === '' || api_strlen($fileName) > 255) {
         api_json(400, false, 'file_name is required and must be <= 255 chars');
     }
     if ($fileUrl === '') {
@@ -1144,7 +1162,7 @@ function handle_reporter_add_attachment(array $data): void {
                     'ticket_id' => $ticketId,
                     'action_type' => 'attachment_added',
                     'action' => 'Attachment Added',
-                    'description' => 'Reporter uploaded file: ' . mb_substr($fileName, 0, 200),
+                    'description' => 'Reporter uploaded file: ' . api_substr($fileName, 0, 200),
                     'performed_by' => $performedBy,
                 ],
                 false
@@ -1178,7 +1196,7 @@ function handle_handler_add_attachment(array $data): void {
     $noteIdRaw = trim((string)($data['note_id'] ?? ''));
     $noteId = ticket_is_uuid($noteIdRaw) ? $noteIdRaw : null;
 
-    if ($fileName === '' || mb_strlen($fileName) > 255) {
+    if ($fileName === '' || api_strlen($fileName) > 255) {
         api_json(400, false, 'file_name is required and must be <= 255 chars');
     }
     if ($fileUrl === '') {
@@ -1231,7 +1249,7 @@ function handle_handler_add_attachment(array $data): void {
                     'ticket_id' => $ticketId,
                     'action_type' => 'attachment_added',
                     'action' => 'Attachment Added',
-                    'description' => 'Uploaded file: ' . mb_substr($fileName, 0, 200),
+                    'description' => 'Uploaded file: ' . api_substr($fileName, 0, 200),
                     'handler_id' => $handlerId !== '' ? $handlerId : null,
                     'handler_name' => $performedBy,
                     'handler_email' => $handlerEmail !== '' ? $handlerEmail : null,
@@ -1265,13 +1283,13 @@ function handle_handler_log_action(array $data): void {
     $action = trim((string)($data['action'] ?? ''));
     $description = trim((string)($data['description'] ?? ''));
 
-    if ($actionType === '' || mb_strlen($actionType) > 80) {
+    if ($actionType === '' || api_strlen($actionType) > 80) {
         api_json(400, false, 'action_type is required and must be <= 80 chars');
     }
-    if ($action === '' || mb_strlen($action) > 255) {
+    if ($action === '' || api_strlen($action) > 255) {
         api_json(400, false, 'action is required and must be <= 255 chars');
     }
-    if ($description !== '' && mb_strlen($description) > 4000) {
+    if ($description !== '' && api_strlen($description) > 4000) {
         api_json(400, false, 'description must be <= 4000 chars');
     }
 

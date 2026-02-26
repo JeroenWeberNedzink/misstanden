@@ -2523,6 +2523,8 @@ async deleteHandler(handlerId, options = {}) {
 
     let attachment = null;
     let attachmentCreatedViaApi = false;
+    let reporterApiAttempted = false;
+    let reporterApiError = null;
 
     if (currentHandlerId) {
       try {
@@ -2547,6 +2549,7 @@ async deleteHandler(handlerId, options = {}) {
     }
 
     if (!attachment && accessCode) {
+      reporterApiAttempted = true;
       try {
         const apiData = await ticketApiPost(
           {
@@ -2563,8 +2566,22 @@ async deleteHandler(handlerId, options = {}) {
         attachment = toCamelCase(apiData?.attachment || apiData);
         attachmentCreatedViaApi = true;
       } catch (apiError) {
-        console.warn('[ticketService] reporter_add_attachment API failed, falling back to direct insert', apiError);
+        reporterApiError = apiError;
+        console.warn('[ticketService] reporter_add_attachment API failed', apiError);
       }
+    }
+
+    if (!attachment && reporterApiAttempted && !currentHandlerId) {
+      // In reporter flow, direct table insert is usually blocked by RLS.
+      // Avoid noisy fallback errors and return the real API failure.
+      try {
+        await supabase.storage.from(bucket).remove([path]);
+      } catch (cleanupError) {
+        console.warn('[ticketService] Failed to cleanup uploaded reporter attachment after API failure', cleanupError);
+      }
+      const e = new Error(`uploadAttachment(reporter_add_attachment): ${reporterApiError?.message || 'Failed to attach file'}`);
+      e.original = reporterApiError || null;
+      throw e;
     }
 
     if (!attachment) {
