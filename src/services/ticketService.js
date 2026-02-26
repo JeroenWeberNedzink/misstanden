@@ -1557,9 +1557,10 @@ export const ticketService = {
       cur?.metadata?.first_response_at ||
       cur?.metadata?.firstResponseAt ||
       null;
+    const shouldBackfillFirstResponseOnTerminal = !existingFirstResponseAt && Boolean(resolved?.isTerminal);
     const shouldStampFirstResponseAt =
       !existingFirstResponseAt &&
-      isReceiptConfirmationStatus(resolved?.code, resolved?.label);
+      (isReceiptConfirmationStatus(resolved?.code, resolved?.label) || shouldBackfillFirstResponseOnTerminal);
 
     update.metadata = {
       ...(cur?.metadata || {}),

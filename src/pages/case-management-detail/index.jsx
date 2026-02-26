@@ -308,7 +308,6 @@ export default function CaseManagementDetail() {
       fullTicket?.expectedResolutionDate ||
       fullTicket?.expected_resolution_date ||
       null;
-    const firstResponseAt = getFirstResponseAt(fullTicket, { strictReceiptStatus: true });
     const firstResponseDueAt = submittedAtDate ? addHours(submittedAtDate, slaResponseHours) : null;
     const resolutionDueAt = expectedResolutionDate
       ? toDateSafe(expectedResolutionDate)
@@ -330,6 +329,8 @@ export default function CaseManagementDetail() {
       Boolean(statusMeta?.isTerminal) ||
       isTerminalStatusValue(statusCodeValue) ||
       isTerminalStatusValue(statusLabel);
+    const firstResponseAtDetected = getFirstResponseAt(fullTicket, { strictReceiptStatus: true });
+    const firstResponseAt = firstResponseAtDetected || (isClosed ? statusStartAt : null);
 
     const assignment = resolveAssignedHandler(
       fullTicket,

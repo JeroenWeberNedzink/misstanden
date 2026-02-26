@@ -89,17 +89,21 @@ export default function SLACompactCard({ sla, statusLabel, currentStatusDuration
       date: formatDate(closedAt),
       defaultValue: `Completed at ${formatDate(closedAt)}`,
     });
+    const firstResponseDoneAt = sla?.firstResponseAt || (isClosed ? closedAt : null);
+    const firstResponseDueText = t('caseManagementDetail.sla.dueBy', { date: formatDate(sla?.firstResponseDueAt) });
 
     return [
       {
         id: 'first-response',
         label: t('caseManagementDetail.sla.firstResponse'),
         dueAt: sla?.firstResponseDueAt,
-        doneAt: sla?.firstResponseAt,
-        dateText: sla?.firstResponseAt
+        doneAt: firstResponseDoneAt,
+        dateText: firstResponseDoneAt
+          ? (sla?.firstResponseAt
           ? t('caseManagementDetail.sla.respondedAt', { date: formatDate(sla.firstResponseAt) })
-          : t('caseManagementDetail.sla.dueBy', { date: formatDate(sla?.firstResponseDueAt) }),
-        secondaryDateText: null,
+          : completedDateText)
+          : firstResponseDueText,
+        secondaryDateText: firstResponseDoneAt && !sla?.firstResponseAt ? firstResponseDueText : null,
       },
       {
         id: 'next-step',
