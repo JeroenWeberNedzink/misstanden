@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_auth0.php';
 require_once __DIR__ . '/_supabase.php';
+require_once __DIR__ . '/_scopes.php';
 
 function api_authz_env_required(string $key): string {
     $value = trim((string)(getenv($key) ?: ''));
@@ -116,7 +117,7 @@ function api_authz_fetch_handler(string $baseUrl, string $serviceKey, array $cla
     return null;
 }
 
-function api_authz_require_admin(callable $deny): array {
+function api_authz_require_admin(callable $deny, array $requiredScopes = []): array {
     $token = auth0_get_bearer_token();
     if ($token === '') {
         $deny(401, 'Authorization token required');
@@ -137,6 +138,7 @@ function api_authz_require_admin(callable $deny): array {
     if (!api_authz_is_admin($handler)) {
         $deny(403, 'Admin permissions required');
     }
+    require_scopes($claims, $requiredScopes, $deny);
 
     return [
         'claims' => $claims,

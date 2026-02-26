@@ -11,11 +11,12 @@ declare(strict_types=1);
  */
 
 require_once __DIR__ . '/_errors.php';
+require_once __DIR__ . '/_security_headers.php';
 
-header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+api_apply_security_headers([
+    'allow_methods' => 'POST, OPTIONS',
+    'allow_headers' => 'Content-Type, Authorization',
+]);
 
 $debugMode = (isset($_GET['debug']) && $_GET['debug'] === '1');
 

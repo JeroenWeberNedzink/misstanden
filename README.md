@@ -59,6 +59,7 @@ API layer:
   - `/api/mfa.api.php`
   - `/api/translations.api.php`
   - `/api/sla-backfill.api.php`
+  - `/api/security-self-test.api.php` (admin diagnostics)
 
 ## Core Functional Areas
 
@@ -171,6 +172,14 @@ API/mail/security (optional or environment-specific):
 - `SUPABASE_SERVICE_ROLE_KEY` (required for secure server-side settings/workflow/ticket APIs; also used by SLA tooling)
 - `SLA_BACKFILL_CRON_KEY` (optional but recommended; enables non-interactive scheduled calls to `/api/sla-backfill.api.php` via `X-SLA-CRON-KEY`)
 
+Recommended Auth0 API scopes:
+- `admin:settings:read`, `admin:settings:write`
+- `admin:workflows:read`, `admin:workflows:write`
+- `admin:translations:read`, `admin:translations:write`
+- `admin:sla:write`
+- `admin:security:read`
+- `admin:all` (optional compatibility umbrella)
+
 ## Automated SLA Backfill (Windows/IIS)
 
 Manual backfill in UI is a fallback tool. For production, schedule it.
@@ -258,6 +267,20 @@ Locale files:
 - Maintenance mode is controlled via dynamic settings.
 - Browser-visible `VITE_SUPABASE_ANON_KEY` is expected for Supabase frontends; real protection comes from strict RLS/policies.
 - Admin settings writes now go through `public/api/settings.api.php` and require an Auth0 token + admin handler authorization.
+
+## Security Hardening
+
+- Server-side scope enforcement is active for admin APIs:
+  - `settings.api.php` (read/write split by method)
+  - `workflows.api.php` (read/write split by method)
+  - `translations.api.php` (read/write split by method)
+  - `sla-backfill.api.php` (admin-triggered runs)
+  - `security-self-test.api.php` (admin read scope)
+- API security headers are centralized in `public/api/_security_headers.php` and applied across API endpoints.
+- Admin-only deployment validation endpoint:
+  - `GET /api/security-self-test.api.php`
+  - Requires admin authorization + `admin:security:read` (or configured compatible admin scope)
+  - Returns redacted boolean checks only (no secret values)
 
 ## Troubleshooting
 

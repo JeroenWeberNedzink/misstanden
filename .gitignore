@@ -15,3 +15,14 @@ node_modules
 
 # Local encryption keys
 private/keys/*.key
+
+# Runtime directories (local only)
+logs/
+pid/
+temp/
+public/api/outbox/
+public/api/temp/
+run/pids/
+run/rate-limits/
+
+# Build artifacts in dist/ are currently tracked by repository policy.

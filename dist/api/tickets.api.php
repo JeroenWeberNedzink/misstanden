@@ -13,11 +13,12 @@ require_once __DIR__ . '/_auth0.php';
 require_once __DIR__ . '/_admin_auth.php';
 require_once __DIR__ . '/_supabase.php';
 require_once __DIR__ . '/_errors.php';
+require_once __DIR__ . '/_security_headers.php';
 
-header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+api_apply_security_headers([
+    'allow_methods' => 'POST, OPTIONS',
+    'allow_headers' => 'Content-Type, Authorization',
+]);
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -29,6 +30,8 @@ ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/../../php-errors.log');
 ini_set('display_errors', '0');
 error_reporting(E_ALL);
+
+const ATTACHMENT_SIGNED_URL_TTL_SECONDS = 120;
 
 function api_json(int $status, bool $success, string $message, $data = null): void {
     http_response_code($status);
@@ -77,6 +80,18 @@ function ticket_client_ip(): string {
         }
     }
     return 'unknown';
+}
+
+function ticket_hash_scope_part(string $value): string {
+    $salt = trim((string)(getenv('RATE_LIMIT_SALT') ?: ''));
+    return hash('sha256', $salt . '|' . $value);
+}
+
+function ticket_client_fingerprint(): string {
+    $ip = ticket_client_ip();
+    $userAgent = strtolower(trim((string)($_SERVER['HTTP_USER_AGENT'] ?? '')));
+    $userAgent = $userAgent !== '' ? substr($userAgent, 0, 160) : 'unknown';
+    return ticket_hash_scope_part('client:' . $ip . '|ua:' . $userAgent);
 }
 
 function ticket_rate_limit_file(string $scope): string {
@@ -164,27 +179,73 @@ function ticket_limit_scope_suffix(string $ticketInput): string {
 }
 
 function ticket_enforce_request_rate_limit(string $action, string $ticketInput): void {
-    $ip = ticket_client_ip();
-    $ticketKey = ticket_limit_scope_suffix($ticketInput);
+    $clientKey = ticket_client_fingerprint();
+    $ticketRaw = ticket_limit_scope_suffix($ticketInput);
+    $ticketKey = ticket_hash_scope_part('ticket:' . $ticketRaw);
 
-    $ipScope = 'tickets:' . $action . ':ip:' . $ip;
-    $ticketScope = 'tickets:' . $action . ':ip_ticket:' . $ip . ':' . $ticketKey;
-
-    $ipCheck = ticket_rate_limit_allow($ipScope, 80, 300);
-    if (!$ipCheck['allowed']) {
-        api_json(429, false, 'Too many requests. Try again later.', ['retry_after' => $ipCheck['retry_after']]);
+    $windowSeconds = 300;
+    $clientMaxAttempts = 180;
+    $ticketMaxAttempts = 25;
+    if ($action === 'create') {
+        $clientMaxAttempts = 60;
+        $ticketMaxAttempts = 40;
+    } elseif ($action === 'access') {
+        $clientMaxAttempts = 240;
+        $ticketMaxAttempts = 40;
+    } elseif ($action === 'attachment') {
+        $clientMaxAttempts = 120;
+        $ticketMaxAttempts = 20;
     }
 
-    $ticketCheck = ticket_rate_limit_allow($ticketScope, 15, 300);
+    $clientScope = 'tickets:' . $action . ':client:' . $clientKey;
+    $ticketScope = 'tickets:' . $action . ':ticket:' . $ticketKey;
+
+    $clientCheck = ticket_rate_limit_allow($clientScope, $clientMaxAttempts, $windowSeconds);
+    if (!$clientCheck['allowed']) {
+        api_json(429, false, 'Too many requests. Try again later.', ['retry_after' => $clientCheck['retry_after']]);
+    }
+
+    $ticketCheck = ticket_rate_limit_allow($ticketScope, $ticketMaxAttempts, $windowSeconds);
     if (!$ticketCheck['allowed']) {
         api_json(429, false, 'Too many requests. Try again later.', ['retry_after' => $ticketCheck['retry_after']]);
     }
 }
 
+function ticket_enforce_handler_mutation_rate_limit(string $action, array $handler, ?string $ticketId = null): void {
+    $handlerId = trim((string)($handler['id'] ?? ''));
+    $handlerEmail = strtolower(trim((string)($handler['email'] ?? '')));
+    $actorRaw = $handlerId !== '' ? $handlerId : ($handlerEmail !== '' ? $handlerEmail : 'unknown');
+    $actorKey = ticket_hash_scope_part('handler:' . $actorRaw);
+    $clientKey = ticket_client_fingerprint();
+
+    $actorScope = 'tickets:admin_mutation:' . $action . ':actor:' . $actorKey;
+    $actorCheck = ticket_rate_limit_allow($actorScope, 180, 300);
+    if (!$actorCheck['allowed']) {
+        api_json(429, false, 'Too many requests. Try again later.', ['retry_after' => $actorCheck['retry_after']]);
+    }
+
+    $clientScope = 'tickets:admin_mutation:' . $action . ':client:' . $clientKey;
+    $clientCheck = ticket_rate_limit_allow($clientScope, 500, 300);
+    if (!$clientCheck['allowed']) {
+        api_json(429, false, 'Too many requests. Try again later.', ['retry_after' => $clientCheck['retry_after']]);
+    }
+
+    $ticketValue = trim((string)$ticketId);
+    if ($ticketValue !== '') {
+        $ticketKey = ticket_hash_scope_part('ticket:' . $ticketValue);
+        $ticketScope = 'tickets:admin_mutation:' . $action . ':actor_ticket:' . $actorKey . ':' . $ticketKey;
+        $ticketCheck = ticket_rate_limit_allow($ticketScope, 80, 300);
+        if (!$ticketCheck['allowed']) {
+            api_json(429, false, 'Too many requests. Try again later.', ['retry_after' => $ticketCheck['retry_after']]);
+        }
+    }
+}
+
 function ticket_register_failed_auth_attempt(string $ticketInput): void {
-    $ip = ticket_client_ip();
-    $ticketKey = ticket_limit_scope_suffix($ticketInput);
-    $failScope = 'tickets:auth_fail:' . $ip . ':' . $ticketKey;
+    $clientKey = ticket_client_fingerprint();
+    $ticketRaw = ticket_limit_scope_suffix($ticketInput);
+    $ticketKey = ticket_hash_scope_part('ticket:' . $ticketRaw);
+    $failScope = 'tickets:auth_fail:' . $clientKey . ':' . $ticketKey;
     $result = ticket_rate_limit_allow($failScope, 6, 900);
     if (!$result['allowed']) {
         api_json(429, false, 'Too many failed attempts. Try again later.', ['retry_after' => $result['retry_after']]);
@@ -192,9 +253,10 @@ function ticket_register_failed_auth_attempt(string $ticketInput): void {
 }
 
 function ticket_reset_failed_auth_attempts(string $ticketInput): void {
-    $ip = ticket_client_ip();
-    $ticketKey = ticket_limit_scope_suffix($ticketInput);
-    $failScope = 'tickets:auth_fail:' . $ip . ':' . $ticketKey;
+    $clientKey = ticket_client_fingerprint();
+    $ticketRaw = ticket_limit_scope_suffix($ticketInput);
+    $ticketKey = ticket_hash_scope_part('ticket:' . $ticketRaw);
+    $failScope = 'tickets:auth_fail:' . $clientKey . ':' . $ticketKey;
     ticket_rate_limit_reset($failScope);
 }
 
@@ -436,10 +498,17 @@ function attachment_extract_storage_path(string $raw, string $bucket = 'attachme
         return $path !== '' ? $path : null;
     }
 
+    $needleSigned = '/storage/v1/object/sign/' . $bucket . '/';
+    $posSigned = strpos($parsedPath, $needleSigned);
+    if ($posSigned !== false) {
+        $path = substr($parsedPath, $posSigned + strlen($needleSigned));
+        return $path !== '' ? $path : null;
+    }
+
     return null;
 }
 
-function attachment_create_signed_url(string $baseUrl, string $serviceKey, string $path, string $bucket = 'attachments', int $expiresIn = 300): ?string {
+function attachment_create_signed_url(string $baseUrl, string $serviceKey, string $path, string $bucket = 'attachments', int $expiresIn = ATTACHMENT_SIGNED_URL_TTL_SECONDS): ?string {
     $cleanPath = ltrim($path, '/');
     if ($cleanPath === '') {
         return null;
@@ -569,7 +638,7 @@ function sanitize_reporter_ticket(array $ticket, string $baseUrl, string $servic
         }
         $rawUrl = (string)($att['file_url'] ?? '');
         $storagePath = attachment_extract_storage_path($rawUrl, 'attachments');
-        $signedUrl = $storagePath ? attachment_create_signed_url($baseUrl, $serviceKey, $storagePath, 'attachments', 300) : null;
+        $signedUrl = $storagePath ? attachment_create_signed_url($baseUrl, $serviceKey, $storagePath, 'attachments', ATTACHMENT_SIGNED_URL_TTL_SECONDS) : null;
         $downloadUrl = $signedUrl ?: (is_absolute_url($rawUrl) ? $rawUrl : null);
 
         return [
@@ -632,6 +701,8 @@ function fetch_ticket_by_credentials(string $baseUrl, string $key, string $ticke
 }
 
 function handle_create(array $data): void {
+    ticket_enforce_request_rate_limit('create', (string)($data['workflow_type'] ?? 'new'));
+
     $baseUrl = get_supabase_url();
     $serviceKey = get_supabase_service_key();
     $settings = ticket_load_system_settings($baseUrl, $serviceKey);
@@ -747,6 +818,7 @@ function handle_create(array $data): void {
 }
 
 function handle_access(array $data): void {
+    api_apply_no_store_headers();
     $baseUrl = get_supabase_url();
     $serviceKey = get_supabase_service_key();
 
@@ -770,6 +842,7 @@ function handle_access(array $data): void {
 }
 
 function handle_reporter_message(array $data): void {
+    api_apply_no_store_headers();
     $baseUrl = get_supabase_url();
     $serviceKey = get_supabase_service_key();
 
@@ -863,11 +936,13 @@ function handle_handler_update_ticket(array $data): void {
     $ctx = ticket_require_active_handler_context();
     $baseUrl = (string)$ctx['base_url'];
     $serviceKey = (string)$ctx['service_key'];
+    $handler = (array)$ctx['handler'];
 
     $ticketId = trim((string)($data['ticket_id'] ?? ''));
     if (!ticket_is_uuid($ticketId)) {
         api_json(400, false, 'ticket_id must be a valid UUID');
     }
+    ticket_enforce_handler_mutation_rate_limit('update_ticket', $handler, $ticketId);
 
     $updatesRaw = $data['updates'] ?? [];
     if (!is_array($updatesRaw)) {
@@ -931,6 +1006,7 @@ function handle_handler_add_comment(array $data): void {
     if (!ticket_is_uuid($ticketId)) {
         api_json(400, false, 'ticket_id must be a valid UUID');
     }
+    ticket_enforce_handler_mutation_rate_limit('add_comment', $handler, $ticketId);
 
     $comment = trim((string)($data['comment'] ?? ''));
     if ($comment === '') {
@@ -990,6 +1066,7 @@ function handle_handler_add_comment(array $data): void {
 }
 
 function handle_handler_add_message(array $data): void {
+    api_apply_no_store_headers();
     $ctx = ticket_require_active_handler_context();
     $baseUrl = (string)$ctx['base_url'];
     $serviceKey = (string)$ctx['service_key'];
@@ -999,6 +1076,7 @@ function handle_handler_add_message(array $data): void {
     if (!ticket_is_uuid($ticketId)) {
         api_json(400, false, 'ticket_id must be a valid UUID');
     }
+    ticket_enforce_handler_mutation_rate_limit('add_message', $handler, $ticketId);
 
     $sender = strtolower(trim((string)($data['sender'] ?? 'handler')));
     if ($sender === '') {
@@ -1079,6 +1157,7 @@ function handle_handler_add_message(array $data): void {
 }
 
 function handle_reporter_add_attachment(array $data): void {
+    api_apply_no_store_headers();
     $baseUrl = get_supabase_url();
     $serviceKey = get_supabase_service_key();
 
@@ -1174,6 +1253,7 @@ function handle_reporter_add_attachment(array $data): void {
 }
 
 function handle_handler_add_attachment(array $data): void {
+    api_apply_no_store_headers();
     $ctx = ticket_require_active_handler_context();
     $baseUrl = (string)$ctx['base_url'];
     $serviceKey = (string)$ctx['service_key'];
@@ -1183,6 +1263,7 @@ function handle_handler_add_attachment(array $data): void {
     if (!ticket_is_uuid($ticketId)) {
         api_json(400, false, 'ticket_id must be a valid UUID');
     }
+    ticket_enforce_handler_mutation_rate_limit('add_attachment', $handler, $ticketId);
 
     $fileName = trim((string)($data['file_name'] ?? ''));
     $fileUrl = trim((string)($data['file_url'] ?? ''));
@@ -1274,6 +1355,7 @@ function handle_handler_log_action(array $data): void {
     if (!ticket_is_uuid($ticketId)) {
         api_json(400, false, 'ticket_id must be a valid UUID');
     }
+    ticket_enforce_handler_mutation_rate_limit('log_action', $handler, $ticketId);
 
     $actionType = trim((string)($data['action_type'] ?? ''));
     $action = trim((string)($data['action'] ?? ''));

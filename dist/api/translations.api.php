@@ -17,13 +17,15 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_admin_auth.php';
+require_once __DIR__ . '/_scopes.php';
 require_once __DIR__ . '/_errors.php';
+require_once __DIR__ . '/_security_headers.php';
+require_once __DIR__ . '/_rate_limit.php';
 
-// CORS headers
-header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+api_apply_security_headers([
+    'allow_methods' => 'GET, POST, PUT, DELETE, OPTIONS',
+    'allow_headers' => 'Content-Type, Authorization',
+]);
 
 // Handle preflight
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -36,6 +38,23 @@ ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/../../php-errors.log');
 ini_set('display_errors', '0');
 error_reporting(E_ALL);
+
+const TRANSLATIONS_SCOPES_READ = [
+    'admin:translations:read',
+    'admin:translations:write',
+    'read:translations',
+    'write:translations',
+    'manage:translations',
+    'admin:all',
+    'admin',
+];
+const TRANSLATIONS_SCOPES_WRITE = [
+    'admin:translations:write',
+    'write:translations',
+    'manage:translations',
+    'admin:all',
+    'admin',
+];
 
 // Constants
 define('TRANSLATIONS_DIR', __DIR__ . '/../../src/i18n/locales');
@@ -235,6 +254,9 @@ function cleanupBackups(string $lang): void {
 function logAuditChange(string $keyPath, string $lang, string $action, ?string $oldValue, ?string $newValue, ?string $userId = null): void {
     // TODO: Implement Supabase audit logging
     // For now, log to file
+    $rawIp = trim((string)($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+    $ipHash = api_rate_limit_hash('translation_audit_ip:' . $rawIp);
+
     $logEntry = [
         'timestamp' => date('c'),
         'key_path' => $keyPath,
@@ -243,7 +265,7 @@ function logAuditChange(string $keyPath, string $lang, string $action, ?string $
         'old_value' => $oldValue,
         'new_value' => $newValue,
         'user_id' => $userId ?? getTranslationActorId() ?? 'unknown',
-        'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown'
+        'ip_hash' => $ipHash,
     ];
 
     $logFile = __DIR__ . '/../../logs/translation-audit.log';
@@ -273,12 +295,35 @@ try {
     load_env_file(__DIR__ . '/../../.env.local', true);
     load_env_file(__DIR__ . '/../../.env', false);
 
+    $method = $_SERVER['REQUEST_METHOD'];
+    $requiredScopes = $method === 'GET' ? TRANSLATIONS_SCOPES_READ : TRANSLATIONS_SCOPES_WRITE;
     $adminCtx = api_authz_require_admin(static function (int $status, string $message): void {
         apiResponse($status, false, $message);
-    });
+    }, $requiredScopes);
     setTranslationActorId((string)($adminCtx['handler']['id'] ?? ''));
-
-    $method = $_SERVER['REQUEST_METHOD'];
+    if ($method !== 'GET') {
+        $handlerId = trim((string)($adminCtx['handler']['id'] ?? ''));
+        $claimSub = trim((string)($adminCtx['claims']['sub'] ?? ''));
+        $actorRaw = $handlerId !== '' ? $handlerId : ($claimSub !== '' ? $claimSub : 'unknown');
+        $actorKey = api_rate_limit_hash('translations_actor:' . $actorRaw);
+        $clientKey = api_rate_limit_client_fingerprint();
+        api_rate_limit_enforce(
+            'translations:write:actor:' . $actorKey,
+            120,
+            300,
+            static function (int $retryAfter): void {
+                apiResponse(429, false, 'Too many requests. Try again later.', ['retry_after' => $retryAfter]);
+            }
+        );
+        api_rate_limit_enforce(
+            'translations:write:client:' . $clientKey,
+            300,
+            300,
+            static function (int $retryAfter): void {
+                apiResponse(429, false, 'Too many requests. Try again later.', ['retry_after' => $retryAfter]);
+            }
+        );
+    }
     $action = $_GET['action'] ?? null;
 
     // GET requests
@@ -302,6 +347,7 @@ try {
 
             $data = readTranslationFile($lang);
 
+            api_apply_no_store_headers();
             header('Content-Type: application/json');
             header('Content-Disposition: attachment; filename="translation-' . $lang . '-' . date('Y-m-d') . '.json"');
             echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
@@ -463,6 +509,7 @@ try {
             // Write back
             writeTranslationFile($lang, $flatCurrent);
 
+            api_apply_no_store_headers();
             apiResponse(200, true, 'Import completed', [
                 'language' => $lang,
                 'imported' => $imported,

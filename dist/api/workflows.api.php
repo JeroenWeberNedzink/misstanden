@@ -3,13 +3,16 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_auth0.php';
+require_once __DIR__ . '/_scopes.php';
 require_once __DIR__ . '/_supabase.php';
 require_once __DIR__ . '/_errors.php';
+require_once __DIR__ . '/_security_headers.php';
+require_once __DIR__ . '/_rate_limit.php';
 
-header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+api_apply_security_headers([
+    'allow_methods' => 'GET, POST, OPTIONS',
+    'allow_headers' => 'Content-Type, Authorization',
+]);
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -21,6 +24,23 @@ ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/../../php-errors.log');
 ini_set('display_errors', '0');
 error_reporting(E_ALL);
+
+const WORKFLOWS_SCOPES_READ = [
+    'admin:workflows:read',
+    'admin:workflows:write',
+    'read:workflows',
+    'write:workflows',
+    'manage:workflows',
+    'admin:all',
+    'admin',
+];
+const WORKFLOWS_SCOPES_WRITE = [
+    'admin:workflows:write',
+    'write:workflows',
+    'manage:workflows',
+    'admin:all',
+    'admin',
+];
 
 function wf_json(int $status, bool $success, string $message, $data = null): void {
     http_response_code($status);
@@ -164,7 +184,7 @@ function wf_normalize_routing_rows(array $rows): array {
     return $out;
 }
 
-function wf_require_admin(string $baseUrl, string $serviceKey): array {
+function wf_require_admin(string $baseUrl, string $serviceKey, array $requiredScopes = []): array {
     $token = auth0_get_bearer_token();
     if ($token === '') wf_json(401, false, 'Authorization token required');
     $auth0Domain = wf_env('VITE_AUTH0_DOMAIN');
@@ -192,6 +212,9 @@ function wf_require_admin(string $baseUrl, string $serviceKey): array {
     }
     if (!$handler || empty($handler['active'])) wf_json(403, false, 'Handler account not active or not found');
     if (!wf_is_admin($handler)) wf_json(403, false, 'Admin permissions required');
+    require_scopes($claims, $requiredScopes, static function (int $status, string $message): void {
+        wf_json($status, false, $message);
+    });
     return $handler;
 }
 
@@ -246,7 +269,29 @@ try {
 
     $baseUrl = wf_url();
     $serviceKey = wf_key();
-    wf_require_admin($baseUrl, $serviceKey);
+    $requiredScopes = $_SERVER['REQUEST_METHOD'] === 'GET' ? WORKFLOWS_SCOPES_READ : WORKFLOWS_SCOPES_WRITE;
+    $adminHandler = wf_require_admin($baseUrl, $serviceKey, $requiredScopes);
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        $handlerId = trim((string)($adminHandler['id'] ?? ''));
+        $actorKey = api_rate_limit_hash('workflows_actor:' . ($handlerId !== '' ? $handlerId : 'unknown'));
+        $clientKey = api_rate_limit_client_fingerprint();
+        api_rate_limit_enforce(
+            'workflows:write:actor:' . $actorKey,
+            160,
+            300,
+            static function (int $retryAfter): void {
+                wf_json(429, false, 'Too many requests. Try again later.', ['retry_after' => $retryAfter]);
+            }
+        );
+        api_rate_limit_enforce(
+            'workflows:write:client:' . $clientKey,
+            400,
+            300,
+            static function (int $retryAfter): void {
+                wf_json(429, false, 'Too many requests. Try again later.', ['retry_after' => $retryAfter]);
+            }
+        );
+    }
 
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $action = strtolower(trim((string)($_GET['action'] ?? 'list_with_stats')));
