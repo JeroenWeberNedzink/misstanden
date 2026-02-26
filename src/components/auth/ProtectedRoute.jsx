@@ -39,9 +39,13 @@ const ProtectedRoute = ({
   const { isLoading: settingsLoading } = useSettings();
 
   const isLoading = auth0Loading || permissionsLoading;
+  const hasSessionHint = Boolean(sessionStorage.getItem('auth_token') || sessionStorage.getItem('handler_profile'));
 
   // Don't show loading if settings are still loading (MaintenanceModeGuard already shows loading)
   if (isLoading && !settingsLoading) {
+    if (hasSessionHint) {
+      return children;
+    }
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="w-full max-w-sm px-6">

@@ -14,6 +14,7 @@ import CaseManagementPanel from './components/CaseManagementPanel';
 import SLACompactCard from './components/SLACompactCard';
 import Icon from '../../components/AppIcon';
 import { ticketService } from '../../services/ticketService';
+import { supabase } from '../../lib/supabase';
 import { getApiAccessToken } from '../../lib/auth0ApiToken';
 import { addHours, getFirstResponseAt, getFirstResponseHoursForTicket, toDateSafe } from '../../utils/slaUtils';
 
@@ -168,6 +169,9 @@ const hasAssignedHandlers = (ticketLike) => {
   return Boolean(ticketLike?.assignedToId || ticketLike?.handlerId || ticketLike?.handler_id);
 };
 
+const HANDLER_OPTIONS_CACHE_KEY = 'case_detail_handler_options_v1';
+const HANDLER_OPTIONS_CACHE_TTL_MS = 5 * 60 * 1000;
+
 export default function CaseManagementDetail() {
   const [caseData, setCaseData] = useState(null);
   const [workflowStatuses, setWorkflowStatuses] = useState([]);
@@ -177,6 +181,7 @@ export default function CaseManagementDetail() {
   const [actionHistory, setActionHistory] = useState([]);
   const [availableHandlers, setAvailableHandlers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRelationsLoading, setIsRelationsLoading] = useState(true);
   const [error, setError] = useState('');
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
@@ -188,6 +193,7 @@ export default function CaseManagementDetail() {
   const { t, i18n } = useTranslation();
   const { user, getAccessTokenSilently } = useAuth0();
   const availableHandlersRef = useRef([]);
+  const activeLoadRef = useRef(0);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -428,8 +434,18 @@ export default function CaseManagementDetail() {
         }
 
         if (!handler && user?.email) {
-          const handlers = await ticketService.getAllHandlers();
-          handler = handlers?.find((h) => h?.email?.toLowerCase() === user?.email?.toLowerCase());
+          const normalizedEmail = String(user?.email || '').trim().toLowerCase();
+          const { data: directHandler, error: directHandlerError } = await supabase
+            .from('handlers')
+            .select('*')
+            .ilike('email', normalizedEmail)
+            .eq('active', true)
+            .maybeSingle();
+          if (directHandlerError) {
+            console.warn('[CaseManagementDetail] Direct handler fallback lookup failed', directHandlerError);
+          } else {
+            handler = directHandler || null;
+          }
         }
 
         if (handler?.id) setCurrentHandlerId(handler.id);
@@ -446,13 +462,36 @@ export default function CaseManagementDetail() {
 
   const loadHandlers = useCallback(async () => {
     try {
-      const handlers = await ticketService.getAllHandlers({ includeInactive: true });
+      const cachedRaw = sessionStorage.getItem(HANDLER_OPTIONS_CACHE_KEY);
+      if (cachedRaw) {
+        const parsed = JSON.parse(cachedRaw);
+        const cachedAt = Number(parsed?.ts || 0);
+        const cachedRows = Array.isArray(parsed?.rows) ? parsed.rows : [];
+        if (cachedRows.length > 0 && Date.now() - cachedAt < HANDLER_OPTIONS_CACHE_TTL_MS && isMountedRef.current) {
+          setAvailableHandlers((prev) => mergeHandlerOptions(prev, cachedRows));
+        }
+      }
+    } catch {
+      // Ignore cache read errors and continue with live fetch.
+    }
+
+    try {
+      const handlers = await ticketService.getAllHandlers({
+        includeInactive: true,
+        preferApi: true,
+        enrichPermissions: false,
+      });
       if (!isMountedRef.current) return;
       const fallbackRole = t('caseManagement.handler');
       const mapped = (handlers ?? [])
         .map((h) => toHandlerOption(h, fallbackRole))
         .filter(Boolean);
       setAvailableHandlers((prev) => mergeHandlerOptions(prev, mapped));
+      try {
+        sessionStorage.setItem(HANDLER_OPTIONS_CACHE_KEY, JSON.stringify({ ts: Date.now(), rows: mapped }));
+      } catch {
+        // Ignore cache write errors.
+      }
     } catch (err) {
       console.error('Error loading handlers:', err);
     }
@@ -461,6 +500,11 @@ export default function CaseManagementDetail() {
   const loadCaseData = useCallback(async () => {
     setError('');
     setIsLoading(true);
+    setIsRelationsLoading(true);
+    setAttachments([]);
+    setInvestigationNotes([]);
+    setCommunicationMessages([]);
+    setActionHistory([]);
 
     try {
       const ticketId = getStoredTicketId();
@@ -469,14 +513,17 @@ export default function CaseManagementDetail() {
         return;
       }
 
-      const fullTicket = await ticketService.getTicketById(ticketId);
-      if (!isMountedRef.current) return;
+      const loadId = Date.now();
+      activeLoadRef.current = loadId;
+
+      const coreTicket = await ticketService.getTicketById(ticketId, { includeRelations: false });
+      if (!isMountedRef.current || activeLoadRef.current !== loadId) return;
 
       const fallbackRole = t('caseManagement.handler');
       const ticketHandlers = [];
-      const directHandler = toHandlerOption(fullTicket?.handlers, fallbackRole);
+      const directHandler = toHandlerOption(coreTicket?.handlers, fallbackRole);
       if (directHandler) ticketHandlers.push(directHandler);
-      for (const entry of fullTicket?.ticketHandlers || []) {
+      for (const entry of coreTicket?.ticketHandlers || []) {
         const fromRelation = toHandlerOption(entry?.handler, fallbackRole);
         if (fromRelation) ticketHandlers.push(fromRelation);
       }
@@ -488,7 +535,7 @@ export default function CaseManagementDetail() {
 
       let statuses = [];
       try {
-        const wfCode = fullTicket?.workflowType || fullTicket?.workflow_type;
+        const wfCode = coreTicket?.workflowType || coreTicket?.workflow_type;
         if (wfCode) {
           const res = await ticketService.getWorkflowStatuses(wfCode);
           statuses = res?.statuses || [];
@@ -498,109 +545,125 @@ export default function CaseManagementDetail() {
         console.warn('Error loading workflow statuses for SLA:', err);
       }
 
-      const statusMeta = resolveStatusMeta(fullTicket, statuses);
+      const statusMeta = resolveStatusMeta(coreTicket, statuses);
 
       // core
-      setCaseData(formatCase(fullTicket, statusMeta, handlersForFormatting));
+      setCaseData(formatCase(coreTicket, statusMeta, handlersForFormatting));
 
-      const allAttachments = fullTicket?.attachments ?? [];
-      const publicAttachments = allAttachments.filter(
-        (att) => !att?.isInternal && !att?.noteId
-      );
-      const noteAttachments = allAttachments.filter(
-        (att) => att?.noteId || att?.isInternal
-      );
-
-      // attachments (public)
-      setAttachments(
-        publicAttachments.map((att) => ({
-          id: att?.id,
-          name: att?.fileName,
-          type: att?.mimeType?.includes('pdf') ? 'pdf' : 'image',
-          size: att?.sizeBytes,
-          uploadedDate: att?.createdAt ? fmtDateTime(att.createdAt, i18n?.resolvedLanguage || i18n?.language) : '-',
-          uploadedBy: t('caseManagement.reporter'),
-          url: att?.fileUrl,
-          alt: t('caseManagementDetail.attachments.attachmentAlt', { name: att?.fileName }),
-        }))
-      );
-
-      const attachmentsByNoteId = noteAttachments.reduce((acc, att) => {
-        const noteId = att?.noteId;
-        if (!noteId) return acc;
-        if (!acc[noteId]) acc[noteId] = [];
-        acc[noteId].push({
-          id: att?.id,
-          name: att?.fileName,
-          type: att?.mimeType?.includes('pdf') ? 'pdf' : 'image',
-          size: att?.sizeBytes,
-          uploadedDate: att?.createdAt ? fmtDateTime(att.createdAt, i18n?.resolvedLanguage || i18n?.language) : '-',
-          url: att?.fileUrl,
-        });
-        return acc;
-      }, {});
-
-      // notes
-      setInvestigationNotes(
-        (fullTicket?.ticketComments ?? []).map((comment) => ({
-          id: comment?.id,
-          author: comment?.authorName || t('caseManagement.handler'),
-          role: t('caseManagement.handler'),
-          timestamp: comment?.createdAt ? fmtDateTime(comment.createdAt, i18n?.resolvedLanguage || i18n?.language) : '-',
-          content: comment?.comment,
-          attachments: attachmentsByNoteId[comment?.id] || [],
-        }))
-      );
-
-      // messages
-      setCommunicationMessages(
-        (fullTicket?.messages ?? []).map((msg) => {
-          const reporterDisplayName =
-            String(fullTicket?.reporterName || fullTicket?.reporter_name || '').trim()
-            || String(fullTicket?.reporterEmail || fullTicket?.reporter_email || '').trim()
-            || t('caseManagement.reporter');
-
-          return {
-            id: msg?.id,
-            sender: msg?.sender,
-            senderName: msg?.sender === 'handler'
-              ? (msg?.handlerName || fullTicket?.handlers?.name || user?.name || t('caseManagement.handler'))
-              : reporterDisplayName,
-            timestamp: msg?.createdAt ? fmtDateTime(msg.createdAt, i18n?.resolvedLanguage || i18n?.language) : '-',
-            content: msg?.body,
-            read: msg?.read ?? msg?.isRead ?? false,
-          };
-        })
-      );
-
-      // actions
-      const base = [{
+      const baseActions = [{
         id: 'created',
         actionType: 'created',
         action: t('caseManagement.caseCreated'),
         description: t('caseManagement.newReportReceived'),
-        timestamp: fullTicket?.submittedAt || new Date().toISOString(),
+        timestamp: coreTicket?.submittedAt || new Date().toISOString(),
         performedBy: t('caseManagement.system'),
       }];
 
-      const dbActions = (fullTicket?.ticketActions ?? []).map((a) => ({
-        id: a?.id,
-        actionType: a?.actionType || 'action',
-        action: a?.action || t('caseManagementDetail.actionHistory.defaultAction'),
-        description: a?.description || '',
-        timestamp: a?.createdAt || new Date().toISOString(),
-        performedBy: a?.performedBy || t('caseManagement.system'),
-      }));
+      void (async () => {
+        try {
+          const relations = await ticketService.getTicketRelations(ticketId);
+          if (!isMountedRef.current || activeLoadRef.current !== loadId) return;
 
-      setActionHistory([...dbActions.reverse(), ...base]);
+          const allAttachments = relations?.attachments ?? [];
+          const publicAttachments = allAttachments.filter(
+            (att) => !att?.isInternal && !att?.noteId
+          );
+          const noteAttachments = allAttachments.filter(
+            (att) => att?.noteId || att?.isInternal
+          );
+
+          // attachments (public)
+          setAttachments(
+            publicAttachments.map((att) => ({
+              id: att?.id,
+              name: att?.fileName,
+              type: att?.mimeType?.includes('pdf') ? 'pdf' : 'image',
+              size: att?.sizeBytes,
+              uploadedDate: att?.createdAt ? fmtDateTime(att.createdAt, i18n?.resolvedLanguage || i18n?.language) : '-',
+              uploadedBy: t('caseManagement.reporter'),
+              url: att?.fileUrl,
+              alt: t('caseManagementDetail.attachments.attachmentAlt', { name: att?.fileName }),
+            }))
+          );
+
+          const attachmentsByNoteId = noteAttachments.reduce((acc, att) => {
+            const noteId = att?.noteId;
+            if (!noteId) return acc;
+            if (!acc[noteId]) acc[noteId] = [];
+            acc[noteId].push({
+              id: att?.id,
+              name: att?.fileName,
+              type: att?.mimeType?.includes('pdf') ? 'pdf' : 'image',
+              size: att?.sizeBytes,
+              uploadedDate: att?.createdAt ? fmtDateTime(att.createdAt, i18n?.resolvedLanguage || i18n?.language) : '-',
+              url: att?.fileUrl,
+            });
+            return acc;
+          }, {});
+
+          // notes
+          setInvestigationNotes(
+            (relations?.ticketComments ?? []).map((comment) => ({
+              id: comment?.id,
+              author: comment?.authorName || t('caseManagement.handler'),
+              role: t('caseManagement.handler'),
+              timestamp: comment?.createdAt ? fmtDateTime(comment.createdAt, i18n?.resolvedLanguage || i18n?.language) : '-',
+              content: comment?.comment,
+              attachments: attachmentsByNoteId[comment?.id] || [],
+            }))
+          );
+
+          // messages
+          setCommunicationMessages(
+            (relations?.messages ?? []).map((msg) => {
+              const reporterDisplayName =
+                String(coreTicket?.reporterName || coreTicket?.reporter_name || '').trim()
+                || String(coreTicket?.reporterEmail || coreTicket?.reporter_email || '').trim()
+                || t('caseManagement.reporter');
+
+              return {
+                id: msg?.id,
+                sender: msg?.sender,
+                senderName: msg?.sender === 'handler'
+                  ? (msg?.handlerName || coreTicket?.handlers?.name || user?.name || t('caseManagement.handler'))
+                  : reporterDisplayName,
+                timestamp: msg?.createdAt ? fmtDateTime(msg.createdAt, i18n?.resolvedLanguage || i18n?.language) : '-',
+                content: msg?.body,
+                read: msg?.read ?? msg?.isRead ?? false,
+              };
+            })
+          );
+
+          // actions
+          const dbActions = (relations?.ticketActions ?? []).map((a) => ({
+            id: a?.id,
+            actionType: a?.actionType || 'action',
+            action: a?.action || t('caseManagementDetail.actionHistory.defaultAction'),
+            description: a?.description || '',
+            timestamp: a?.createdAt || new Date().toISOString(),
+            performedBy: a?.performedBy || t('caseManagement.system'),
+          }));
+          setActionHistory([...dbActions, ...baseActions]);
+        } catch (relationsErr) {
+          console.warn('Error loading case relations:', relationsErr);
+          if (isMountedRef.current && activeLoadRef.current === loadId) {
+            setActionHistory(baseActions);
+          }
+        } finally {
+          if (isMountedRef.current && activeLoadRef.current === loadId) {
+            setIsRelationsLoading(false);
+          }
+        }
+      })();
     } catch (err) {
       console.error('Error loading case:', err);
       if (!isMountedRef.current) return;
       setError(t('caseManagement.errorLoadingCase'));
+      setIsRelationsLoading(false);
     } finally {
       if (isMountedRef.current) setIsLoading(false);
     }
-  }, [formatCase, getStoredTicketId, navigate, t]);
+  }, [formatCase, getStoredTicketId, i18n?.language, i18n?.resolvedLanguage, navigate, t, user?.name]);
 
   useEffect(() => {
     loadCaseData();
@@ -991,7 +1054,7 @@ export default function CaseManagementDetail() {
 
   return (
     <AuthContextNavigator>
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen app-page-gradient bg-background">
         <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
           <CaseHeader
             caseData={caseData}
@@ -1005,14 +1068,23 @@ export default function CaseManagementDetail() {
             <div className="lg:col-span-2 space-y-3 md:space-y-4 lg:space-y-5">
               <CaseDetailsPanel caseData={caseData} onUpdate={handleDetailsUpdate} />
 
-              <AttachmentsPanel attachments={attachments} onAddAttachment={handleAddAttachment} />
+              <AttachmentsPanel
+                attachments={attachments}
+                onAddAttachment={handleAddAttachment}
+                isLoading={isRelationsLoading}
+              />
 
-              <InvestigationNotesPanel notes={investigationNotes} onAddNote={handleAddNote} />
+              <InvestigationNotesPanel
+                notes={investigationNotes}
+                onAddNote={handleAddNote}
+                isLoading={isRelationsLoading}
+              />
 
               <CommunicationPanel
                 messages={communicationMessages}
                 canContact={Boolean(caseData?.reporterDetails?.email)}
                 onSendMessage={handleSendMessage}
+                isLoading={isRelationsLoading}
               />
             </div>
 
@@ -1033,7 +1105,7 @@ export default function CaseManagementDetail() {
                 isWhistleblower={isWhistleblower}
               />
 
-              <ActionHistoryPanel history={actionHistory} />
+              <ActionHistoryPanel history={actionHistory} isLoading={isRelationsLoading} />
             </div>
           </div>
         </div>
@@ -1060,3 +1132,4 @@ export default function CaseManagementDetail() {
     </AuthContextNavigator>
   );
 }
+

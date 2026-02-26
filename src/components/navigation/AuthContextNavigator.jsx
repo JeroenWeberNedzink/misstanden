@@ -7,6 +7,15 @@ import HandlerNavigation from './HandlerNavigation';
 import NoAccessPage from '../auth/NoAccessPage';
 import { isAdmin } from '../../utils/permissions';
 
+const readCachedHandlerProfile = () => {
+  try {
+    const cached = sessionStorage.getItem('handler_profile');
+    return cached ? JSON.parse(cached) : null;
+  } catch {
+    return null;
+  }
+};
+
 const AuthContextNavigator = ({ children }) => {
   const {
     isAuthenticated: auth0Authenticated,
@@ -15,10 +24,12 @@ const AuthContextNavigator = ({ children }) => {
     getAccessTokenSilently,
   } = useAuth0();
 
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userRole, setUserRole] = useState(null);
-  const [handlerProfile, setHandlerProfile] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(() =>
+    Boolean(sessionStorage.getItem('auth_token') && readCachedHandlerProfile())
+  );
+  const [userRole, setUserRole] = useState(() => sessionStorage.getItem('user_role'));
+  const [handlerProfile, setHandlerProfile] = useState(() => readCachedHandlerProfile());
+  const [isLoading, setIsLoading] = useState(() => !Boolean(readCachedHandlerProfile()));
 
   useEffect(() => {
     checkAuthenticationStatus();
@@ -195,9 +206,14 @@ const AuthContextNavigator = ({ children }) => {
 
   if (isLoading || auth0Loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="skeleton h-12 w-48 rounded-lg"></div>
-      </div>
+      <>
+        {isAuthenticated ? (
+          <HandlerNavigation userRole={userRole ?? 'handler'} onLogout={handleLogout} />
+        ) : (
+          <AnonymousNavHeader />
+        )}
+        <div className="pt-20">{children}</div>
+      </>
     );
   }
 

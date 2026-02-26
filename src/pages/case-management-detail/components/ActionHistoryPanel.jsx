@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
 
-const ActionHistoryPanel = ({ history = [], actions = [] }) => {
+const ActionHistoryPanel = ({ history = [], actions = [], isLoading = false }) => {
   const { t, i18n } = useTranslation();
 
   const items = useMemo(() => {
@@ -115,10 +115,11 @@ const ActionHistoryPanel = ({ history = [], actions = [] }) => {
                 {t('caseManagement.actionHistory')}
               </h2>
               <div className="mt-1 text-[11px] text-muted-foreground">
-                {items.length}{' '}
-                {items.length === 1
-                  ? t('caseManagementDetail.actionHistory.singleAction')
-                  : t('caseManagementDetail.actionHistory.multipleActions')}
+                {isLoading
+                  ? t('common.loading')
+                  : `${items.length} ${items.length === 1
+                    ? t('caseManagementDetail.actionHistory.singleAction')
+                    : t('caseManagementDetail.actionHistory.multipleActions')}`}
               </div>
             </div>
           </div>
@@ -131,7 +132,13 @@ const ActionHistoryPanel = ({ history = [], actions = [] }) => {
       </div>
 
       <div className="p-4">
-        {items.length === 0 ? (
+        {isLoading ? (
+          <div className="space-y-2">
+            <div className="h-12 rounded-md bg-muted animate-pulse" />
+            <div className="h-12 rounded-md bg-muted animate-pulse" />
+            <div className="h-12 rounded-md bg-muted animate-pulse" />
+          </div>
+        ) : items.length === 0 ? (
           <div className="text-center py-6 text-muted-foreground">
             <div className="w-12 h-12 rounded-full bg-muted mx-auto mb-2 flex items-center justify-center">
               <Icon name="Inbox" size={20} className="opacity-70" />

@@ -217,6 +217,9 @@ Locale files:
   - Reporter/handler attachment links use short-lived signed URLs; storage paths are treated as private.
 - Error/PII handling improved:
   - Internal exception details are no longer exposed to clients; responses include an `error_id` and logs are redacted.
+- UX/performance loading flow improved:
+  - Case detail now renders header/core data first and lazy-loads messages/actions/attachments/notes after.
+  - Handler dashboard startup was simplified to a single visible skeleton state (removed stacked loading screens).
 
 ## Security and Privacy Notes
 

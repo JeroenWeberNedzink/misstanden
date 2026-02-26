@@ -35,10 +35,11 @@ const parseRoles = (rawRoles) => {
 
 export default function HandlerDashboard() {
   const [tickets, setTickets] = useState([]);
-  const { user, getAccessTokenSilently } = useAuth0();
+  const { user, isLoading: auth0Loading, getAccessTokenSilently } = useAuth0();
   const [currentHandlerId, setCurrentHandlerId] = useState(null);
   const [currentHandlerName, setCurrentHandlerName] = useState('');
   const [currentHandlerRole, setCurrentHandlerRole] = useState(null);
+  const [isDataLoading, setIsDataLoading] = useState(true);
   const [assigningTicketIds, setAssigningTicketIds] = useState(new Set());
   const [workflows, setWorkflows] = useState([]);
   const [severities, setSeverities] = useState([]);
@@ -64,7 +65,7 @@ export default function HandlerDashboard() {
 
   useEffect(() => {
     loadHandlerProfile();
-  }, [user]);
+  }, [user, auth0Loading]);
 
   useEffect(() => {
     if (currentHandlerId && currentHandlerRole) {
@@ -140,7 +141,13 @@ export default function HandlerDashboard() {
   };
 
   const loadHandlerProfile = async () => {
-    if (!user) return;
+    if (!user) {
+      // Keep dashboard skeleton visible while Auth0 is still hydrating the session.
+      if (!auth0Loading) {
+        setIsDataLoading(false);
+      }
+      return;
+    }
 
     try {
       let handler = null;
@@ -164,13 +171,23 @@ export default function HandlerDashboard() {
 
       // Fallback for local/dev where API token or endpoint may be unavailable.
       if (!handler && user?.email) {
-        const handlers = await ticketService.getAllHandlers();
         const email = safeLower(user.email);
-        handler = handlers?.find((h) => safeLower(h?.email) === email) || null;
+        const { data: directHandler, error: directHandlerError } = await supabase
+          .from('handlers')
+          .select('*')
+          .ilike('email', email)
+          .eq('active', true)
+          .maybeSingle();
+        if (directHandlerError) {
+          console.warn('[HandlerDashboard] Direct handler fallback lookup failed', directHandlerError);
+        } else {
+          handler = directHandler || null;
+        }
       }
 
       if (!handler?.id) {
         console.warn('[HandlerDashboard] Handler not found for current user', { email: user?.email, sub: user?.sub });
+        setIsDataLoading(false);
         return;
       }
 
@@ -182,11 +199,16 @@ export default function HandlerDashboard() {
       console.log('[HandlerDashboard] Handler loaded:', { id: handler.id, role, roles });
     } catch (err) {
       console.error('Error loading handler profile:', err);
+      setIsDataLoading(false);
     }
   };
 
-  const loadData = async () => {
+  const loadData = async ({ showLoadingSkeleton = true } = {}) => {
     if (!currentHandlerId) return;
+
+    if (showLoadingSkeleton) {
+      setIsDataLoading(true);
+    }
 
     try {
       const isAdmin = currentHandlerRole === 'admin';
@@ -273,13 +295,17 @@ export default function HandlerDashboard() {
       });
     } catch (err) {
       console.error('Error loading data:', err);
+    } finally {
+      if (showLoadingSkeleton) {
+        setIsDataLoading(false);
+      }
     }
   };
 
   const handleStatusChange = async (ticketId, newStatusCode) => {
     try {
       await ticketService?.updateTicketStatus(ticketId, null, newStatusCode);
-      await loadData();
+      await loadData({ showLoadingSkeleton: false });
     } catch (err) {
       console.error('Error updating status:', err);
     }
@@ -298,7 +324,7 @@ export default function HandlerDashboard() {
 
     try {
       await ticketService?.assignHandler(ticketId, handlerId, null, { currentHandlerId });
-      await loadData();
+      await loadData({ showLoadingSkeleton: false });
     } catch (err) {
       console.error('Error assigning handler:', err);
     } finally {
@@ -434,13 +460,8 @@ export default function HandlerDashboard() {
       </Helmet>
 
       <AuthContextNavigator>
-        <div className="min-h-screen relative overflow-hidden bg-gradient-to-b from-sky-100/50 via-slate-50 to-white">
-          <div className="pointer-events-none absolute inset-0">
-            <div className="absolute -top-24 left-0 h-80 w-80 rounded-full bg-sky-200/30 blur-3xl" />
-            <div className="absolute top-1/3 -right-20 h-96 w-96 rounded-full bg-slate-200/30 blur-3xl" />
-            <div className="absolute bottom-0 left-1/4 h-72 w-72 rounded-full bg-sky-100/30 blur-3xl" />
-          </div>
-          <div className="relative z-10 max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 md:py-8 lg:py-12">
+        <div className="min-h-screen app-page-gradient bg-background">
+          <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 md:py-8 lg:py-12">
             <div className="mb-8">
               <div className="rounded-3xl bg-gradient-to-br from-sky-800 via-sky-700 to-sky-600 text-white p-6 md:p-8 shadow-xl">
                 <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
@@ -557,6 +578,7 @@ export default function HandlerDashboard() {
               {layout === 'cards' ? (
                 <TicketCardGrid
                   tickets={filteredTickets}
+                  isLoading={isDataLoading}
                   workflows={workflows}
                   currentHandlerId={currentHandlerId}
                   currentHandlerName={currentHandlerName}
@@ -567,6 +589,7 @@ export default function HandlerDashboard() {
               ) : (
                 <TicketsTable
                   tickets={filteredTickets}
+                  isLoading={isDataLoading}
                   workflows={workflows}
                   onStatusChange={handleStatusChange}
                   onAssignHandler={handleAssignHandler}

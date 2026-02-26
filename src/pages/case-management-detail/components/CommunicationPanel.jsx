@@ -4,7 +4,7 @@ import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
 
-const CommunicationPanel = ({ messages, canContact, onSendMessage }) => {
+const CommunicationPanel = ({ messages, canContact, onSendMessage, isLoading = false }) => {
   const { t } = useTranslation();
   const [isComposing, setIsComposing] = useState(false);
   const [messageText, setMessageText] = useState('');
@@ -72,7 +72,14 @@ const CommunicationPanel = ({ messages, canContact, onSendMessage }) => {
           </div>
 
           {canContact && !isComposing && (
-            <Button variant="outline" size="sm" iconName="Plus" iconPosition="left" onClick={() => setIsComposing(true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              iconName="Plus"
+              iconPosition="left"
+              onClick={() => setIsComposing(true)}
+              disabled={isLoading}
+            >
               {t('caseManagementDetail.common.new')}
             </Button>
           )}
@@ -80,7 +87,13 @@ const CommunicationPanel = ({ messages, canContact, onSendMessage }) => {
       </div>
 
       <div className="p-4">
-        {!canContact ? (
+        {isLoading ? (
+          <div className="rounded-lg border border-border bg-background/40 p-3 space-y-2">
+            <div className="h-10 rounded-md bg-muted animate-pulse" />
+            <div className="h-10 rounded-md bg-muted animate-pulse" />
+            <div className="h-10 rounded-md bg-muted animate-pulse" />
+          </div>
+        ) : !canContact ? (
           <div className="rounded-lg border border-border bg-muted/25 px-4 py-4 text-center">
             <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-background/70 border border-border flex items-center justify-center">
               <Icon name="ShieldAlert" size={20} className="text-muted-foreground" />

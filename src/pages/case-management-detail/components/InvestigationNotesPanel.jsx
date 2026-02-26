@@ -13,7 +13,7 @@ const initialsFromName = (name) => {
   return (first + last).toUpperCase();
 };
 
-const InvestigationNotesPanel = ({ notes, onAddNote }) => {
+const InvestigationNotesPanel = ({ notes, onAddNote, isLoading = false }) => {
   const { t } = useTranslation();
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [newNote, setNewNote] = useState('');
@@ -78,7 +78,14 @@ const InvestigationNotesPanel = ({ notes, onAddNote }) => {
           </div>
 
           {!isAddingNote && (
-            <Button variant="outline" size="sm" iconName="Plus" iconPosition="left" onClick={() => setIsAddingNote(true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              iconName="Plus"
+              iconPosition="left"
+              onClick={() => setIsAddingNote(true)}
+              disabled={isLoading}
+            >
               {t('caseManagement.addNote')}
             </Button>
           )}
@@ -86,7 +93,7 @@ const InvestigationNotesPanel = ({ notes, onAddNote }) => {
       </div>
 
       <div className="p-4">
-        {isAddingNote && (
+        {isAddingNote && !isLoading && (
           <div className="mb-3 rounded-lg border border-border bg-muted/15 overflow-hidden">
             <div className="px-3 py-2 border-b border-border flex items-center gap-2 text-xs text-muted-foreground">
               <Icon name="Lock" size={14} />
@@ -164,7 +171,13 @@ const InvestigationNotesPanel = ({ notes, onAddNote }) => {
         )}
 
         <div className="rounded-lg border border-border bg-background/40 overflow-hidden">
-          {notesCount === 0 ? (
+          {isLoading ? (
+            <div className="p-3 space-y-2">
+              <div className="h-14 rounded-md bg-muted animate-pulse" />
+              <div className="h-14 rounded-md bg-muted animate-pulse" />
+              <div className="h-14 rounded-md bg-muted animate-pulse" />
+            </div>
+          ) : notesCount === 0 ? (
             <div className="text-center py-8 px-6">
               <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-background/70 border border-border flex items-center justify-center">
                 <Icon name="FileEdit" size={22} className="text-muted-foreground" />

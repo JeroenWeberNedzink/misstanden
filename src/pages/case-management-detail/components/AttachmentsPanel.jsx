@@ -4,7 +4,7 @@ import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import Image from '../../../components/AppImage';
 
-const AttachmentsPanel = ({ attachments, onAddAttachment }) => {
+const AttachmentsPanel = ({ attachments, onAddAttachment, isLoading = false }) => {
   const { t } = useTranslation();
   const [selectedFile, setSelectedFile] = useState(null);
 
@@ -61,19 +61,32 @@ const AttachmentsPanel = ({ attachments, onAddAttachment }) => {
                 {t('ticketDetails.attachments')}
               </h2>
               <div className="mt-1 text-[11px] text-muted-foreground">
-                {count} {t('caseManagementDetail.attachments.files')}
+                {isLoading ? t('common.loading') : `${count} ${t('caseManagementDetail.attachments.files')}`}
               </div>
             </div>
           </div>
 
-          <Button variant="outline" size="sm" iconName="Plus" iconPosition="left" onClick={onAddAttachment}>
+          <Button
+            variant="outline"
+            size="sm"
+            iconName="Plus"
+            iconPosition="left"
+            onClick={onAddAttachment}
+            disabled={isLoading}
+          >
             {t('caseManagementDetail.attachments.add')}
           </Button>
         </div>
       </div>
 
       <div className="p-4">
-        {count === 0 ? (
+        {isLoading ? (
+          <div className="space-y-2">
+            <div className="h-10 rounded-md bg-muted animate-pulse" />
+            <div className="h-10 rounded-md bg-muted animate-pulse" />
+            <div className="h-10 rounded-md bg-muted animate-pulse" />
+          </div>
+        ) : count === 0 ? (
           <div className="text-center py-8 px-6">
             <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-muted flex items-center justify-center">
               <Icon name="Paperclip" size={22} className="text-muted-foreground" />

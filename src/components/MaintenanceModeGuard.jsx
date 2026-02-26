@@ -16,14 +16,7 @@ const MaintenanceModeGuard = ({ children }) => {
 
   // Don't block while loading settings
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <Icon name="Loader" size={48} className="animate-spin text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">Portal laden...</p>
-        </div>
-      </div>
-    );
+    return children;
   }
 
   // If maintenance mode is enabled and no admin bypass

@@ -276,8 +276,21 @@ const attachSignedUrlsToTicket = async (ticket, bucket = 'attachments') => {
     return ticket;
   }
 
+  const signedAttachments = await attachSignedUrlsToAttachments(ticket.attachments, bucket);
+
+  return {
+    ...ticket,
+    attachments: signedAttachments,
+  };
+};
+
+const attachSignedUrlsToAttachments = async (attachments, bucket = 'attachments') => {
+  if (!Array.isArray(attachments) || attachments.length === 0) {
+    return [];
+  }
+
   const signedAttachments = await Promise.all(
-    ticket.attachments.map(async (att) => {
+    attachments.map(async (att) => {
       const rawUrl = att?.fileUrl || att?.file_url || att?.url || '';
       const signedUrl = await createSignedAttachmentUrl(rawUrl, bucket, 600);
       if (!signedUrl) return att;
@@ -290,10 +303,7 @@ const attachSignedUrlsToTicket = async (ticket, bucket = 'attachments') => {
     })
   );
 
-  return {
-    ...ticket,
-    attachments: signedAttachments,
-  };
+  return signedAttachments;
 };
 
 // -----------------------------
@@ -793,6 +803,13 @@ const SELECT_TICKET_FULL = `
   ticket_actions (*)
 `;
 
+const SELECT_TICKET_RELATIONS = `
+  attachments (*),
+  messages (*),
+  ticket_comments (*),
+  ticket_actions (*)
+`;
+
 // -----------------------------
 // Service
 // -----------------------------
@@ -925,7 +942,9 @@ export const ticketService = {
   async getTicketById(ticketId, options = {}) {
     if (!ticketId) throw new Error('ticketId is required');
 
-    const { data, error } = await supabase.from('tickets').select(SELECT_TICKET_FULL).eq('id', ticketId).single();
+    const includeRelations = options?.includeRelations !== false;
+    const selectProjection = includeRelations ? SELECT_TICKET_FULL : SELECT_TICKET_LIST;
+    const { data, error } = await supabase.from('tickets').select(selectProjection).eq('id', ticketId).single();
     throwIfError(error, 'getTicketById');
 
     // If handlerId is provided, verify access
@@ -960,7 +979,31 @@ export const ticketService = {
 
     const ticket = toCamelCase(data);
     const withHandlers = await decorateTicketWithTicketHandlers(ticket);
+    if (!includeRelations) {
+      return withHandlers;
+    }
     return attachSignedUrlsToTicket(withHandlers);
+  },
+
+  async getTicketRelations(ticketId) {
+    if (!ticketId) throw new Error('ticketId is required');
+
+    const { data, error } = await supabase
+      .from('tickets')
+      .select(SELECT_TICKET_RELATIONS)
+      .eq('id', ticketId)
+      .single();
+    throwIfError(error, 'getTicketRelations');
+
+    const raw = toCamelCase(data || {});
+    const attachments = await attachSignedUrlsToAttachments(raw?.attachments || []);
+
+    return {
+      attachments,
+      messages: Array.isArray(raw?.messages) ? raw.messages : [],
+      ticketComments: Array.isArray(raw?.ticketComments) ? raw.ticketComments : [],
+      ticketActions: Array.isArray(raw?.ticketActions) ? raw.ticketActions : [],
+    };
   },
 
   async getTicketByCredentials(ticketInput, accessCode) {
