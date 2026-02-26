@@ -19,6 +19,7 @@ require_once __DIR__ . '/_scopes.php';
 require_once __DIR__ . '/_supabase.php';
 require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
+require_once __DIR__ . '/_rate_limit.php';
 
 api_apply_security_headers([
     'allow_methods' => 'GET, POST, OPTIONS',
@@ -311,6 +312,28 @@ function settings_normalize_item(array $item, string $updatedBy): array {
 
 function settings_handle_post(): void {
     $ctx = settings_require_admin_context(SETTINGS_SCOPES_WRITE);
+    $handlerId = trim((string)($ctx['handler']['id'] ?? ''));
+    $claimSub = trim((string)($ctx['claims']['sub'] ?? ''));
+    $actorRaw = $handlerId !== '' ? $handlerId : ($claimSub !== '' ? $claimSub : 'unknown');
+    $actorKey = api_rate_limit_hash('settings_actor:' . $actorRaw);
+    $clientKey = api_rate_limit_client_fingerprint();
+    api_rate_limit_enforce(
+        'settings:write:actor:' . $actorKey,
+        120,
+        300,
+        static function (int $retryAfter): void {
+            settings_api_json(429, false, 'Too many requests. Try again later.', ['retry_after' => $retryAfter]);
+        }
+    );
+    api_rate_limit_enforce(
+        'settings:write:client:' . $clientKey,
+        300,
+        300,
+        static function (int $retryAfter): void {
+            settings_api_json(429, false, 'Too many requests. Try again later.', ['retry_after' => $retryAfter]);
+        }
+    );
+
     $handlerId = (string)($ctx['handler']['id'] ?? '');
 
     $raw = file_get_contents('php://input');

@@ -20,6 +20,7 @@ require_once __DIR__ . '/_admin_auth.php';
 require_once __DIR__ . '/_scopes.php';
 require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
+require_once __DIR__ . '/_rate_limit.php';
 
 api_apply_security_headers([
     'allow_methods' => 'GET, POST, PUT, DELETE, OPTIONS',
@@ -253,6 +254,9 @@ function cleanupBackups(string $lang): void {
 function logAuditChange(string $keyPath, string $lang, string $action, ?string $oldValue, ?string $newValue, ?string $userId = null): void {
     // TODO: Implement Supabase audit logging
     // For now, log to file
+    $rawIp = trim((string)($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+    $ipHash = api_rate_limit_hash('translation_audit_ip:' . $rawIp);
+
     $logEntry = [
         'timestamp' => date('c'),
         'key_path' => $keyPath,
@@ -261,7 +265,7 @@ function logAuditChange(string $keyPath, string $lang, string $action, ?string $
         'old_value' => $oldValue,
         'new_value' => $newValue,
         'user_id' => $userId ?? getTranslationActorId() ?? 'unknown',
-        'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown'
+        'ip_hash' => $ipHash,
     ];
 
     $logFile = __DIR__ . '/../../logs/translation-audit.log';
@@ -297,6 +301,29 @@ try {
         apiResponse($status, false, $message);
     }, $requiredScopes);
     setTranslationActorId((string)($adminCtx['handler']['id'] ?? ''));
+    if ($method !== 'GET') {
+        $handlerId = trim((string)($adminCtx['handler']['id'] ?? ''));
+        $claimSub = trim((string)($adminCtx['claims']['sub'] ?? ''));
+        $actorRaw = $handlerId !== '' ? $handlerId : ($claimSub !== '' ? $claimSub : 'unknown');
+        $actorKey = api_rate_limit_hash('translations_actor:' . $actorRaw);
+        $clientKey = api_rate_limit_client_fingerprint();
+        api_rate_limit_enforce(
+            'translations:write:actor:' . $actorKey,
+            120,
+            300,
+            static function (int $retryAfter): void {
+                apiResponse(429, false, 'Too many requests. Try again later.', ['retry_after' => $retryAfter]);
+            }
+        );
+        api_rate_limit_enforce(
+            'translations:write:client:' . $clientKey,
+            300,
+            300,
+            static function (int $retryAfter): void {
+                apiResponse(429, false, 'Too many requests. Try again later.', ['retry_after' => $retryAfter]);
+            }
+        );
+    }
     $action = $_GET['action'] ?? null;
 
     // GET requests

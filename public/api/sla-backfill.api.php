@@ -7,14 +7,16 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_admin_auth.php';
+require_once __DIR__ . '/_scopes.php';
 require_once __DIR__ . '/_supabase.php';
 require_once __DIR__ . '/_errors.php';
+require_once __DIR__ . '/_security_headers.php';
+require_once __DIR__ . '/_rate_limit.php';
 
-// Headers
-header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-SLA-CRON-KEY');
+api_apply_security_headers([
+    'allow_methods' => 'POST, OPTIONS',
+    'allow_headers' => 'Content-Type, Authorization, X-SLA-CRON-KEY',
+]);
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -27,6 +29,15 @@ ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/../../php-errors.log');
 ini_set('display_errors', '0');
 error_reporting(E_ALL);
+
+const SLA_BACKFILL_SCOPES_WRITE = [
+    'admin:sla:write',
+    'run:sla_backfill',
+    'write:sla',
+    'manage:sla',
+    'admin:all',
+    'admin',
+];
 
 function sla_json(int $status, bool $success, string $message, array $data = []): void {
     http_response_code($status);
@@ -95,11 +106,34 @@ try {
     load_env_file(__DIR__ . '/../../.env', false);
 
     $authMode = 'scheduler';
+    $adminCtx = null;
     if (!sla_scheduler_authorized()) {
-        api_authz_require_admin(static function (int $status, string $message): void {
+        $adminCtx = api_authz_require_admin(static function (int $status, string $message): void {
             sla_json($status, false, $message);
-        });
+        }, SLA_BACKFILL_SCOPES_WRITE);
         $authMode = 'admin';
+
+        $handlerId = trim((string)($adminCtx['handler']['id'] ?? ''));
+        $claimSub = trim((string)($adminCtx['claims']['sub'] ?? ''));
+        $actorRaw = $handlerId !== '' ? $handlerId : ($claimSub !== '' ? $claimSub : 'unknown');
+        $actorKey = api_rate_limit_hash('sla_backfill_actor:' . $actorRaw);
+        $clientKey = api_rate_limit_client_fingerprint();
+        api_rate_limit_enforce(
+            'sla-backfill:admin:actor:' . $actorKey,
+            20,
+            3600,
+            static function (int $retryAfter): void {
+                sla_json(429, false, 'Too many requests. Try again later.', ['retry_after' => $retryAfter]);
+            }
+        );
+        api_rate_limit_enforce(
+            'sla-backfill:admin:client:' . $clientKey,
+            120,
+            3600,
+            static function (int $retryAfter): void {
+                sla_json(429, false, 'Too many requests. Try again later.', ['retry_after' => $retryAfter]);
+            }
+        );
     }
 
     $supabaseUrl = getenv('VITE_SUPABASE_URL');
