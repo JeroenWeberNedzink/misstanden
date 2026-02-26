@@ -13,11 +13,12 @@ require_once __DIR__ . '/_auth0.php';
 require_once __DIR__ . '/_admin_auth.php';
 require_once __DIR__ . '/_supabase.php';
 require_once __DIR__ . '/_errors.php';
+require_once __DIR__ . '/_security_headers.php';
 
-header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+api_apply_security_headers([
+    'allow_methods' => 'POST, OPTIONS',
+    'allow_headers' => 'Content-Type, Authorization',
+]);
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -29,6 +30,8 @@ ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/../../php-errors.log');
 ini_set('display_errors', '0');
 error_reporting(E_ALL);
+
+const ATTACHMENT_SIGNED_URL_TTL_SECONDS = 120;
 
 function api_json(int $status, bool $success, string $message, $data = null): void {
     http_response_code($status);
@@ -436,10 +439,17 @@ function attachment_extract_storage_path(string $raw, string $bucket = 'attachme
         return $path !== '' ? $path : null;
     }
 
+    $needleSigned = '/storage/v1/object/sign/' . $bucket . '/';
+    $posSigned = strpos($parsedPath, $needleSigned);
+    if ($posSigned !== false) {
+        $path = substr($parsedPath, $posSigned + strlen($needleSigned));
+        return $path !== '' ? $path : null;
+    }
+
     return null;
 }
 
-function attachment_create_signed_url(string $baseUrl, string $serviceKey, string $path, string $bucket = 'attachments', int $expiresIn = 300): ?string {
+function attachment_create_signed_url(string $baseUrl, string $serviceKey, string $path, string $bucket = 'attachments', int $expiresIn = ATTACHMENT_SIGNED_URL_TTL_SECONDS): ?string {
     $cleanPath = ltrim($path, '/');
     if ($cleanPath === '') {
         return null;
@@ -569,7 +579,7 @@ function sanitize_reporter_ticket(array $ticket, string $baseUrl, string $servic
         }
         $rawUrl = (string)($att['file_url'] ?? '');
         $storagePath = attachment_extract_storage_path($rawUrl, 'attachments');
-        $signedUrl = $storagePath ? attachment_create_signed_url($baseUrl, $serviceKey, $storagePath, 'attachments', 300) : null;
+        $signedUrl = $storagePath ? attachment_create_signed_url($baseUrl, $serviceKey, $storagePath, 'attachments', ATTACHMENT_SIGNED_URL_TTL_SECONDS) : null;
         $downloadUrl = $signedUrl ?: (is_absolute_url($rawUrl) ? $rawUrl : null);
 
         return [
@@ -747,6 +757,7 @@ function handle_create(array $data): void {
 }
 
 function handle_access(array $data): void {
+    api_apply_no_store_headers();
     $baseUrl = get_supabase_url();
     $serviceKey = get_supabase_service_key();
 
@@ -770,6 +781,7 @@ function handle_access(array $data): void {
 }
 
 function handle_reporter_message(array $data): void {
+    api_apply_no_store_headers();
     $baseUrl = get_supabase_url();
     $serviceKey = get_supabase_service_key();
 
@@ -990,6 +1002,7 @@ function handle_handler_add_comment(array $data): void {
 }
 
 function handle_handler_add_message(array $data): void {
+    api_apply_no_store_headers();
     $ctx = ticket_require_active_handler_context();
     $baseUrl = (string)$ctx['base_url'];
     $serviceKey = (string)$ctx['service_key'];
@@ -1079,6 +1092,7 @@ function handle_handler_add_message(array $data): void {
 }
 
 function handle_reporter_add_attachment(array $data): void {
+    api_apply_no_store_headers();
     $baseUrl = get_supabase_url();
     $serviceKey = get_supabase_service_key();
 
@@ -1174,6 +1188,7 @@ function handle_reporter_add_attachment(array $data): void {
 }
 
 function handle_handler_add_attachment(array $data): void {
+    api_apply_no_store_headers();
     $ctx = ticket_require_active_handler_context();
     $baseUrl = (string)$ctx['base_url'];
     $serviceKey = (string)$ctx['service_key'];

@@ -15,13 +15,15 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_auth0.php';
+require_once __DIR__ . '/_scopes.php';
 require_once __DIR__ . '/_supabase.php';
 require_once __DIR__ . '/_errors.php';
+require_once __DIR__ . '/_security_headers.php';
 
-header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+api_apply_security_headers([
+    'allow_methods' => 'GET, POST, OPTIONS',
+    'allow_headers' => 'Content-Type, Authorization',
+]);
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -33,6 +35,23 @@ ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/../../php-errors.log');
 ini_set('display_errors', '0');
 error_reporting(E_ALL);
+
+const SETTINGS_SCOPES_READ = [
+    'admin:settings:read',
+    'admin:settings:write',
+    'read:settings',
+    'write:settings',
+    'manage:settings',
+    'admin:all',
+    'admin',
+];
+const SETTINGS_SCOPES_WRITE = [
+    'admin:settings:write',
+    'write:settings',
+    'manage:settings',
+    'admin:all',
+    'admin',
+];
 
 function settings_api_json(int $status, bool $success, string $message, $data = null): void {
     http_response_code($status);
@@ -185,7 +204,7 @@ function settings_fetch_handler_profile(string $baseUrl, string $serviceKey, arr
     return null;
 }
 
-function settings_require_admin_context(): array {
+function settings_require_admin_context(array $requiredScopes = []): array {
     $token = auth0_get_bearer_token();
     if ($token === '') {
         settings_api_json(401, false, 'Authorization token required');
@@ -205,11 +224,15 @@ function settings_require_admin_context(): array {
     if (!settings_is_admin_profile($handler)) {
         settings_api_json(403, false, 'Admin permissions required');
     }
+    require_scopes($claims, $requiredScopes, static function (int $status, string $message): void {
+        settings_api_json($status, false, $message);
+    });
 
     return ['claims' => $claims, 'handler' => $handler];
 }
 
 function settings_handle_get(): void {
+    api_apply_no_store_headers();
     $baseUrl = settings_get_supabase_url();
     try {
         $serviceKey = settings_get_supabase_service_key();
@@ -233,7 +256,7 @@ function settings_handle_get(): void {
     $hasBearer = auth0_get_bearer_token() !== '';
     $adminContext = null;
     if ($includeSensitive || $hasBearer) {
-        $adminContext = settings_require_admin_context();
+        $adminContext = settings_require_admin_context(SETTINGS_SCOPES_READ);
     }
 
     $select = rawurlencode('id,setting_key,setting_value,category,description,is_sensitive,updated_by,updated_at');
@@ -287,7 +310,7 @@ function settings_normalize_item(array $item, string $updatedBy): array {
 }
 
 function settings_handle_post(): void {
-    $ctx = settings_require_admin_context();
+    $ctx = settings_require_admin_context(SETTINGS_SCOPES_WRITE);
     $handlerId = (string)($ctx['handler']['id'] ?? '');
 
     $raw = file_get_contents('php://input');
