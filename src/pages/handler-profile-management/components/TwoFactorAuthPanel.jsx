@@ -194,6 +194,29 @@ const TwoFactorAuthPanel = () => {
     return auth?.authenticator_type || 'Authenticator';
   };
 
+  // Keep one visible row per authenticator family (otp/oob/recovery-code).
+  // If both active + inactive exist, prefer active to avoid confusing duplicates.
+  const visibleAuthenticators = (() => {
+    const groups = new Map();
+    authenticators.forEach((auth) => {
+      const key = `${String(auth?.authenticator_type || 'unknown')}:${String(auth?.oob_channel || '')}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(auth);
+    });
+
+    const out = [];
+    groups.forEach((items) => {
+      const activeItems = items.filter((item) => Boolean(item?.active));
+      if (activeItems.length > 0) {
+        out.push(activeItems[0]);
+      } else if (items.length > 0) {
+        out.push(items[0]);
+      }
+    });
+
+    return out;
+  })();
+
   return (
     <div className="p-5 rounded-xl bg-card border border-border shadow-sm">
       {/* Header */}
@@ -273,11 +296,11 @@ const TwoFactorAuthPanel = () => {
             </div>
           </div>
 
-          {authenticators.length > 0 && (
+          {visibleAuthenticators.length > 0 && (
             <div className="rounded-lg border border-border bg-muted/30 p-3">
               <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Actieve methoden</p>
               <div className="space-y-1.5">
-                {authenticators.map((auth) => (
+                {visibleAuthenticators.map((auth) => (
                   <div key={auth.id} className="flex items-center justify-between gap-3 text-sm">
                     <div className="min-w-0">
                       <p className="text-foreground truncate">{authLabel(auth)}</p>
@@ -292,7 +315,7 @@ const TwoFactorAuthPanel = () => {
             </div>
           )}
 
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
               iconName="RefreshCw"
@@ -303,6 +326,7 @@ const TwoFactorAuthPanel = () => {
                 setShowBackupCodes(true);
               }}
               size="sm"
+              className="w-full sm:w-auto"
             >
               Regenerate Backup Codes
             </Button>
@@ -313,6 +337,7 @@ const TwoFactorAuthPanel = () => {
               onClick={disable2FA}
               disabled={isLoading}
               size="sm"
+              className="w-full sm:w-auto"
             >
               Disable 2FA
             </Button>
@@ -364,13 +389,14 @@ const TwoFactorAuthPanel = () => {
               description="Enter the 6-digit code from your authenticator app"
             />
 
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Button
                 variant="primary"
                 iconName="Check"
                 iconPosition="left"
                 onClick={verifyAndEnable}
                 disabled={isLoading || verificationCode.length !== 6}
+                className="w-full sm:w-auto"
               >
                 {isLoading ? 'Verifying...' : 'Verify & Enable'}
               </Button>
@@ -383,6 +409,7 @@ const TwoFactorAuthPanel = () => {
                   setVerificationCode('');
                 }}
                 disabled={isLoading}
+                className="w-full sm:w-auto"
               >
                 Cancel
               </Button>
@@ -415,13 +442,14 @@ const TwoFactorAuthPanel = () => {
             ))}
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
               iconName="Download"
               iconPosition="left"
               onClick={downloadBackupCodes}
               size="sm"
+              className="w-full sm:w-auto"
             >
               Download
             </Button>
@@ -431,6 +459,7 @@ const TwoFactorAuthPanel = () => {
               iconPosition="left"
               onClick={copyBackupCodes}
               size="sm"
+              className="w-full sm:w-auto"
             >
               Copy
             </Button>
@@ -439,6 +468,7 @@ const TwoFactorAuthPanel = () => {
               iconName="X"
               onClick={() => setShowBackupCodes(false)}
               size="sm"
+              className="w-full sm:w-auto"
             >
               Close
             </Button>

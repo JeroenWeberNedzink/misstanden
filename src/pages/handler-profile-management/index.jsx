@@ -33,6 +33,7 @@ const roleLabelMap = {
   SUPER_ADMIN: 'Super Admin',
   USER: 'Gebruiker',
 };
+const rolePriority = ['SUPER_ADMIN', 'ADMIN', 'HANDLER', 'USER'];
 
 const formatRoleLabel = (role) => {
   const code = String(role || '').toUpperCase().trim();
@@ -47,6 +48,19 @@ const summarizePermissions = (permissions) => {
     .filter(([key, value]) => !/^\d+$/.test(key) && value === true)
     .map(([key]) => permissionLabelMap[key] || key)
     .sort((a, b) => a.localeCompare(b, 'nl-NL'));
+};
+
+const pickPrimaryRole = (roles = [], fallbackRole = '') => {
+  const normalized = (Array.isArray(roles) ? roles : [])
+    .map((role) => String(role || '').toUpperCase().trim())
+    .filter(Boolean);
+
+  for (const candidate of rolePriority) {
+    if (normalized.includes(candidate)) return candidate;
+  }
+
+  const fallback = String(fallbackRole || '').toUpperCase().trim();
+  return fallback || normalized[0] || 'HANDLER';
 };
 
 const HandlerProfileManagement = () => {
@@ -204,7 +218,7 @@ const HandlerProfileManagement = () => {
 
       <AuthContextNavigator>
         <div className="min-h-screen app-page-gradient bg-background">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-28 space-y-6">
             <AccountOverviewPanel
               user={user}
               handlerProfile={handlerProfile}
@@ -275,7 +289,7 @@ const HandlerProfileManagement = () => {
               </div>
             </div>
 
-            <div className="sticky bottom-3 z-20">
+            <div className="sticky bottom-4 z-20">
               <div className="rounded-xl border border-border bg-card/95 backdrop-blur px-4 py-3 shadow-lg flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                 <p className="text-sm text-muted-foreground">
                   Sla uw profielwijzigingen op om contactgegevens en notificatiegedrag direct toe te passen.
@@ -325,43 +339,34 @@ const compactId = (value) => {
 };
 
 const StatTile = ({ label, value, icon, compact = false }) => (
-  <div className="rounded-xl border border-border bg-muted/30 px-3 py-2.5">
-    <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+  <div className="rounded-xl border border-border bg-muted/20 px-3.5 py-3 min-h-[84px] flex flex-col justify-between">
+    <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
       <Icon name={icon} size={12} />
       <span>{label}</span>
     </div>
-    <p className={`mt-1 ${compact ? 'text-xs' : 'text-lg'} font-semibold text-foreground break-all`}>{value}</p>
+    <p className={`mt-1 ${compact ? 'text-sm' : 'text-2xl'} font-semibold text-foreground leading-tight break-all`}>{value}</p>
   </div>
 );
 
 const AccountOverviewPanel = ({ user, handlerProfile, roles, permissionCount }) => {
   const displayName = user?.name || handlerProfile?.name || 'Handler';
   const displayEmail = handlerProfile?.email || user?.email || '-';
-  const primaryRole = formatRoleLabel(handlerProfile?.role || roles?.[0]);
+  const primaryRole = formatRoleLabel(pickPrimaryRole(roles, handlerProfile?.role));
+  const initials = String(displayName)
+    .split(' ')
+    .map((part) => part.charAt(0))
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
-    <section className="rounded-2xl border border-border bg-card/95 backdrop-blur shadow-sm overflow-hidden">
+    <section className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
       <div className="p-6 md:p-7">
-        <div className="flex flex-col md:flex-row md:items-start gap-5">
+        <div className="flex flex-col lg:flex-row lg:items-start gap-5">
           <div className="flex-shrink-0">
-            {user?.picture ? (
-              <img
-                src={user.picture}
-                alt={displayName}
-                className="w-20 h-20 rounded-2xl border border-primary/20 object-cover shadow-sm"
-              />
-            ) : (
-              <div className="w-20 h-20 rounded-2xl border border-primary/20 bg-primary/10 flex items-center justify-center">
-                <span className="text-2xl font-semibold text-primary">
-                  {String(displayName)
-                    .split(' ')
-                    .map((part) => part.charAt(0))
-                    .join('')
-                    .slice(0, 2)
-                    .toUpperCase()}
-                </span>
-              </div>
-            )}
+            <div className="w-20 h-20 rounded-2xl border border-primary/20 bg-gradient-to-br from-sky-700 to-sky-500 flex items-center justify-center shadow-md shadow-sky-700/20">
+              <span className="text-2xl font-semibold text-white tracking-wide">{initials}</span>
+            </div>
           </div>
 
           <div className="min-w-0 flex-1">
@@ -390,7 +395,7 @@ const AccountOverviewPanel = ({ user, handlerProfile, roles, permissionCount }) 
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 md:w-56">
+          <div className="grid grid-cols-2 gap-3 w-full md:w-[320px] lg:w-[340px]">
             <StatTile label="Rollen" value={String(roles?.length || 0)} icon="Users" />
             <StatTile label="Rechten" value={String(permissionCount || 0)} icon="Key" />
             <StatTile label="Handler ID" value={compactId(handlerProfile?.id)} icon="Fingerprint" compact />
@@ -672,27 +677,29 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
           <Icon name="Mail" size={20} color="var(--color-primary)" />
           <h2 className="text-lg font-semibold text-foreground">Email voorkeuren</h2>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            iconName="ChevronDown"
-            onClick={() => setExpandedCategories({ ticket: true, handler: true, sla: true, system: true })}
-          >
-            Open alles
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            iconName="ChevronUp"
-            onClick={() => setExpandedCategories({ ticket: false, handler: false, sla: false, system: false })}
-          >
-            Sluit alles
-          </Button>
-          <Button variant="outline" size="sm" iconName="RotateCcw" onClick={handleReset} disabled={saving}>
-            Reset
-          </Button>
-        </div>
+        {categories.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              iconName="ChevronDown"
+              onClick={() => setExpandedCategories({ ticket: true, handler: true, sla: true, system: true })}
+            >
+              Open alles
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              iconName="ChevronUp"
+              onClick={() => setExpandedCategories({ ticket: false, handler: false, sla: false, system: false })}
+            >
+              Sluit alles
+            </Button>
+            <Button variant="outline" size="sm" iconName="RotateCcw" onClick={handleReset} disabled={saving}>
+              Reset
+            </Button>
+          </div>
+        )}
       </div>
 
       <p className="text-sm text-muted-foreground mb-4">
