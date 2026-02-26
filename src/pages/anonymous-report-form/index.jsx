@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import AnonymousNavHeader from '../../components/navigation/AnonymousNavHeader';
 import Icon from '../../components/AppIcon';
 import { ticketService } from '../../services/ticketService';
+import { inferPriorityFromReport } from '../../utils/priorityInference';
 
 // Step components
 import WorkflowSelector from './components/WorkflowSelector';
@@ -65,7 +66,7 @@ export default function AnonymousReportForm() {
 
   const [formData, setFormData] = useState({
     workflow: '',
-    severity: 'medium',
+    severity: 'low',
     description: '',
     location: '',
     reporterName: '',
@@ -186,12 +187,18 @@ export default function AnonymousReportForm() {
       const emailNotify = !!formData?.emailNotify;
       const statusEmailNotify = formData?.statusEmailNotify !== false;
       const isAnonymous = !!formData?.isAnonymous;
+      const priorityDecision = inferPriorityFromReport({
+        description: formData?.description,
+        workflowType: formData?.workflow,
+        location: formData?.location,
+      });
+      const severityToSubmit = String(priorityDecision?.severityCode || 'low').toLowerCase();
 
       const newTicket = await ticketService?.createTicket({
         description: formData?.description,
         location: formData?.location,
         workflowType: formData?.workflow,
-        severity: formData?.severity,
+        severity: severityToSubmit,
         reporterLanguage: i18n?.resolvedLanguage || i18n?.language || 'en',
         reporterEmail: email || null,
         reporterName: String(formData?.reporterName || '').trim() || null,
@@ -199,6 +206,9 @@ export default function AnonymousReportForm() {
         emailNotify,
         statusEmailNotify,
         isAnonymous,
+        metadata: {
+          priority_inference: priorityDecision,
+        },
       });
 
       if (formData?.files?.length) {
@@ -208,12 +218,12 @@ export default function AnonymousReportForm() {
       }
 
       const selectedWorkflow = workflows?.find(w => w?.code === formData?.workflow);
-      const selectedSeverity = severities?.find(s => s?.code === formData?.severity);
+      const selectedSeverity = severities?.find(s => s?.code === severityToSubmit);
 
       const ticketWithDetails = {
         ...newTicket,
         workflow: getLocalizedWorkflowName(selectedWorkflow) || formData?.workflow,
-        severity: selectedSeverity?.label || formData?.severity,
+        severity: selectedSeverity?.label || severityToSubmit,
         location: formData?.location || null,
         attachmentCount: formData?.files?.length || 0,
       };
@@ -709,7 +719,7 @@ export default function AnonymousReportForm() {
   return (
     <>
       <AnonymousNavHeader />
-      <div className="min-h-screen bg-background pt-24">
+      <div className="min-h-screen app-page-gradient bg-background pt-24">
         <div className="max-w-[1400px] mx-auto px-6 md:px-8 lg:px-12">
           {/* Page Title */}
           <div className="text-center mb-8 mt-8">
@@ -938,3 +948,4 @@ export default function AnonymousReportForm() {
     </>
   );
 }
+

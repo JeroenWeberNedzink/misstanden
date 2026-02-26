@@ -220,6 +220,8 @@ Locale files:
 - UX/performance loading flow improved:
   - Case detail now renders header/core data first and lazy-loads messages/actions/attachments/notes after.
   - Handler dashboard startup was simplified to a single visible skeleton state (removed stacked loading screens).
+- Priority inference expanded:
+  - New report severity inference now uses richer urgency/impact signals, deadline parsing, user/location-count parsing, and conservative dampeners to reduce false high alerts.
 
 ## Security and Privacy Notes
 
