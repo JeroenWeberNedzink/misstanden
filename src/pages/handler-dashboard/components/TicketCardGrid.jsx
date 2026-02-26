@@ -43,7 +43,15 @@ const normalizeStatuses = (raw) => {
     .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
 };
 
-const TicketCardGrid = ({ tickets, workflows = [], currentHandlerId, onQuickStatusChange, onAssignToMe }) => {
+const TicketCardGrid = ({
+  tickets,
+  workflows = [],
+  currentHandlerId,
+  currentHandlerName,
+  assigningTicketIds,
+  onQuickStatusChange,
+  onAssignToMe
+}) => {
   const { t } = useTranslation();
   const workflowStatusMap = useMemo(() => {
     const map = new Map();
@@ -100,6 +108,8 @@ const TicketCardGrid = ({ tickets, workflows = [], currentHandlerId, onQuickStat
             ticket={ticket}
             workflowStatusMap={workflowStatusMap}
             currentHandlerId={currentHandlerId}
+            currentHandlerName={currentHandlerName}
+            isAssigning={Boolean(assigningTicketIds?.has?.(String(ticket?.id || '')))}
             onQuickStatusChange={onQuickStatusChange}
             onAssignToMe={onAssignToMe}
           />

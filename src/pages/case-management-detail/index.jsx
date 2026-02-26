@@ -28,6 +28,13 @@ const fmtDateTime = (value, locale) => {
   }
 };
 
+const normalizeEntityId = (value) => String(value || '').trim().toLowerCase();
+const idsEqual = (a, b) => {
+  const left = normalizeEntityId(a);
+  const right = normalizeEntityId(b);
+  return left !== '' && right !== '' && left === right;
+};
+
 const resolveAssignedHandler = (ticket, handlers = [], fallbackLabel = '-') => {
   const primaryAssignedToId = ticket?.handlerId ?? ticket?.handler_id ?? null;
   const ticketHandlerEntries = Array.isArray(ticket?.ticketHandlers) ? ticket.ticketHandlers : [];
@@ -46,7 +53,7 @@ const resolveAssignedHandler = (ticket, handlers = [], fallbackLabel = '-') => {
   for (const entry of ticketHandlerEntries) {
     put(entry?.handler);
     if (!entry?.handler && entry?.handlerId) {
-      const match = (handlers || []).find((h) => h?.id === entry?.handlerId);
+      const match = (handlers || []).find((h) => idsEqual(h?.id, entry?.handlerId));
       if (match) put(match);
     }
   }
@@ -54,7 +61,7 @@ const resolveAssignedHandler = (ticket, handlers = [], fallbackLabel = '-') => {
   put(ticket?.handlers);
 
   if (map.size === 0 && primaryAssignedToId) {
-    const match = (handlers || []).find((h) => h?.id === primaryAssignedToId);
+    const match = (handlers || []).find((h) => idsEqual(h?.id, primaryAssignedToId));
     if (match) {
       put(match);
     } else {
@@ -192,6 +199,47 @@ export default function CaseManagementDetail() {
   useEffect(() => {
     availableHandlersRef.current = availableHandlers || [];
   }, [availableHandlers]);
+
+  useEffect(() => {
+    if (!caseData) return;
+    const handlerPool = availableHandlers || [];
+    if (handlerPool.length === 0) return;
+
+    const assignedIds = Array.isArray(caseData?.assignedToIds)
+      ? caseData.assignedToIds.filter(Boolean)
+      : caseData?.assignedToId
+        ? [caseData.assignedToId]
+        : [];
+    if (assignedIds.length === 0) return;
+
+    const resolvedHandlers = assignedIds
+      .map((id) => handlerPool.find((handler) => idsEqual(handler?.id, id)))
+      .filter(Boolean)
+      .map((handler) => ({
+        id: handler.id,
+        name: handler.name || null,
+        email: handler.email || null,
+      }));
+
+    const resolvedNames = resolvedHandlers
+      .map((handler) => String(handler?.name || '').trim())
+      .filter(Boolean);
+    if (resolvedNames.length === 0) return;
+
+    const nextAssignedTo = resolvedNames.join(', ');
+    if (String(caseData?.assignedTo || '').trim() === nextAssignedTo) return;
+
+    setCaseData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        assignedTo: nextAssignedTo,
+        assignedToId: prev?.assignedToId || assignedIds[0] || null,
+        assignedToIds: assignedIds,
+        assignedHandlers: resolvedHandlers,
+      };
+    });
+  }, [availableHandlers, caseData]);
 
   const showToast = useCallback((message) => {
     setToastMessage(message);
@@ -949,7 +997,6 @@ export default function CaseManagementDetail() {
             caseData={caseData}
             onBack={handleBack}
             onStatusChange={() => setShowStatusModal(true)}
-            isWhistleblower={isWhistleblower}
             onStatusUpdate={handleStatusUpdate} // FlowBar uses this.
             canUpdateStatus={hasAssignedHandlers(caseData)}
           />

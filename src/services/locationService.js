@@ -1,6 +1,9 @@
 // services/locationService.js
 import { supabase } from '../lib/supabase';
 
+const WORKFLOW_API_URL = '/api/workflows.api.php';
+let locationTokenProvider = null;
+
 const throwIfError = (error, context = '') => {
   if (!error) return;
   const msg = context ? `${context}: ${error.message || error}` : (error.message || String(error));
@@ -9,12 +12,93 @@ const throwIfError = (error, context = '') => {
   throw e;
 };
 
+const setTokenProvider = (provider) => {
+  locationTokenProvider = typeof provider === 'function' ? provider : null;
+};
+
+const getAuthHeaders = async () => {
+  if (!locationTokenProvider) return {};
+  try {
+    const token = await locationTokenProvider();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+};
+
+const getAuthHeadersWithRetry = async (requireAdmin = false) => {
+  let headers = await getAuthHeaders();
+  if (requireAdmin && !headers.Authorization) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    headers = await getAuthHeaders();
+  }
+  return headers;
+};
+
+const apiGet = async (action, params = {}, { requireAdmin = true } = {}) => {
+  const authHeaders = await getAuthHeadersWithRetry(requireAdmin);
+  if (requireAdmin && !authHeaders.Authorization) {
+    throw new Error('Authorization token required');
+  }
+
+  const query = new URLSearchParams({ action, ...params }).toString();
+  const response = await fetch(`${WORKFLOW_API_URL}?${query}`, {
+    method: 'GET',
+    headers: authHeaders,
+  });
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    throw new Error(json?.message || `Workflows API error (${response.status})`);
+  }
+  return json?.data;
+};
+
+const apiPost = async (action, payload = {}, { requireAdmin = true } = {}) => {
+  const authHeaders = await getAuthHeadersWithRetry(requireAdmin);
+  if (requireAdmin && !authHeaders.Authorization) {
+    throw new Error('Authorization token required');
+  }
+
+  const response = await fetch(WORKFLOW_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders,
+    },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    throw new Error(json?.message || `Workflows API error (${response.status})`);
+  }
+  return json?.data;
+};
+
 export const locationService = {
+  setTokenProvider,
+
   /**
    * Get all locations (optionally filter by active status)
    * Returns: Array of location objects
    */
   async getLocations({ activeOnly = true } = {}) {
+    if (locationTokenProvider) {
+      try {
+        const data = await apiGet(
+          'locations_list',
+          { include_inactive: activeOnly ? '0' : '1' },
+          { requireAdmin: true }
+        );
+        return Array.isArray(data?.rows) ? data.rows : [];
+      } catch (apiError) {
+        if (!activeOnly) {
+          throw apiError;
+        }
+        // Public form can still work without admin token/policies.
+        console.warn('[locationService] API locations_list failed, using direct supabase fallback', apiError);
+      }
+    }
+
     let query = supabase
       .from('locations')
       .select('*')
@@ -35,28 +119,42 @@ export const locationService = {
    * Get a single location by ID
    */
   async getLocationById(id) {
+    if (locationTokenProvider) {
+      const data = await apiGet('location_by_id', { id }, { requireAdmin: true });
+      return data?.row || null;
+    }
+
     const { data, error } = await supabase
       .from('locations')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     throwIfError(error, 'getLocationById');
-    return data;
+    return data || null;
   },
 
   /**
    * Get a location by country code
    */
   async getLocationByCode(countryCode) {
+    if (locationTokenProvider) {
+      const data = await apiGet(
+        'location_by_code',
+        { country_code: String(countryCode || '').toUpperCase() },
+        { requireAdmin: true }
+      );
+      return data?.row || null;
+    }
+
     const { data, error } = await supabase
       .from('locations')
       .select('*')
       .eq('country_code', countryCode)
-      .single();
+      .maybeSingle();
 
     throwIfError(error, 'getLocationByCode');
-    return data;
+    return data || null;
   },
 
   /**
@@ -73,6 +171,11 @@ export const locationService = {
       active,
       created_by: createdBy,
     };
+
+    if (locationTokenProvider) {
+      const data = await apiPost('location_create', { payload }, { requireAdmin: true });
+      return data?.row || data;
+    }
 
     const { data, error } = await supabase
       .from('locations')
@@ -97,6 +200,11 @@ export const locationService = {
     if (active !== undefined) payload.active = active;
     if (updatedBy !== undefined) payload.updated_by = updatedBy;
 
+    if (locationTokenProvider) {
+      const data = await apiPost('location_update', { id, patch: payload }, { requireAdmin: true });
+      return data?.row || data;
+    }
+
     const { data, error } = await supabase
       .from('locations')
       .update(payload)
@@ -114,6 +222,11 @@ export const locationService = {
   async deleteLocation(id) {
     if (!id) throw new Error('Location ID is required');
 
+    if (locationTokenProvider) {
+      await apiPost('location_delete', { id }, { requireAdmin: true });
+      return true;
+    }
+
     const { error } = await supabase
       .from('locations')
       .delete()
@@ -129,8 +242,14 @@ export const locationService = {
   async toggleActive(id) {
     if (!id) throw new Error('Location ID is required');
 
+    if (locationTokenProvider) {
+      const data = await apiPost('location_toggle_active', { id }, { requireAdmin: true });
+      return data?.row || data;
+    }
+
     // First get current status
     const location = await this.getLocationById(id);
+    if (!location) throw new Error('Location not found');
 
     // Toggle it
     return await this.updateLocation(id, { active: !location.active });
@@ -140,14 +259,17 @@ export const locationService = {
    * Reorder locations
    */
   async reorderLocations(locationOrders) {
-    // locationOrders: [{ id, display_order }]
-    const updates = locationOrders.map(({ id, display_order }) =>
-      supabase
-        .from('locations')
-        .update({ display_order })
-        .eq('id', id)
-    );
+    const items = Array.isArray(locationOrders) ? locationOrders : [];
 
+    if (locationTokenProvider) {
+      await apiPost('locations_reorder', { items }, { requireAdmin: true });
+      return true;
+    }
+
+    // locationOrders: [{ id, display_order }]
+    const updates = items.map(({ id, display_order }) =>
+      supabase.from('locations').update({ display_order }).eq('id', id)
+    );
     const results = await Promise.all(updates);
 
     // Check for errors

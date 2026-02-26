@@ -5,7 +5,15 @@ import Icon from '../../../components/AppIcon';
 import { format } from 'date-fns';
 import { de, enUS, fr, nl, pt } from 'date-fns/locale';
 
-const TicketCard = ({ ticket, workflowStatusMap, currentHandlerId, onQuickStatusChange, onAssignToMe }) => {
+const TicketCard = ({
+  ticket,
+  workflowStatusMap,
+  currentHandlerId,
+  currentHandlerName,
+  isAssigning = false,
+  onQuickStatusChange,
+  onAssignToMe
+}) => {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const dateFnsLocaleByLanguage = {
@@ -38,17 +46,16 @@ const TicketCard = ({ ticket, workflowStatusMap, currentHandlerId, onQuickStatus
   // Get severity info with colors
   const getSeverityInfo = (code) => {
     const severityStyles = {
-      critical: { label: t('handlerDashboard.severity.critical'), bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', icon: 'text-red-600' },
-      high: { label: t('handlerDashboard.severity.high'), bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', icon: 'text-orange-600' },
-      medium: { label: t('handlerDashboard.severity.medium'), bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200', icon: 'text-yellow-600' },
-      low: { label: t('handlerDashboard.severity.low'), bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', icon: 'text-emerald-600' }
+      critical: { label: t('handlerDashboard.severity.critical'), bg: 'bg-sky-100', text: 'text-sky-700', border: 'border-sky-300', icon: 'text-sky-700' },
+      high: { label: t('handlerDashboard.severity.high'), bg: 'bg-sky-100', text: 'text-sky-700', border: 'border-sky-200', icon: 'text-sky-700' },
+      medium: { label: t('handlerDashboard.severity.medium'), bg: 'bg-sky-50', text: 'text-sky-700', border: 'border-sky-200', icon: 'text-sky-600' },
+      low: { label: t('handlerDashboard.severity.low'), bg: 'bg-sky-50', text: 'text-sky-600', border: 'border-sky-200', icon: 'text-sky-600' }
     };
     return severityStyles[code] || severityStyles.medium;
   };
 
   const statusInfo = getStatusInfo(ticket?.statusCode, ticket?.workflowType);
   const severityInfo = getSeverityInfo(ticket?.severityCode);
-  const statusAccentStyle = statusInfo.color ? { borderTopColor: statusInfo.color } : undefined;
 
   const submittedDate = ticket?.submittedAt
     ? format(new Date(ticket.submittedAt), 'dd MMM yyyy', { locale: activeLocale })
@@ -67,6 +74,22 @@ const TicketCard = ({ ticket, workflowStatusMap, currentHandlerId, onQuickStatus
     null;
 
   const isAssigned = Boolean(handlerId);
+  const normalizedHandlerId = String(handlerId || '').trim();
+  const normalizedCurrentHandlerId = String(currentHandlerId || '').trim();
+  const isAssignedToCurrentHandler =
+    normalizedHandlerId !== '' &&
+    normalizedCurrentHandlerId !== '' &&
+    normalizedHandlerId === normalizedCurrentHandlerId;
+  const assignedHandlerName =
+    String(ticket?.handlers?.name || ticket?.handlerName || ticket?.handler_name || '').trim() ||
+    (isAssignedToCurrentHandler ? String(currentHandlerName || '').trim() : '');
+  const assignedLabel = isAssigned
+    ? (assignedHandlerName || `#${normalizedHandlerId.slice(0, 8)}`)
+    : t('handlerDashboard.table.unassigned');
+  const assignmentLabel = isAssigning
+    ? `${t('handlerDashboard.actions.assignToMe')}...`
+    : assignedLabel;
+
   const currentStatusMeta = getStatusMeta(ticket?.statusCode, ticket?.workflowType);
   const isClosed = Boolean(currentStatusMeta?.isTerminal);
 
@@ -93,8 +116,7 @@ const TicketCard = ({ ticket, workflowStatusMap, currentHandlerId, onQuickStatus
 
 return (
   <div
-    className="bg-white rounded-2xl border border-gray-200 hover:border-sky-600/40 hover:shadow-xl shadow-md transition-all duration-300 overflow-hidden cursor-pointer group border-t-4"
-    style={statusAccentStyle}
+    className="bg-white rounded-2xl border border-gray-200 hover:border-sky-600/40 hover:shadow-xl shadow-md transition-all duration-300 overflow-hidden cursor-pointer group border-t-4 border-t-sky-600"
     onClick={handleViewDetails}
   >
     {/* Header */}
@@ -106,17 +128,12 @@ return (
               #{ticket?.ticketNumber || ticket?.id?.slice(0, 8)}
             </h3>
           <div
-            className="flex items-center gap-2 px-3 py-1 rounded-full border shadow-sm bg-gray-50 border-gray-200"
-            style={statusInfo.color ? { borderColor: statusInfo.color } : undefined}
+            className="flex items-center gap-2 px-3 py-1 rounded-full border shadow-sm bg-sky-50 border-sky-200"
           >
               <div
-                className="w-2 h-2 rounded-full animate-pulse bg-gray-400"
-                style={statusInfo.color ? { backgroundColor: statusInfo.color } : undefined}
+                className="w-2 h-2 rounded-full animate-pulse bg-sky-600"
               ></div>
-              <span
-                className="text-xs font-semibold text-gray-700"
-                style={statusInfo.color ? { color: statusInfo.color } : undefined}
-              >
+              <span className="text-xs font-semibold text-sky-700">
                 {statusInfo.label}
               </span>
             </div>
@@ -135,6 +152,11 @@ return (
                 </div>
               </>
             )}
+            <span className="text-gray-400">•</span>
+            <div className="flex items-center gap-1.5">
+              <Icon name="UserCheck" size={13} className={isAssigned ? 'text-sky-700' : 'text-gray-500'} />
+              <span className={`font-medium ${isAssigned ? 'text-sky-700' : ''}`}>{assignmentLabel}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -181,9 +203,15 @@ return (
           {!isAssigned && currentHandlerId && (
             <button
               onClick={handleAssign}
-              className="px-4 py-2 rounded-lg text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700 active:bg-sky-800 transition-colors shadow-sm hover:shadow-md"
+              disabled={isAssigning}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm hover:shadow-md inline-flex items-center gap-2 ${
+                isAssigning
+                  ? 'bg-sky-700 text-white cursor-wait'
+                  : 'bg-sky-600 text-white hover:bg-sky-700 active:bg-sky-800'
+              }`}
             >
-              {t('handlerDashboard.actions.assignToMe')}
+              {isAssigning && <Icon name="Loader2" size={14} className="animate-spin" />}
+              {isAssigning ? `${t('handlerDashboard.actions.assignToMe')}...` : t('handlerDashboard.actions.assignToMe')}
             </button>
           )}
           {/* {!isClosed && nextStatusCode && (

@@ -461,48 +461,10 @@ export default function SystemSettingsAdmin() {
               <AdminModulesPanel />
             ) : (
               <div>
-            {/* Search & Action Bar */}
+            {/* Action Bar */}
             <div className="mb-6 flex flex-col md:flex-row gap-3">
-              {/* Search */}
-              <div className="flex-1">
-                <div className="relative">
-                  <Icon
-                    name="Search"
-                    size={18}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  />
-                  <input
-                    type="text"
-                    placeholder={t('common.search') + '...'}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-muted/30 rounded-lg transition-colors"
-                    >
-                      <Icon name="X" size={14} className="text-muted-foreground" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
               {/* Action Buttons */}
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  iconName="RefreshCw"
-                  iconPosition="left"
-                  onClick={load}
-                  disabled={isLoading || isSaving}
-                  size="sm"
-                >
-                  <span className="hidden sm:inline">{t('settings.refresh')}</span>
-                  <span className="sm:hidden">{t('common.refresh')}</span>
-                </Button>
-
+              <div className="flex gap-2 md:ml-auto">
                 <Button
                   variant="outline"
                   iconName="RotateCcw"
@@ -560,44 +522,6 @@ export default function SystemSettingsAdmin() {
                   ))}
                 </div>
                 <div className="mt-6 text-sm text-muted-foreground">{t('settings.messages.loading')}</div>
-              </div>
-            ) : searchQuery.trim() ? (
-              // Show search results across all categories
-              <div className="space-y-4">
-                <div className="text-sm text-muted-foreground mb-4 flex items-center gap-2">
-                  <Icon name="Search" size={16} />
-                  <span>
-                    {t(filteredRows.length === 1 ? 'settings.search.result' : 'settings.search.results', { count: filteredRows.length })} {t('settings.search.for')} "<strong>{searchQuery}</strong>"
-                  </span>
-                </div>
-                {filteredCategories.map((category) => {
-                  const meta = getCategoryDisplayMeta(category, categoryMeta);
-                  const categoryRows = filteredRows.filter(r => r.category === category);
-
-                  if (categoryRows.length === 0) return null;
-
-                  return (
-                    <div key={category} className={`rounded-2xl border border-border ${meta.bgColor || 'bg-card'} p-6 shadow-sm`}>
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className={`w-12 h-12 rounded-xl ${meta.iconBg} flex items-center justify-center shadow-sm`}>
-                          <Icon name={meta.icon} size={24} className={meta.iconColor} />
-                        </div>
-                        <h3 className="text-lg font-bold text-foreground">{meta.label}</h3>
-                      </div>
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {categoryRows.map((row) => (
-                          <SettingCard
-                            key={row.setting_key}
-                            row={row}
-                            draftValue={draft[row.setting_key]}
-                            onChangeDraft={(nextVal) => setDraft((prev) => ({ ...prev, [row.setting_key]: nextVal }))}
-                            isChanged={dirtyKeys.includes(row.setting_key)}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             ) : selectedCategory ? (
               // Show selected category's settings

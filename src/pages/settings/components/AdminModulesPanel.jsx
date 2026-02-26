@@ -8,6 +8,7 @@ import WorkflowManagementPanel from '../../admin-dashboard/components/WorkflowMa
 import TranslationManagementPanel from '../../admin-dashboard/components/TranslationManagementPanel';
 import LoggingPanel from '../../admin-dashboard/components/LoggingPanel';
 import SlaBackfillPanel from '../../admin-dashboard/components/SlaBackfillPanel';
+import LocationManagementPanel from './LocationManagementPanel';
 
 import { ticketService } from '../../../services/ticketService';
 import { workflowService } from '../../../services/workflowService';
@@ -53,26 +54,37 @@ const getModuleMeta = (usersCount, rolesCount, workflowsCount) => ({
     priority: 4,
     description: 'Beheer meertalige content en i18n vertalingen',
     meta: '4 talen',
-    color: 'from-cyan-500 to-blue-600',
-    bgColor: 'bg-gradient-to-br from-cyan-50 to-blue-50',
-    iconBg: 'bg-cyan-100',
-    iconColor: 'text-cyan-600'
+    color: 'from-sky-600 to-sky-700',
+    bgColor: 'bg-card',
+    iconBg: 'bg-sky-100',
+    iconColor: 'text-sky-700'
+  },
+  locations: {
+    label: 'Locaties',
+    icon: 'MapPin',
+    priority: 5,
+    description: 'Beheer landen die beschikbaar zijn voor meldingen',
+    meta: 'Klik om te configureren',
+    color: 'from-sky-600 to-sky-700',
+    bgColor: 'bg-card',
+    iconBg: 'bg-sky-100',
+    iconColor: 'text-sky-700'
   },
   logging: {
     label: 'Audit Logs',
     icon: 'ScrollText',
-    priority: 5,
+    priority: 6,
     description: 'Bekijk database wijzigingen en audit trails',
     meta: 'Database logs',
-    color: 'from-orange-500 to-red-600',
-    bgColor: 'bg-gradient-to-br from-orange-50 to-red-50',
-    iconBg: 'bg-orange-100',
-    iconColor: 'text-orange-600'
+    color: 'from-sky-600 to-sky-700',
+    bgColor: 'bg-card',
+    iconBg: 'bg-sky-100',
+    iconColor: 'text-sky-700'
   },
   slaTools: {
     label: 'SLA Tools',
     icon: 'Clock',
-    priority: 6,
+    priority: 7,
     description: 'Eenmalige SLA acties en onderhoud',
     meta: 'Backfill next_step_due',
     color: 'from-sky-500 to-cyan-600',
@@ -87,7 +99,6 @@ const AdminModulesPanel = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [query, setQuery] = useState('');
 
   const [users, setUsers] = useState([]);
   const [permissions, setPermissions] = useState([]);
@@ -149,75 +160,8 @@ const AdminModulesPanel = () => {
 
   const activeModuleMeta = activeModule ? moduleMeta[activeModule] : null;
 
-  const filteredUsers = useMemo(() => {
-    if (!query.trim()) return users;
-    const q = query.toLowerCase();
-    return users.filter(u =>
-      [u.name, u.email, u.username, ...(u.roles || [])].filter(Boolean).join(' ').toLowerCase().includes(q)
-    );
-  }, [users, query]);
-
-  const filteredRoles = useMemo(() => {
-    if (!query.trim()) return roles;
-    const q = query.toLowerCase();
-    return roles.filter(r =>
-      [r.name, r.code, r.description].filter(Boolean).join(' ').toLowerCase().includes(q)
-    );
-  }, [roles, query]);
-
-  const filteredPermissions = useMemo(() => {
-    if (!query.trim()) return permissions;
-    const q = query.toLowerCase();
-    return permissions.filter(p =>
-      [p.name, p.code, p.description, p.category].filter(Boolean).join(' ').toLowerCase().includes(q)
-    );
-  }, [permissions, query]);
-
-  const filteredWorkflows = useMemo(() => {
-    if (!query.trim()) return workflows;
-    const q = query.toLowerCase();
-    return workflows.filter(w =>
-      [w.name, w.code, w.description].filter(Boolean).join(' ').toLowerCase().includes(q)
-    );
-  }, [workflows, query]);
-
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-end">
-        <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-          <div className="relative w-full sm:w-[360px]">
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 opacity-70">
-              <Icon name="Search" size={18} />
-            </div>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Zoek in admin (naam, rol, permission, workflow)..."
-              className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-card border border-border text-sm outline-none focus:ring-2 focus:ring-primary/30"
-            />
-            {query && (
-              <button
-                onClick={() => setQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 opacity-70 hover:opacity-100"
-                aria-label="Clear"
-              >
-                <Icon name="X" size={18} />
-              </button>
-            )}
-          </div>
-
-          <Button
-            variant="outline"
-            size="lg"
-            iconName="RefreshCw"
-            iconPosition="left"
-            onClick={loadAllData}
-          >
-            Vernieuwen
-          </Button>
-        </div>
-      </div>
-
       {(error || success) && (
         <div className="space-y-3">
           {error && (
@@ -272,14 +216,7 @@ const AdminModulesPanel = () => {
                   <p className="text-sm text-muted-foreground mt-1">{activeModuleMeta?.description}</p>
                   <div className="flex items-center gap-3 mt-2">
                     <span className="text-sm text-muted-foreground">{activeModuleMeta?.meta}</span>
-                    {query && (
-                      <>
-                        <span className="text-sm text-muted-foreground">•</span>
-                        <span className={`text-sm font-semibold ${activeModuleMeta?.iconColor} bg-white/80 px-2 py-0.5 rounded-full`}>
-                          Zoekfilter actief
-                        </span>
-                      </>
-                    )}
+                    
                   </div>
                 </div>
               </div>
@@ -288,7 +225,7 @@ const AdminModulesPanel = () => {
             <div className={activeModule === 'workflows' ? 'p-4 md:p-5' : 'p-6'}>
               {activeModule === 'users' && (
                 <UserManagementPanel
-                  users={filteredUsers}
+                  users={users}
                   roles={roles}
                   workflows={workflows}
                   onRefresh={loadAllData}
@@ -298,8 +235,8 @@ const AdminModulesPanel = () => {
 
               {activeModule === 'permissions' && (
                 <PermissionsManagementPanel
-                  permissions={filteredPermissions}
-                  roles={filteredRoles}
+                  permissions={permissions}
+                  roles={roles}
                   users={users}
                   onRefresh={loadAllData}
                   onShowToast={showToast}
@@ -308,7 +245,7 @@ const AdminModulesPanel = () => {
 
               {activeModule === 'workflows' && (
                 <WorkflowManagementPanel
-                  workflows={filteredWorkflows}
+                  workflows={workflows}
                   users={users}
                   onRefresh={loadAllData}
                   onShowToast={showToast}
@@ -317,6 +254,10 @@ const AdminModulesPanel = () => {
 
               {activeModule === 'translations' && (
                 <TranslationManagementPanel onRefresh={loadAllData} onShowToast={showToast} />
+              )}
+
+              {activeModule === 'locations' && (
+                <LocationManagementPanel />
               )}
 
               {activeModule === 'logging' && (
@@ -385,4 +326,6 @@ const AdminModulesPanel = () => {
 };
 
 export default AdminModulesPanel;
+
+
 

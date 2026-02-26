@@ -250,12 +250,12 @@ export default function StatusFlowBar({
     <>
       <div className={`w-full overflow-x-auto mt-5 ${disabled ? 'opacity-60' : ''}`}>
         {disabled && (
-          <div className="px-4 pb-2 text-xs text-muted-foreground">
+          <div className="px-4 pb-2 text-xs text-muted-foreground text-center">
             {t('caseManagementDetail.management.assignBeforeStatusChange')}
           </div>
         )}
         <div className="min-w-max px-4 py-6">
-          <div className="relative flex items-center justify-between gap-2">
+          <div className="relative w-fit mx-auto flex items-center gap-2">
             {statuses.map((status, index) => {
               const state = getStatusState(index);
               const isCompleted = state === 'completed';

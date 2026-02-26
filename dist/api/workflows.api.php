@@ -271,6 +271,43 @@ try {
             $rows = wf_or_fail('List all handlers', $code, $decoded, $raw);
             wf_json(200, true, 'All handlers loaded', ['rows' => wf_normalize_handler_rows($rows)]);
         }
+        if ($action === 'locations_list') {
+            $includeInactive = wf_query_bool('include_inactive', false);
+            $select = 'id,country_code,country_name,display_order,active,created_at,updated_at,created_by,updated_by';
+            $url = $baseUrl . '/rest/v1/locations?select=' . rawurlencode($select) . '&order=display_order.asc&order=country_name.asc';
+            if (!$includeInactive) {
+                $url .= '&active=eq.true';
+            }
+            [$code, $decoded, $raw] = wf_req('GET', $url, $serviceKey);
+            $rows = wf_or_fail('List locations', $code, $decoded, $raw);
+            wf_json(200, true, 'Locations loaded', ['rows' => $rows]);
+        }
+        if ($action === 'location_by_id') {
+            $id = trim((string)($_GET['id'] ?? ''));
+            if (!wf_uuid($id)) throw new Exception('id must be UUID');
+            [$code, $decoded, $raw] = wf_req(
+                'GET',
+                $baseUrl . '/rest/v1/locations?select=*&id=eq.' . rawurlencode($id) . '&limit=1',
+                $serviceKey
+            );
+            $row = wf_row(wf_or_fail('Load location by id', $code, $decoded, $raw));
+            if (!$row) wf_json(404, false, 'Location not found');
+            wf_json(200, true, 'Location loaded', ['row' => $row]);
+        }
+        if ($action === 'location_by_code') {
+            $countryCode = strtoupper(trim((string)($_GET['country_code'] ?? '')));
+            if ($countryCode === '' || preg_match('/^[A-Z]{2}$/', $countryCode) !== 1) {
+                throw new Exception('country_code must be 2 letters');
+            }
+            [$code, $decoded, $raw] = wf_req(
+                'GET',
+                $baseUrl . '/rest/v1/locations?select=*&country_code=eq.' . rawurlencode($countryCode) . '&limit=1',
+                $serviceKey
+            );
+            $row = wf_row(wf_or_fail('Load location by code', $code, $decoded, $raw));
+            if (!$row) wf_json(404, false, 'Location not found');
+            wf_json(200, true, 'Location loaded', ['row' => $row]);
+        }
         if ($action === 'handlers_by_ids') {
             $includeInactive = wf_query_bool('include_inactive', true);
             $rawIds = trim((string)($_GET['ids'] ?? ''));
@@ -524,6 +561,161 @@ try {
         if (!wf_uuid($handlerId)) throw new Exception('handler_id must be UUID');
         wf_or_fail('Clear handler workflows', ...wf_req('DELETE', $baseUrl . '/rest/v1/handler_workflows?handler_id=eq.' . rawurlencode($handlerId), $serviceKey));
         wf_json(200, true, 'Handler workflows cleared', ['handler_id' => $handlerId, 'deleted' => true]);
+    }
+
+    if ($action === 'location_create') {
+        $payloadRaw = is_array($body['payload'] ?? null) ? $body['payload'] : [];
+        $countryCode = strtoupper(trim((string)($payloadRaw['country_code'] ?? ($payloadRaw['countryCode'] ?? ''))));
+        $countryName = trim((string)($payloadRaw['country_name'] ?? ($payloadRaw['countryName'] ?? '')));
+        if ($countryCode === '' || preg_match('/^[A-Z]{2}$/', $countryCode) !== 1) {
+            throw new Exception('Country code must be exactly 2 letters');
+        }
+        if ($countryName === '') throw new Exception('Country name is required');
+
+        [$existsCode, $existsDecoded, $existsRaw] = wf_req(
+            'GET',
+            $baseUrl . '/rest/v1/locations?select=id&country_code=eq.' . rawurlencode($countryCode) . '&limit=1',
+            $serviceKey
+        );
+        if (wf_row(wf_or_fail('Validate location country code uniqueness', $existsCode, $existsDecoded, $existsRaw))) {
+            throw new Exception('A location with this country code already exists');
+        }
+
+        $createdByRaw = trim((string)($payloadRaw['created_by'] ?? ($payloadRaw['createdBy'] ?? '')));
+        if ($createdByRaw !== '' && !wf_uuid($createdByRaw)) {
+            throw new Exception('created_by must be UUID');
+        }
+
+        $payload = [
+            'country_code' => $countryCode,
+            'country_name' => $countryName,
+            'display_order' => (int)($payloadRaw['display_order'] ?? ($payloadRaw['displayOrder'] ?? 0)),
+            'active' => array_key_exists('active', $payloadRaw) ? (bool)$payloadRaw['active'] : true,
+            'created_by' => $createdByRaw !== '' ? $createdByRaw : null,
+        ];
+
+        [$codeHttp, $decoded, $raw] = wf_req('POST', $baseUrl . '/rest/v1/locations', $serviceKey, $payload, true);
+        wf_json(200, true, 'Location created', ['row' => wf_row(wf_or_fail('Create location', $codeHttp, $decoded, $raw))]);
+    }
+
+    if ($action === 'location_update') {
+        $id = trim((string)($body['id'] ?? ''));
+        $patchRaw = is_array($body['patch'] ?? null) ? $body['patch'] : [];
+        if (!wf_uuid($id) || !$patchRaw) throw new Exception('Invalid location update payload');
+
+        $payload = [];
+        if (array_key_exists('country_code', $patchRaw) || array_key_exists('countryCode', $patchRaw)) {
+            $countryCode = strtoupper(trim((string)($patchRaw['country_code'] ?? ($patchRaw['countryCode'] ?? ''))));
+            if ($countryCode === '' || preg_match('/^[A-Z]{2}$/', $countryCode) !== 1) {
+                throw new Exception('Country code must be exactly 2 letters');
+            }
+            [$existsCode, $existsDecoded, $existsRaw] = wf_req(
+                'GET',
+                $baseUrl . '/rest/v1/locations?select=id&country_code=eq.' . rawurlencode($countryCode) . '&id=neq.' . rawurlencode($id) . '&limit=1',
+                $serviceKey
+            );
+            if (wf_row(wf_or_fail('Validate location country code uniqueness', $existsCode, $existsDecoded, $existsRaw))) {
+                throw new Exception('A location with this country code already exists');
+            }
+            $payload['country_code'] = $countryCode;
+        }
+        if (array_key_exists('country_name', $patchRaw) || array_key_exists('countryName', $patchRaw)) {
+            $countryName = trim((string)($patchRaw['country_name'] ?? ($patchRaw['countryName'] ?? '')));
+            if ($countryName === '') throw new Exception('Country name is required');
+            $payload['country_name'] = $countryName;
+        }
+        if (array_key_exists('display_order', $patchRaw) || array_key_exists('displayOrder', $patchRaw)) {
+            $payload['display_order'] = (int)($patchRaw['display_order'] ?? ($patchRaw['displayOrder'] ?? 0));
+        }
+        if (array_key_exists('active', $patchRaw)) {
+            $payload['active'] = (bool)$patchRaw['active'];
+        }
+        if (array_key_exists('updated_by', $patchRaw) || array_key_exists('updatedBy', $patchRaw)) {
+            $updatedByRaw = trim((string)($patchRaw['updated_by'] ?? ($patchRaw['updatedBy'] ?? '')));
+            if ($updatedByRaw !== '' && !wf_uuid($updatedByRaw)) {
+                throw new Exception('updated_by must be UUID');
+            }
+            $payload['updated_by'] = $updatedByRaw !== '' ? $updatedByRaw : null;
+        }
+        if (!$payload) throw new Exception('No valid fields to update');
+
+        [$codeHttp, $decoded, $raw] = wf_req(
+            'PATCH',
+            $baseUrl . '/rest/v1/locations?id=eq.' . rawurlencode($id),
+            $serviceKey,
+            $payload,
+            true
+        );
+        $row = wf_row(wf_or_fail('Update location', $codeHttp, $decoded, $raw));
+        if (!$row) throw new Exception('Location not found');
+        wf_json(200, true, 'Location updated', ['row' => $row]);
+    }
+
+    if ($action === 'location_delete') {
+        $id = trim((string)($body['id'] ?? ''));
+        if (!wf_uuid($id)) throw new Exception('id must be UUID');
+        wf_or_fail('Delete location', ...wf_req('DELETE', $baseUrl . '/rest/v1/locations?id=eq.' . rawurlencode($id), $serviceKey));
+        wf_json(200, true, 'Location deleted', ['deleted' => true]);
+    }
+
+    if ($action === 'location_toggle_active') {
+        $id = trim((string)($body['id'] ?? ''));
+        if (!wf_uuid($id)) throw new Exception('id must be UUID');
+
+        $nextActive = null;
+        if (array_key_exists('active', $body)) {
+            $nextActive = (bool)$body['active'];
+        } else {
+            [$getCode, $getDecoded, $getRaw] = wf_req(
+                'GET',
+                $baseUrl . '/rest/v1/locations?select=id,active&id=eq.' . rawurlencode($id) . '&limit=1',
+                $serviceKey
+            );
+            $current = wf_row(wf_or_fail('Load location for toggle', $getCode, $getDecoded, $getRaw));
+            if (!$current) throw new Exception('Location not found');
+            $nextActive = empty($current['active']);
+        }
+
+        [$codeHttp, $decoded, $raw] = wf_req(
+            'PATCH',
+            $baseUrl . '/rest/v1/locations?id=eq.' . rawurlencode($id),
+            $serviceKey,
+            ['active' => $nextActive],
+            true
+        );
+        $row = wf_row(wf_or_fail('Toggle location active', $codeHttp, $decoded, $raw));
+        if (!$row) throw new Exception('Location not found');
+        wf_json(200, true, 'Location status updated', ['row' => $row]);
+    }
+
+    if ($action === 'locations_reorder') {
+        $items = is_array($body['items'] ?? null) ? $body['items'] : [];
+        $normalized = [];
+        $seen = [];
+        foreach ($items as $item) {
+            $id = trim((string)($item['id'] ?? ''));
+            if (!wf_uuid($id) || isset($seen[$id])) continue;
+            $seen[$id] = true;
+            $normalized[] = [
+                'id' => $id,
+                'display_order' => (int)($item['display_order'] ?? 0),
+            ];
+        }
+
+        foreach ($normalized as $item) {
+            wf_or_fail(
+                'Reorder location',
+                ...wf_req(
+                    'PATCH',
+                    $baseUrl . '/rest/v1/locations?id=eq.' . rawurlencode($item['id']),
+                    $serviceKey,
+                    ['display_order' => $item['display_order']],
+                    true
+                )
+            );
+        }
+
+        wf_json(200, true, 'Locations reordered', ['updated' => count($normalized)]);
     }
 
     if ($action === 'permission_create') {

@@ -33,9 +33,7 @@ export default function SlaBackfillPanel({ onShowToast }) {
     setIsRunning(true);
     setError('');
     try {
-      const token = await getApiAccessToken(getAccessTokenSilently, {
-        scope: 'run:sla_backfill',
-      });
+      const token = await getApiAccessToken(getAccessTokenSilently);
       const resp = await fetch('/api/sla-backfill.api.php', {
         method: 'POST',
         headers: {

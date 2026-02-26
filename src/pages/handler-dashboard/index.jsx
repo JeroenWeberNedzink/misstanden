@@ -32,11 +32,14 @@ const parseRoles = (rawRoles) => {
   return [];
 };
 
+
 export default function HandlerDashboard() {
   const [tickets, setTickets] = useState([]);
   const { user, getAccessTokenSilently } = useAuth0();
   const [currentHandlerId, setCurrentHandlerId] = useState(null);
+  const [currentHandlerName, setCurrentHandlerName] = useState('');
   const [currentHandlerRole, setCurrentHandlerRole] = useState(null);
+  const [assigningTicketIds, setAssigningTicketIds] = useState(new Set());
   const [workflows, setWorkflows] = useState([]);
   const [severities, setSeverities] = useState([]);
   const [search, setSearch] = useState('');
@@ -174,6 +177,7 @@ export default function HandlerDashboard() {
       const roles = parseRoles(handler.roles);
       const role = roles.some((r) => r.toUpperCase() === 'ADMIN') ? 'admin' : 'handler';
       setCurrentHandlerId(handler.id);
+      setCurrentHandlerName(String(handler?.name || user?.name || user?.email || '').trim());
       setCurrentHandlerRole(role);
       console.log('[HandlerDashboard] Handler loaded:', { id: handler.id, role, roles });
     } catch (err) {
@@ -282,11 +286,27 @@ export default function HandlerDashboard() {
   };
 
   const handleAssignHandler = async (ticketId, handlerId) => {
+    if (!ticketId || !handlerId) return;
+    const ticketKey = String(ticketId);
+    if (assigningTicketIds.has(ticketKey)) return;
+
+    setAssigningTicketIds((prev) => {
+      const next = new Set(prev);
+      next.add(ticketKey);
+      return next;
+    });
+
     try {
       await ticketService?.assignHandler(ticketId, handlerId, null, { currentHandlerId });
       await loadData();
     } catch (err) {
       console.error('Error assigning handler:', err);
+    } finally {
+      setAssigningTicketIds((prev) => {
+        const next = new Set(prev);
+        next.delete(ticketKey);
+        return next;
+      });
     }
   };
 
@@ -414,8 +434,13 @@ export default function HandlerDashboard() {
       </Helmet>
 
       <AuthContextNavigator>
-        <div className="min-h-screen bg-background">
-          <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 md:py-8 lg:py-12">
+        <div className="min-h-screen relative overflow-hidden bg-gradient-to-b from-sky-100/50 via-slate-50 to-white">
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute -top-24 left-0 h-80 w-80 rounded-full bg-sky-200/30 blur-3xl" />
+            <div className="absolute top-1/3 -right-20 h-96 w-96 rounded-full bg-slate-200/30 blur-3xl" />
+            <div className="absolute bottom-0 left-1/4 h-72 w-72 rounded-full bg-sky-100/30 blur-3xl" />
+          </div>
+          <div className="relative z-10 max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 md:py-8 lg:py-12">
             <div className="mb-8">
               <div className="rounded-3xl bg-gradient-to-br from-sky-800 via-sky-700 to-sky-600 text-white p-6 md:p-8 shadow-xl">
                 <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
@@ -534,6 +559,8 @@ export default function HandlerDashboard() {
                   tickets={filteredTickets}
                   workflows={workflows}
                   currentHandlerId={currentHandlerId}
+                  currentHandlerName={currentHandlerName}
+                  assigningTicketIds={assigningTicketIds}
                   onQuickStatusChange={handleStatusChange}
                   onAssignToMe={handleAssignToMe}
                 />

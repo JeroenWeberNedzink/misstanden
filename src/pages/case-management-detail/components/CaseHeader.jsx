@@ -4,7 +4,7 @@ import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import StatusFlowBar from './StatusFlowBar';
 
-const CaseHeader = ({ caseData, onBack, isWhistleblower, onStatusUpdate, canUpdateStatus = true }) => {
+const CaseHeader = ({ caseData, onBack, onStatusUpdate, canUpdateStatus = true }) => {
   const { t } = useTranslation();
 
   const getPriorityStyles = (priorityCode) => {
@@ -71,17 +71,15 @@ const CaseHeader = ({ caseData, onBack, isWhistleblower, onStatusUpdate, canUpda
         </div>
       </div>
 
-      {isWhistleblower && (
-        <div className="mt-4 pt-4 border-t border-border">
-          <StatusFlowBar
-            workflowType={caseData?.workflowType}
-            currentStatus={caseData?.status}
-            currentStage={caseData?.currentStage}
-            onStatusUpdate={onStatusUpdate}
-            disabled={!canUpdateStatus}
-          />
-        </div>
-      )}
+      <div className="mt-4 pt-4 border-t border-border">
+        <StatusFlowBar
+          workflowType={caseData?.workflowType}
+          currentStatus={caseData?.status}
+          currentStage={caseData?.currentStage}
+          onStatusUpdate={onStatusUpdate}
+          disabled={!canUpdateStatus}
+        />
+      </div>
     </div>
   );
 };

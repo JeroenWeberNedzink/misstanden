@@ -76,13 +76,13 @@ const diffKeys = (oldData, newData) => {
 // ------------------------------
 function AuditFilters({ filters, onFilterChange, onClearFilters, tableOptions, opOptions }) {
   return (
-    <div className="bg-white/60 border border-orange-100 rounded-xl p-4 mb-6">
+    <div className="bg-white/60 border border-sky-100 rounded-xl p-4 mb-6">
       <div className="flex items-center gap-2 mb-3">
         <Icon name="Filter" size={16} className="text-muted-foreground" />
         <h3 className="text-sm font-semibold text-foreground">Filters</h3>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
         <Input
           label="Van"
           type="date"
@@ -117,12 +117,6 @@ function AuditFilters({ filters, onFilterChange, onClearFilters, tableOptions, o
           />
         </div>
 
-        <Input
-          label="Zoek row_id"
-          placeholder="bijv. ticket uuid…"
-          value={filters.search}
-          onChange={(e) => onFilterChange('search', e.target.value)}
-        />
       </div>
 
       <div className="flex justify-end mt-4">
@@ -188,7 +182,7 @@ function AuditLogsTable({ logs, isLoading, onOpen }) {
             {logs.map((l) => {
               const changed = diffKeys(l.old_data, l.new_data);
               return (
-                <tr key={l.event_id} className="hover:bg-orange-50/30 transition-smooth">
+                <tr key={l.event_id} className="hover:bg-sky-50/30 transition-smooth">
                   <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
                     {l.occurred_at ? format(new Date(l.occurred_at), 'yyyy-MM-dd HH:mm:ss') : '—'}
                   </td>
@@ -277,7 +271,7 @@ function AuditDetailsDrawer({ open, log, onClose }) {
     <>
       <div className="fixed inset-0 z-[1000] bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="fixed inset-y-0 right-0 z-[1001] w-full max-w-3xl bg-white border-l border-orange-200 shadow-2xl">
+      <div className="fixed inset-y-0 right-0 z-[1001] w-full max-w-3xl bg-white border-l border-sky-200 shadow-2xl">
         <div className="h-full flex flex-col">
           {/* Header */}
           <div className="p-4 border-b border-border flex items-start justify-between gap-3">
@@ -323,12 +317,12 @@ function AuditDetailsDrawer({ open, log, onClose }) {
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {/* Key info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="p-3 rounded-xl border border-orange-100 bg-orange-50/20">
+              <div className="p-3 rounded-xl border border-sky-100 bg-sky-50/20">
                 <div className="text-xs text-muted-foreground">Row ID</div>
                 <div className="text-sm font-mono text-foreground break-all">{log.row_id || '—'}</div>
               </div>
 
-              <div className="p-3 rounded-xl border border-orange-100 bg-orange-50/20">
+              <div className="p-3 rounded-xl border border-sky-100 bg-sky-50/20">
                 <div className="text-xs text-muted-foreground">Tabel</div>
                 <div className="text-sm font-mono text-foreground break-all">
                   {log.schema_name}.{log.table_name}
@@ -346,7 +340,7 @@ function AuditDetailsDrawer({ open, log, onClose }) {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Zoek in wijzigingen (veld/waarde)…"
-                  className="w-full pl-9 pr-9 py-2 rounded-xl bg-white/60 border border-orange-200 text-sm outline-none focus:ring-2 focus:ring-orange-400/30"
+                  className="w-full pl-9 pr-9 py-2 rounded-xl bg-white/60 border border-sky-200 text-sm outline-none focus:ring-2 focus:ring-sky-400/30"
                 />
                 {query && (
                   <button
@@ -367,7 +361,7 @@ function AuditDetailsDrawer({ open, log, onClose }) {
 
             {/* Changes list */}
             <div className="border border-border rounded-xl overflow-hidden">
-              <div className="bg-orange-50/30 border-b border-orange-100 px-3 py-2 flex items-center justify-between">
+              <div className="bg-sky-50/30 border-b border-sky-100 px-3 py-2 flex items-center justify-between">
                 <div className="text-sm font-semibold text-foreground">
                   {op === 'INSERT'
                     ? 'Aangemaakte velden'
@@ -387,7 +381,7 @@ function AuditDetailsDrawer({ open, log, onClose }) {
               ) : (
                 <div className="divide-y divide-border">
                   {filteredRows.map((r) => (
-                    <div key={r.key} className="p-3 hover:bg-orange-50/20 transition-smooth">
+                    <div key={r.key} className="p-3 hover:bg-sky-50/20 transition-smooth">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
@@ -408,14 +402,14 @@ function AuditDetailsDrawer({ open, log, onClose }) {
                           {r.type === 'added' ? (
                             <div className="mt-2 text-sm">
                               <div className="text-xs text-muted-foreground mb-1">Nieuw</div>
-                              <div className="rounded-lg border border-orange-100 bg-white/60 px-3 py-2">
+                              <div className="rounded-lg border border-sky-100 bg-white/60 px-3 py-2">
                                 <div className="text-foreground break-words">{toShortString(r.after)}</div>
                               </div>
                             </div>
                           ) : r.type === 'removed' ? (
                             <div className="mt-2 text-sm">
                               <div className="text-xs text-muted-foreground mb-1">Oud</div>
-                              <div className="rounded-lg border border-orange-100 bg-white/60 px-3 py-2">
+                              <div className="rounded-lg border border-sky-100 bg-white/60 px-3 py-2">
                                 <div className="text-foreground break-words">{toShortString(r.before)}</div>
                               </div>
                             </div>
@@ -423,13 +417,13 @@ function AuditDetailsDrawer({ open, log, onClose }) {
                             <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
                               <div>
                                 <div className="text-xs text-muted-foreground mb-1">Oud</div>
-                                <div className="rounded-lg border border-orange-100 bg-white/60 px-3 py-2">
+                                <div className="rounded-lg border border-sky-100 bg-white/60 px-3 py-2">
                                   <div className="text-foreground break-words">{toShortString(r.before)}</div>
                                 </div>
                               </div>
                               <div>
                                 <div className="text-xs text-muted-foreground mb-1">Nieuw</div>
-                                <div className="rounded-lg border border-orange-100 bg-white/60 px-3 py-2">
+                                <div className="rounded-lg border border-sky-100 bg-white/60 px-3 py-2">
                                   <div className="text-foreground break-words">{toShortString(r.after)}</div>
                                 </div>
                               </div>
@@ -454,7 +448,7 @@ function AuditDetailsDrawer({ open, log, onClose }) {
                 <button
                   type="button"
                   onClick={() => setShowRaw((v) => !v)}
-                  className="w-full px-3 py-2 bg-orange-50/30 border-b border-orange-100 flex items-center justify-between"
+                  className="w-full px-3 py-2 bg-sky-50/30 border-b border-sky-100 flex items-center justify-between"
                 >
                   <div className="flex items-center gap-2">
                     <Icon name="Info" size={16} className="text-muted-foreground" />
@@ -514,7 +508,6 @@ export default function LoggingPanel({ onShowToast }) {
       schemaName: 'all',
       tableName: 'all',
       operation: 'all',
-      search: '',
       dateFrom: format(subDays(new Date(), 7), 'yyyy-MM-dd'),
       dateTo: format(new Date(), 'yyyy-MM-dd'),
     }),
@@ -523,7 +516,6 @@ export default function LoggingPanel({ onShowToast }) {
 
   const [filters, setFilters] = useState(defaultFilters);
   const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [logs, setLogs] = useState([]);
 
   const [selectedLog, setSelectedLog] = useState(null);
@@ -554,9 +546,8 @@ export default function LoggingPanel({ onShowToast }) {
     []
   );
 
-  const loadAudit = async ({ showSpinner = true } = {}) => {
-    if (showSpinner) setIsLoading(true);
-    setIsRefreshing(!showSpinner);
+  const loadAudit = async () => {
+    setIsLoading(true);
 
     try {
       const data = await auditLogService.getAuditLogs(filters);
@@ -567,14 +558,13 @@ export default function LoggingPanel({ onShowToast }) {
       setLogs([]);
     } finally {
       setIsLoading(false);
-      setIsRefreshing(false);
     }
   };
 
   useEffect(() => {
-    loadAudit({ showSpinner: true });
+    loadAudit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.tableName, filters.operation, filters.dateFrom, filters.dateTo, filters.search]);
+  }, [filters.tableName, filters.operation, filters.dateFrom, filters.dateTo]);
 
   const handleExportCSV = () => {
     const csv = auditLogService.exportAuditToCSV(logs);
@@ -615,16 +605,6 @@ export default function LoggingPanel({ onShowToast }) {
 
         <div className="flex items-center gap-3">
           <Button
-            variant="outline"
-            iconName="RefreshCw"
-            iconPosition="left"
-            onClick={() => loadAudit({ showSpinner: false })}
-            disabled={isLoading || isRefreshing}
-          >
-            {isRefreshing ? 'Vernieuwen…' : 'Vernieuwen'}
-          </Button>
-
-          <Button
             variant="primary"
             iconName="Download"
             iconPosition="left"
@@ -653,3 +633,4 @@ export default function LoggingPanel({ onShowToast }) {
     </div>
   );
 }
+
