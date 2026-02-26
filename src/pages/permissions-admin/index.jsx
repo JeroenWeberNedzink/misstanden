@@ -94,7 +94,7 @@ const PermissionsAdmin = () => {
   if (loading) {
     return (
       <AuthContextNavigator>
-        <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="min-h-screen app-page-gradient bg-background flex items-center justify-center">
           <div className="text-center">
             <Icon name="Loader2" size={48} className="animate-spin text-primary mx-auto mb-4" />
             <p className="text-muted-foreground">Gegevens laden...</p>
@@ -112,7 +112,7 @@ const PermissionsAdmin = () => {
       </Helmet>
 
       <AuthContextNavigator>
-        <div className="min-h-screen bg-background">
+        <div className="min-h-screen app-page-gradient bg-background">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             {/* Header */}
             <div className="mb-8">
@@ -714,3 +714,4 @@ const PermissionModal = ({ permission, onClose, onSave }) => {
 };
 
 export default PermissionsAdmin;
+

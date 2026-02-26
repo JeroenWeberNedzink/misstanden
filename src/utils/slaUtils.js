@@ -59,7 +59,12 @@ const resolveFlowchartFirstResponseHours = (workflowType) => {
 };
 
 export const getFirstResponseHoursForTicket = (ticket) => {
-  const configured = toNumber(ticket?.slaResponseHours ?? ticket?.sla_response_hours);
+  const configured = toNumber(
+    ticket?.slaResponseHours ??
+    ticket?.sla_response_hours ??
+    ticket?.metadata?.sla_response_hours ??
+    ticket?.metadata?.slaResponseHours
+  );
   const workflowType =
     ticket?.workflowType ||
     ticket?.workflow_type ||

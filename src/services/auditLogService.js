@@ -1,6 +1,10 @@
 import { supabase } from '../lib/supabase';
+import { settingsService } from './SettingsService';
 const WORKFLOW_API_URL = '/api/workflows.api.php';
 let auditLogTokenProvider = null;
+let cachedRetentionDays = null;
+let cachedRetentionLoadedAt = 0;
+const RETENTION_TTL_MS = 2 * 60 * 1000;
 
 // Date helper (consistent with ticketService)
 const getEndOfDayISO = (dateStr) => {
@@ -32,15 +36,59 @@ const getAuthHeadersWithRetry = async () => {
   return headers;
 };
 
+const toSettingValue = (raw) => (
+  raw && typeof raw === 'object' && Object.prototype.hasOwnProperty.call(raw, 'value')
+    ? raw.value
+    : raw
+);
+
+const toNumber = (value, fallback = 365) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const getDefaultRetentionDays = async () => {
+  const now = Date.now();
+  if (cachedRetentionDays !== null && now - cachedRetentionLoadedAt < RETENTION_TTL_MS) {
+    return cachedRetentionDays;
+  }
+
+  try {
+    const { rows } = await settingsService.getSettings();
+    const map = {};
+    (rows || []).forEach((row) => {
+      const key = String(row?.setting_key || '').trim();
+      if (!key) return;
+      map[key] = toSettingValue(row?.setting_value);
+    });
+
+    const raw =
+      map['compliance.data_retention_days'] ??
+      map['audit.retention_days'] ??
+      365;
+    cachedRetentionDays = toNumber(raw, 365);
+  } catch {
+    cachedRetentionDays = 365;
+  }
+
+  cachedRetentionLoadedAt = now;
+  return cachedRetentionDays;
+};
+
 const apiGetAuditLogs = async (filters = {}) => {
   const authHeaders = await getAuthHeadersWithRetry();
   if (!authHeaders.Authorization) {
     throw new Error('Authorization token required');
   }
 
+  const retentionDays = await getDefaultRetentionDays();
+  const effectiveDateFrom = filters.dateFrom
+    ? new Date(filters.dateFrom).toISOString()
+    : new Date(Date.now() - (retentionDays * 24 * 60 * 60 * 1000)).toISOString();
+
   const params = {
     action: 'audit_logs',
-    date_from: filters.dateFrom ? new Date(filters.dateFrom).toISOString() : '',
+    date_from: effectiveDateFrom,
     date_to: filters.dateTo ? getEndOfDayISO(filters.dateTo) : '',
     schema_name: filters.schemaName && filters.schemaName !== 'all' ? filters.schemaName : 'all',
     table_name: filters.tableName && filters.tableName !== 'all' ? filters.tableName : 'all',
@@ -65,9 +113,15 @@ const apiGetAuditLogs = async (filters = {}) => {
 export const auditLogService = {
   setTokenProvider,
   async getAuditLogs(filters = {}) {
+    const retentionDays = await getDefaultRetentionDays();
+    const effectiveFilters = { ...filters };
+    if (!effectiveFilters.dateFrom) {
+      effectiveFilters.dateFrom = new Date(Date.now() - (retentionDays * 24 * 60 * 60 * 1000)).toISOString();
+    }
+
     if (auditLogTokenProvider) {
       try {
-        return await apiGetAuditLogs(filters);
+        return await apiGetAuditLogs(effectiveFilters);
       } catch (apiError) {
         console.warn('[auditLogService] API audit log fetch failed, trying direct supabase fallback', apiError);
       }
@@ -79,18 +133,18 @@ export const auditLogService = {
       .order('occurred_at', { ascending: false });
 
     // Date filters
-    if (filters.dateFrom) q = q.gte('occurred_at', new Date(filters.dateFrom).toISOString());
-    if (filters.dateTo) q = q.lte('occurred_at', getEndOfDayISO(filters.dateTo));
+    if (effectiveFilters.dateFrom) q = q.gte('occurred_at', new Date(effectiveFilters.dateFrom).toISOString());
+    if (effectiveFilters.dateTo) q = q.lte('occurred_at', getEndOfDayISO(effectiveFilters.dateTo));
 
     // Other filters
-    if (filters.tableName && filters.tableName !== 'all') q = q.eq('table_name', filters.tableName);
-    if (filters.schemaName && filters.schemaName !== 'all') q = q.eq('schema_name', filters.schemaName);
-    if (filters.operation && filters.operation !== 'all') q = q.eq('operation', filters.operation);
-    if (filters.search) q = q.ilike('row_id', `%${filters.search}%`);
+    if (effectiveFilters.tableName && effectiveFilters.tableName !== 'all') q = q.eq('table_name', effectiveFilters.tableName);
+    if (effectiveFilters.schemaName && effectiveFilters.schemaName !== 'all') q = q.eq('schema_name', effectiveFilters.schemaName);
+    if (effectiveFilters.operation && effectiveFilters.operation !== 'all') q = q.eq('operation', effectiveFilters.operation);
+    if (effectiveFilters.search) q = q.ilike('row_id', `%${effectiveFilters.search}%`);
 
     // Pagination support
-    const limit = filters.limit || 500;
-    const offset = filters.offset || 0;
+    const limit = effectiveFilters.limit || 500;
+    const offset = effectiveFilters.offset || 0;
     q = q.range(offset, offset + limit - 1);
 
     const { data, error } = await q;

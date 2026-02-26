@@ -214,7 +214,7 @@ export default function WorkflowConfigurationAdmin() {
       </Helmet>
 
       <AuthContextNavigator>
-        <div className="min-h-screen bg-background">
+        <div className="min-h-screen app-page-gradient bg-background">
           <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 md:py-8 lg:py-10">
             <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>

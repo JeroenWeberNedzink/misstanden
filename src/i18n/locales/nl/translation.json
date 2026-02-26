@@ -340,6 +340,8 @@
         "country": "Land",
         "selectCountry": "Selecteer land",
         "loadingCountries": "Landen laden...",
+        "publicSubmissionDisabled": "Publieke meldingen zijn momenteel uitgeschakeld.",
+        "attachmentsDisabled": "Bijlagen zijn momenteel uitgeschakeld",
         "countryRequired": "Land is verplicht",
         "specificLocation": "Specifieke locatie",
         "specificLocationRequired": "Specifieke locatie is verplicht",
@@ -684,6 +686,10 @@
             "portalDescription": "Configureer wat gebruikers kunnen doen",
             "workflow": "Workflow",
             "workflowDescription": "Hoe tickets worden verwerkt",
+            "tickets": "Tickets",
+            "ticketsDescription": "Instellingen voor intake, prioriteit en toewijzing",
+            "compliance": "Compliance",
+            "complianceDescription": "Privacy, audit en bewaartermijnen",
             "sla": "Responstijden",
             "slaDescription": "Stel deadlines en tijdlijnen in",
             "email_notifications": "Email Notificaties",
@@ -705,8 +711,63 @@
             "value": "Waarde",
             "currentValue": "Huidige waarde",
             "sensitive": "Sensitive",
+            "modified": "Gewijzigd",
             "onOff": "Aan / Uit",
             "jsonAdvanced": "JSON (voor advanced settings)"
+        },
+        "settingKeys": {
+            "tickets_allow_public_submission": {
+                "label": "Publieke indiening toestaan",
+                "description": "Sta publieke gebruikers toe om tickets in te dienen"
+            },
+            "tickets_auto_assign_enabled": {
+                "label": "Automatisch toewijzen",
+                "description": "Automatische toewijzing van tickets aan behandelaars inschakelen"
+            },
+            "tickets_auto_close_resolved_days": {
+                "label": "Auto-sluiten na opgelost (dagen)",
+                "description": "Sluit tickets automatisch na X dagen in opgelost-status"
+            },
+            "tickets_default_priority": {
+                "label": "Standaard prioriteit",
+                "description": "Standaard prioriteit voor nieuwe tickets"
+            },
+            "tickets_require_email_verification": {
+                "label": "E-mailverificatie vereisen",
+                "description": "Verplicht e-mailverificatie voor publieke indieningen"
+            },
+            "tickets_sla_resolution_time_hours": {
+                "label": "SLA oplostijd (uren)",
+                "description": "SLA oplostijd in uren"
+            },
+            "tickets_sla_response_time_hours": {
+                "label": "SLA responstijd (uren)",
+                "description": "SLA responstijd in uren"
+            },
+            "tickets_ticket_number_prefix": {
+                "label": "Ticketnummer-prefix",
+                "description": "Prefix voor ticketnummers (bijv. INC-001)"
+            },
+            "compliance_anonymize_closed_tickets": {
+                "label": "Gesloten tickets anonimiseren",
+                "description": "Anonimiseer persoonsgegevens in gesloten tickets"
+            },
+            "compliance_audit_log_enabled": {
+                "label": "Audit logging inschakelen",
+                "description": "Audit logging inschakelen"
+            },
+            "compliance_backup_frequency": {
+                "label": "Back-upfrequentie",
+                "description": "Back-upfrequentie: dagelijks, wekelijks, maandelijks"
+            },
+            "compliance_data_retention_days": {
+                "label": "Bewaartermijn data (dagen)",
+                "description": "Bewaartermijn in dagen (5 jaar)"
+            },
+            "compliance_gdpr_compliant": {
+                "label": "AVG-compliant modus",
+                "description": "AVG-compliant modus inschakelen"
+            }
         },
         "twoFactor": {
             "title": "Twee-Factor Authenticatie (2FA)",
@@ -750,7 +811,7 @@
             "saveError": "Opslaan mislukt."
         },
         "navigation": {
-            "backToCategories": "Terug naar categorie?n",
+            "backToCategories": "Terug naar categorieen",
             "chooseCategory": "Kies een categorie om instellingen te beheren",
             "chooseCategoryDescription": "Klik op een categorie hieronder om de instellingen te bekijken en te bewerken",
             "clickToConfigure": "Klik om te configureren",
@@ -1312,31 +1373,32 @@
             "statusEmailsLabel": "Status change emails"
         },
         "sla": {
-            "breached": "SLA breached",
+            "breached": "SLA overschreden",
+            "completedAt": "Afgerond op {{date}}",
             "contact": "Contact",
-            "contactPerson": "Contact person",
-            "days": "days",
+            "contactPerson": "Contactpersoon",
+            "days": "dagen",
             "dayShort": "d",
-            "dueBy": "Due by {{date}}",
-            "email": "Email",
-            "expected": "Expected",
-            "expectedBy": "Expected by {{date}}",
-            "firstResponse": "First response",
-            "hourShort": "h",
-            "inProgress": "In progress",
-            "name": "Name",
-            "nextStep": "Next step",
-            "notConfigured": "Not configured",
-            "note": "Note",
-            "overdue": "Overdue",
-            "overdueIn": "Overdue by {{time}}",
-            "phone": "Phone",
-            "received": "Received",
-            "remainingIn": "Remaining {{time}}",
-            "resolve": "Resolution",
-            "respondedAt": "Responded at {{date}}",
-            "slaDays": "{{count}} day SLA",
-            "title": "SLA timeline"
+            "dueBy": "Uiterlijk {{date}}",
+            "email": "E-mail",
+            "expected": "Verwacht",
+            "expectedBy": "Verwacht op {{date}}",
+            "firstResponse": "Eerste reactie",
+            "hourShort": "u",
+            "inProgress": "Bezig",
+            "name": "Naam",
+            "nextStep": "Volgende stap",
+            "notConfigured": "Niet geconfigureerd",
+            "note": "Notitie",
+            "overdue": "Te laat",
+            "overdueIn": "{{time}} te laat",
+            "phone": "Telefoon",
+            "received": "Afgerond",
+            "remainingIn": "Resterend {{time}}",
+            "resolve": "Oplossing",
+            "respondedAt": "Gereageerd op {{date}}",
+            "slaDays": "{{count}} dag SLA",
+            "title": "SLA-tijdlijn"
         },
         "statusFlow": {
             "changeStatus": "Change status",

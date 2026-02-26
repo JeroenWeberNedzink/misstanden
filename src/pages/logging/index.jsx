@@ -612,7 +612,7 @@ export default function AuditLogsAdminPage() {
       </Helmet>
 
       <AuthContextNavigator>
-        <div className="min-h-screen bg-background py-6 px-4 sm:px-6 lg:px-8 pt-10">
+        <div className="min-h-screen app-page-gradient bg-background py-6 px-4 sm:px-6 lg:px-8 pt-10">
           <div className="max-w-7xl mx-auto">
             {/* Header */}
             <div className="mb-8">

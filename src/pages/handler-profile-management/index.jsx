@@ -1,4 +1,4 @@
-﻿// src/pages/handler/HandlerProfileManagement.jsx
+// src/pages/handler/HandlerProfileManagement.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useTranslation } from 'react-i18next';
@@ -114,7 +114,7 @@ const HandlerProfileManagement = () => {
   if (loading) {
     return (
       <AuthContextNavigator>
-        <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="min-h-screen app-page-gradient bg-background flex items-center justify-center">
           <div className="text-center">
             <Icon name="Loader2" size={48} className="animate-spin text-primary mx-auto mb-4" />
             <p className="text-muted-foreground">Profielgegevens laden...</p>
@@ -132,7 +132,7 @@ const HandlerProfileManagement = () => {
       </Helmet>
 
       <AuthContextNavigator>
-        <div className="min-h-screen bg-background">
+        <div className="min-h-screen app-page-gradient bg-background">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
             {/* Profile Header */}
@@ -721,3 +721,4 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
     </div>
   );
 };
+

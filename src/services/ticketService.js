@@ -2,6 +2,7 @@
 import { supabase } from '../lib/supabase';
 import { notificationService } from './notificationService';
 import { workflowService } from './workflowService';
+import { settingsService } from './SettingsService';
 import { isReceiptConfirmationStatus } from '../utils/slaUtils';
 import { normalizeHandlerRecord, normalizeHandlerRecords, normalizePermissions } from './utils/handlerNormalization';
 
@@ -42,6 +43,8 @@ const isMissingRelation = (err) => {
 const isMissingTicketHandlersRelation = (err) => {
   const msg = String(err?.message || '').toLowerCase();
   const hint = String(err?.hint || '').toLowerCase();
+  const status = Number(err?.status || 0);
+  if (status === 404) return true;
   if (isMissingRelation(err)) return true;
   if (err?.code === 'PGRST205' && (msg.includes('ticket_handlers') || hint.includes('ticket_handlers'))) {
     return true;
@@ -78,6 +81,9 @@ const isAuthOrRlsError = (err) => {
 const TICKETS_API_URL = '/api/tickets.api.php';
 const WORKFLOWS_API_URL = '/api/workflows.api.php';
 let ticketTokenProvider = null;
+const TICKET_RUNTIME_SETTINGS_TTL_MS = 2 * 60 * 1000;
+let cachedTicketRuntimeSettings = null;
+let cachedTicketRuntimeSettingsAt = 0;
 
 const setTokenProvider = (provider) => {
   ticketTokenProvider = typeof provider === 'function' ? provider : null;
@@ -100,6 +106,186 @@ const getAuthHeadersWithRetry = async (requireAuth = false) => {
     headers = await getAuthHeaders();
   }
   return headers;
+};
+
+const coerceSettingValue = (value, fallback = null) => {
+  if (value === undefined) return fallback;
+  return value;
+};
+
+const normalizeSettingBoolean = (value, fallback = false) => {
+  if (typeof value === 'boolean') return value;
+  if (value === null || value === undefined) return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (['true', '1', 'yes', 'ja', 'on'].includes(normalized)) return true;
+  if (['false', '0', 'no', 'nee', 'off'].includes(normalized)) return false;
+  return fallback;
+};
+
+const normalizeSettingNumber = (value, fallback = 0) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const normalizeSeverityCode = (value, fallback = 'low') => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ['low', 'medium', 'high', 'critical'].includes(normalized) ? normalized : fallback;
+};
+
+const normalizeTicketPrefix = (value, fallback = 'NZ') => {
+  const normalized = String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return normalized || fallback;
+};
+
+const readSettingByAliases = (normalizedByKey, aliases = [], fallback = undefined) => {
+  for (const key of aliases) {
+    if (normalizedByKey[key] !== undefined) return normalizedByKey[key];
+  }
+  return fallback;
+};
+
+const buildTicketRuntimeSettings = (normalizedByKey = {}) => {
+  const allowPublicSubmission = normalizeSettingBoolean(
+    readSettingByAliases(normalizedByKey, ['tickets.allow_public_submission', 'portal.enable_public_submissions'], true),
+    true
+  );
+  const autoAssignEnabled = normalizeSettingBoolean(
+    readSettingByAliases(normalizedByKey, ['tickets.auto_assign_enabled', 'workflow.auto_assign'], true),
+    true
+  );
+  const autoCloseResolvedDays = normalizeSettingNumber(
+    readSettingByAliases(normalizedByKey, ['tickets.auto_close_resolved_days', 'retention.tickets_resolved_days'], 0),
+    0
+  );
+  const defaultPriority = normalizeSeverityCode(
+    readSettingByAliases(normalizedByKey, ['tickets.default_priority', 'workflow.default_priority', 'portal.default_priority'], 'low'),
+    'low'
+  );
+  const requireEmailVerification = normalizeSettingBoolean(
+    readSettingByAliases(normalizedByKey, ['tickets.require_email_verification'], true),
+    true
+  );
+  const slaResponseTimeHours = normalizeSettingNumber(
+    readSettingByAliases(normalizedByKey, ['tickets.sla_response_time_hours', 'sla.default_response_hours'], 24),
+    24
+  );
+  const slaResolutionTimeHours = normalizeSettingNumber(
+    readSettingByAliases(normalizedByKey, ['tickets.sla_resolution_time_hours', 'sla.default_resolution_hours'], 72),
+    72
+  );
+  const ticketNumberPrefix = normalizeTicketPrefix(
+    readSettingByAliases(normalizedByKey, ['tickets.ticket_number_prefix'], 'NZ'),
+    'NZ'
+  );
+  const anonymizeClosedTickets = normalizeSettingBoolean(
+    readSettingByAliases(normalizedByKey, ['compliance.anonymize_closed_tickets'], false),
+    false
+  );
+  const auditLogEnabled = normalizeSettingBoolean(
+    readSettingByAliases(normalizedByKey, ['compliance.audit_log_enabled', 'audit.enable_logging'], true),
+    true
+  );
+  const backupFrequency = String(readSettingByAliases(normalizedByKey, ['compliance.backup_frequency'], 'weekly') || 'weekly');
+  const dataRetentionDays = normalizeSettingNumber(
+    readSettingByAliases(normalizedByKey, ['compliance.data_retention_days', 'audit.retention_days'], 365),
+    365
+  );
+  const gdprCompliant = normalizeSettingBoolean(
+    readSettingByAliases(normalizedByKey, ['compliance.gdpr_compliant'], true),
+    true
+  );
+
+  return {
+    allowPublicSubmission,
+    autoAssignEnabled,
+    autoCloseResolvedDays,
+    defaultPriority,
+    requireEmailVerification,
+    slaResponseTimeHours,
+    slaResolutionTimeHours,
+    ticketNumberPrefix,
+    anonymizeClosedTickets,
+    auditLogEnabled,
+    backupFrequency,
+    dataRetentionDays,
+    gdprCompliant,
+  };
+};
+
+const getTicketRuntimeSettings = async () => {
+  const now = Date.now();
+  if (cachedTicketRuntimeSettings && now - cachedTicketRuntimeSettingsAt < TICKET_RUNTIME_SETTINGS_TTL_MS) {
+    return cachedTicketRuntimeSettings;
+  }
+
+  try {
+    const { rows } = await settingsService.getSettings();
+    const normalizedByKey = {};
+    (rows || []).forEach((row) => {
+      const key = String(row?.setting_key || '').trim();
+      if (!key) return;
+      const raw = row?.setting_value;
+      const value = raw && typeof raw === 'object' && Object.prototype.hasOwnProperty.call(raw, 'value')
+        ? raw.value
+        : raw;
+      normalizedByKey[key] = value;
+    });
+    cachedTicketRuntimeSettings = buildTicketRuntimeSettings(normalizedByKey);
+  } catch (error) {
+    console.warn('[ticketService] Failed to load runtime settings, using defaults', error);
+    cachedTicketRuntimeSettings = buildTicketRuntimeSettings({});
+  }
+
+  cachedTicketRuntimeSettingsAt = now;
+  return cachedTicketRuntimeSettings;
+};
+
+const isResolvedStatus = (statusCode) => {
+  const value = String(statusCode || '').trim().toLowerCase();
+  return value === 'resolved' || value === 'opgelost';
+};
+
+const isClosedStatus = (statusCode) => {
+  const value = String(statusCode || '').trim().toLowerCase();
+  return value === 'closed' || value === 'gesloten';
+};
+
+const applyTicketRuntimePolicies = (ticket, runtimeSettings, options = {}) => {
+  if (!ticket || typeof ticket !== 'object') return ticket;
+
+  const next = { ...ticket };
+  const statusCode = next?.statusCode || next?.status_code || '';
+  const now = Date.now();
+  const reporterView = options?.reporterView === true;
+
+  if (!isClosedStatus(statusCode) && isResolvedStatus(statusCode) && Number(runtimeSettings?.autoCloseResolvedDays || 0) > 0) {
+    const baseDateRaw = next?.lastUpdateAt || next?.last_update_at || next?.updatedAt || next?.submittedAt || next?.submitted_at || null;
+    const baseDate = baseDateRaw ? new Date(baseDateRaw) : null;
+    if (baseDate && !Number.isNaN(baseDate.getTime())) {
+      const daysSinceUpdate = (now - baseDate.getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSinceUpdate >= Number(runtimeSettings.autoCloseResolvedDays)) {
+        next.statusCode = 'closed';
+        next.status_code = 'closed';
+        next.currentStage = 'closed';
+        next.current_stage = 'closed';
+        next.status = next.status || 'Closed';
+      }
+    }
+  }
+
+  if (reporterView && runtimeSettings?.anonymizeClosedTickets && isClosedStatus(next?.statusCode || next?.status_code)) {
+    next.reporterName = null;
+    next.reporter_name = null;
+    next.reporterPhone = null;
+    next.reporter_phone = null;
+  }
+
+  return next;
 };
 
 const ticketApiPost = async (payload, { requireAuth = false } = {}) => {
@@ -144,14 +330,26 @@ const workflowApiGet = async (action, params = {}, { requireAuth = false } = {})
   return json?.data;
 };
 
-const TICKET_HANDLERS_RECHECK_MS = 3_600_000;
+const TICKET_HANDLERS_RECHECK_MS = 24 * 60 * 60 * 1000;
+const TICKET_ACTIONS_RECHECK_MS = 24 * 60 * 60 * 1000;
 const TICKET_HANDLERS_STATE_KEY = 'ticket_handlers_relation_state_v1';
+const TICKET_ACTIONS_STATE_KEY = 'ticket_actions_write_state_v1';
+const resolveBrowserStorage = () => {
+  try {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage || window.sessionStorage || null;
+  } catch {
+    return null;
+  }
+};
+
 const readTicketHandlersState = () => {
   try {
-    if (typeof window === 'undefined' || !window.sessionStorage) {
+    const storage = resolveBrowserStorage();
+    if (!storage) {
       return { available: null, checkedAt: 0 };
     }
-    const raw = window.sessionStorage.getItem(TICKET_HANDLERS_STATE_KEY);
+    const raw = storage.getItem(TICKET_HANDLERS_STATE_KEY);
     if (!raw) return { available: null, checkedAt: 0 };
     const parsed = JSON.parse(raw);
     const available = parsed?.available;
@@ -166,8 +364,9 @@ const readTicketHandlersState = () => {
 
 const persistTicketHandlersState = (state) => {
   try {
-    if (typeof window === 'undefined' || !window.sessionStorage) return;
-    window.sessionStorage.setItem(TICKET_HANDLERS_STATE_KEY, JSON.stringify(state));
+    const storage = resolveBrowserStorage();
+    if (!storage) return;
+    storage.setItem(TICKET_HANDLERS_STATE_KEY, JSON.stringify(state));
   } catch {
     // Ignore storage errors in restricted browser contexts.
   }
@@ -177,6 +376,38 @@ const initialTicketHandlersState = readTicketHandlersState();
 const ticketHandlersRelationState = {
   available: initialTicketHandlersState.available, // null = unknown, true = available, false = missing
   checkedAt: initialTicketHandlersState.checkedAt,
+};
+const readTicketActionsState = () => {
+  try {
+    const storage = resolveBrowserStorage();
+    if (!storage) return { available: null, checkedAt: 0 };
+    const raw = storage.getItem(TICKET_ACTIONS_STATE_KEY);
+    if (!raw) return { available: null, checkedAt: 0 };
+    const parsed = JSON.parse(raw);
+    const available = parsed?.available;
+    const checkedAt = Number(parsed?.checkedAt || 0);
+    if (available !== true && available !== false) return { available: null, checkedAt: 0 };
+    if (!Number.isFinite(checkedAt) || checkedAt <= 0) return { available: null, checkedAt: 0 };
+    return { available, checkedAt };
+  } catch {
+    return { available: null, checkedAt: 0 };
+  }
+};
+
+const persistTicketActionsState = (state) => {
+  try {
+    const storage = resolveBrowserStorage();
+    if (!storage) return;
+    storage.setItem(TICKET_ACTIONS_STATE_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore storage errors in restricted browser contexts.
+  }
+};
+
+const initialTicketActionsState = readTicketActionsState();
+const ticketActionsWriteState = {
+  available: initialTicketActionsState.available, // null = unknown, true = writable, false = blocked
+  checkedAt: initialTicketActionsState.checkedAt,
 };
 
 const shouldProbeTicketHandlersRelation = () => {
@@ -188,6 +419,17 @@ const markTicketHandlersRelationState = (available) => {
   ticketHandlersRelationState.available = available;
   ticketHandlersRelationState.checkedAt = Date.now();
   persistTicketHandlersState(ticketHandlersRelationState);
+};
+
+const shouldAttemptTicketActionsWrite = () => {
+  if (ticketActionsWriteState.available !== false) return true;
+  return Date.now() - ticketActionsWriteState.checkedAt > TICKET_ACTIONS_RECHECK_MS;
+};
+
+const markTicketActionsWriteState = (available) => {
+  ticketActionsWriteState.available = available;
+  ticketActionsWriteState.checkedAt = Date.now();
+  persistTicketActionsState(ticketActionsWriteState);
 };
 
 const friendlyHandlerError = (error, context = 'handlers') => {
@@ -592,6 +834,51 @@ const decorateTicketWithTicketHandlers = async (ticket) => {
   return decorated || ticket;
 };
 
+const insertTicketActionSafe = async (payload, context = 'ticket action') => {
+  if (!shouldAttemptTicketActionsWrite()) {
+    return { skipped: true, reason: 'policy_blocked' };
+  }
+
+  if (ticketTokenProvider) {
+    try {
+      await ticketApiPost(
+        {
+          action: 'handler_log_action',
+          ticket_id: payload?.ticket_id,
+          action_type: payload?.action_type,
+          action: payload?.action,
+          description: payload?.description || null,
+          handler_name: payload?.handler_name || null,
+        },
+        { requireAuth: true }
+      );
+      markTicketActionsWriteState(true);
+      return { ok: true, source: 'api' };
+    } catch (apiError) {
+      const apiMessage = String(apiError?.message || '').toLowerCase();
+      const missingAuth = apiMessage.includes('authorization token required');
+      if (!missingAuth) {
+        console.warn(`[ticketService] ${context}: handler_log_action API failed, trying direct insert`, apiError);
+      }
+    }
+  }
+
+  const { error } = await supabase.from('ticket_actions').insert(payload);
+  if (!error) {
+    markTicketActionsWriteState(true);
+    return { ok: true, source: 'direct' };
+  }
+
+  if (isAuthOrRlsError(error) || isMissingRelation(error)) {
+    markTicketActionsWriteState(false);
+    console.warn(`[ticketService] ${context}: ticket_actions write unavailable, skipping`, error);
+    return { skipped: true, reason: 'policy_blocked', error };
+  }
+
+  console.warn(`[ticketService] ${context}: failed to write ticket_actions`, error);
+  return { skipped: true, reason: 'unknown', error };
+};
+
 const syncTicketHandlers = async (ticketId, nextHandlerIds = []) => {
   const normalized = normalizeHandlerIds(nextHandlerIds);
 
@@ -817,10 +1104,12 @@ export const ticketService = {
   // ----- Read/list -----
   async getAllTickets(filters = {}) {
     const runTicketListQuery = async (query) => {
+      const runtimeSettings = await getTicketRuntimeSettings();
       const { data, error } = await query;
       throwIfError(error, 'getAllTickets');
       const tickets = toCamelCase(data || []);
-      return decorateTicketsWithTicketHandlers(tickets);
+      const decorated = await decorateTicketsWithTicketHandlers(tickets);
+      return decorated.map((ticket) => applyTicketRuntimePolicies(ticket, runtimeSettings));
     };
 
     // Filter by handler's assigned workflows first if handlerId is provided
@@ -978,11 +1267,13 @@ export const ticketService = {
     }
 
     const ticket = toCamelCase(data);
+    const runtimeSettings = await getTicketRuntimeSettings();
     const withHandlers = await decorateTicketWithTicketHandlers(ticket);
     if (!includeRelations) {
-      return withHandlers;
+      return applyTicketRuntimePolicies(withHandlers, runtimeSettings);
     }
-    return attachSignedUrlsToTicket(withHandlers);
+    const withSignedUrls = await attachSignedUrlsToTicket(withHandlers);
+    return applyTicketRuntimePolicies(withSignedUrls, runtimeSettings);
   },
 
   async getTicketRelations(ticketId) {
@@ -1027,7 +1318,8 @@ export const ticketService = {
       throw new Error(json?.message || 'Ongeldige ticket-ID of toegangscode');
     }
 
-    return toCamelCase(json.data);
+    const runtimeSettings = await getTicketRuntimeSettings();
+    return applyTicketRuntimePolicies(toCamelCase(json.data), runtimeSettings, { reporterView: true });
   },
 
   async addReporterMessageByCredentials(ticketInput, accessCode, body) {
@@ -1056,17 +1348,29 @@ export const ticketService = {
 
     const message = toCamelCase(json?.data?.message || null);
     const updatedTicket = toCamelCase(json?.data?.ticket || null);
-    return { message, ticket: updatedTicket };
+    const runtimeSettings = await getTicketRuntimeSettings();
+    return { message, ticket: applyTicketRuntimePolicies(updatedTicket, runtimeSettings, { reporterView: true }) };
   },
 
   // ----- Create -----
   async createTicket(ticketData) {
     if (!ticketData?.description) throw new Error('description is required');
-    if (!ticketData?.severity) throw new Error('severity is required');
-    if (!ticketData?.reporterEmail) throw new Error('reporterEmail is required');
+    const runtimeSettings = await getTicketRuntimeSettings();
+    if (!runtimeSettings.allowPublicSubmission) {
+      throw new Error('Public submissions are currently disabled by system settings.');
+    }
 
     const workflowType = safeTrim(ticketData?.workflowType);
     if (!workflowType) throw new Error('workflowType is required');
+
+    const isAnonymous = !!ticketData?.isAnonymous;
+    const reporterEmail = safeTrim(ticketData?.reporterEmail);
+    if (runtimeSettings.requireEmailVerification && reporterEmail === '') {
+      throw new Error('reporterEmail is required by system policy');
+    }
+    if (!isAnonymous && reporterEmail === '') {
+      throw new Error('reporterEmail is required');
+    }
 
     const { statuses } = await getWorkflowWithStatuses(workflowType);
     const def = pickDefaultStatus(statuses);
@@ -1075,9 +1379,22 @@ export const ticketService = {
     const nowIso = new Date().toISOString();
     const year = new Date().getFullYear();
     const randomNum = Math.floor(Math.random() * 900000) + 100000;
-    const ticketNumber = `NZ-${year}-${String(randomNum).padStart(6, '0')}`;
+    const effectivePrefix = normalizeTicketPrefix(
+      ticketData?.ticketNumberPrefix || runtimeSettings.ticketNumberPrefix || 'NZ',
+      'NZ'
+    );
+    const ticketNumber = `${effectivePrefix}-${year}-${String(randomNum).padStart(6, '0')}`;
 
     const accessCode = String(Math.floor(100000 + Math.random() * 900000)).padStart(6, '0');
+    const severityCode = normalizeSeverityCode(ticketData?.severity, runtimeSettings.defaultPriority || 'low');
+    const slaResponseHours = normalizeSettingNumber(
+      coerceSettingValue(ticketData?.slaResponseHours, runtimeSettings.slaResponseTimeHours),
+      24
+    );
+    const slaResolutionHours = normalizeSettingNumber(
+      coerceSettingValue(ticketData?.slaResolutionHours, runtimeSettings.slaResolutionTimeHours),
+      72
+    );
 
     const nextStepDueAt = def?.expectedDurationDays
       ? addDaysISO(nowIso, def.expectedDurationDays)
@@ -1094,13 +1411,15 @@ export const ticketService = {
       description: ticketData.description,
       location: ticketData.location || null,
       workflow_type: workflowType,
-      severity_code: ticketData.severity,
-      reporter_email: ticketData.reporterEmail || null,
+      severity_code: severityCode,
+      reporter_email: reporterEmail || null,
       reporter_name: ticketData.reporterName || null,
       reporter_phone: ticketData.reporterPhone || null,
-      email_notify: !!ticketData.emailNotify,
+      email_notify: reporterEmail ? !!ticketData.emailNotify : false,
       status_email_notify:
-        ticketData.statusEmailNotify === undefined ? true : !!ticketData.statusEmailNotify,
+        reporterEmail
+          ? (ticketData.statusEmailNotify === undefined ? true : !!ticketData.statusEmailNotify)
+          : false,
 
       // DB-driven initial state
       status_code: def.code,
@@ -1112,7 +1431,15 @@ export const ticketService = {
         ...(ticketData.metadata || {}),
         status_label: def.label,
         reporter_language: reporterLanguage || null,
-        ...(ticketData?.isAnonymous ? {} : { reporter_meta_client: getClientMeta() }),
+        sla_response_hours: slaResponseHours,
+        sla_resolution_hours: slaResolutionHours,
+        compliance: {
+          gdpr_compliant: runtimeSettings.gdprCompliant !== false,
+          anonymize_closed_tickets: runtimeSettings.anonymizeClosedTickets === true,
+          backup_frequency: runtimeSettings.backupFrequency || 'weekly',
+          data_retention_days: Number(runtimeSettings.dataRetentionDays || 365),
+        },
+        ...(isAnonymous || runtimeSettings.gdprCompliant !== false ? {} : { reporter_meta_client: getClientMeta() }),
       },
 
       // Optional: update enum only if DB config provides it
@@ -1124,7 +1451,7 @@ export const ticketService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...payload,
-        is_anonymous: !!ticketData?.isAnonymous
+        is_anonymous: isAnonymous
       })
     });
     const json = await resp.json();
@@ -1141,10 +1468,12 @@ export const ticketService = {
     }
 
     // Notify all active handlers that can access this workflow.
-    notificationService.notifyHandlersNewReport(createdTicket)
-      .catch(err => console.error('Failed to send workflow handler new-report emails:', err));
+    if (runtimeSettings.autoAssignEnabled) {
+      notificationService.notifyHandlersNewReport(createdTicket)
+        .catch(err => console.error('Failed to send workflow handler new-report emails:', err));
+    }
 
-    return createdTicket;
+    return applyTicketRuntimePolicies(createdTicket, runtimeSettings, { reporterView: isAnonymous });
   },
 
   // ----- Status updates (DB-driven) -----
@@ -1257,15 +1586,14 @@ export const ticketService = {
     const updatedTicket = await this.updateTicket(ticketId, update);
 
     const note = payload.note ? String(payload.note).trim() : '';
-    if (note) {
-      const { error: actionError } = await supabase.from('ticket_actions').insert({
+    if (note && await this.isAuditLoggingEnabled()) {
+      await insertTicketActionSafe({
         ticket_id: ticketId,
         action_type: 'status_update',
         action: `Status changed to ${resolved.label}`,
         description: note,
         created_at: nowIso,
-      });
-      if (actionError) console.warn('Ticket updated but failed to insert ticket_actions:', actionError);
+      }, 'updateTicketProgress(note)');
     }
 
     const result = toCamelCase(updatedTicket);
@@ -1532,6 +1860,11 @@ async deleteHandler(handlerId, options = {}) {
   return { success: true, mode: 'soft', handler: toCamelCase(data) };
 },
 
+  async isAuditLoggingEnabled() {
+    const runtimeSettings = await getTicketRuntimeSettings();
+    return runtimeSettings.auditLogEnabled !== false;
+  },
+
   // ----- Generic ticket update -----
   async updateTicket(ticketId, updates = {}) {
     if (!ticketId) throw new Error('ticketId is required');
@@ -1657,8 +1990,8 @@ async deleteHandler(handlerId, options = {}) {
 
     // Log assignment action
     const trimmed = note ? String(note).trim() : '';
-    if (trimmed) {
-      const { error: actionError } = await supabase.from('ticket_actions').insert({
+    if (trimmed && await this.isAuditLoggingEnabled()) {
+      await insertTicketActionSafe({
         ticket_id: ticketId,
         action_type: 'assignment',
         action: 'Handler Assigned',
@@ -1668,8 +2001,7 @@ async deleteHandler(handlerId, options = {}) {
         handler_email: handlerInfo?.email || null,
         performed_by: handlerInfo?.name || 'System',
         created_at: nowIso,
-      });
-      if (actionError) console.warn('setTicketHandlers: failed to write ticket_actions note:', actionError);
+      }, 'setTicketHandlers(note)');
     }
 
     let result = toCamelCase(updatedTicket);
@@ -1773,17 +2105,18 @@ async deleteHandler(handlerId, options = {}) {
     throwIfError(error, 'addComment');
 
     // Log action
-    const { error: actionError } = await supabase.from('ticket_actions').insert({
-      ticket_id: ticketId,
-      action_type: 'note_added',
-      action: 'Note Added',
-      description: `Added investigation note: ${String(comment).substring(0, 100)}...`,
-      handler_id: handlerInfo?.id || null,
-      handler_name: handlerInfo?.name || authorName,
-      handler_email: handlerInfo?.email || null,
-      performed_by: handlerInfo?.name || authorName || 'System',
-    });
-    if (actionError) console.error('Error logging action:', actionError);
+    if (await this.isAuditLoggingEnabled()) {
+      await insertTicketActionSafe({
+        ticket_id: ticketId,
+        action_type: 'note_added',
+        action: 'Note Added',
+        description: `Added investigation note: ${String(comment).substring(0, 100)}...`,
+        handler_id: handlerInfo?.id || null,
+        handler_name: handlerInfo?.name || authorName,
+        handler_email: handlerInfo?.email || null,
+        performed_by: handlerInfo?.name || authorName || 'System',
+      }, 'addComment(log)');
+    }
 
     const result = toCamelCase(data);
 
@@ -1890,17 +2223,18 @@ async deleteHandler(handlerId, options = {}) {
     throwIfError(error, 'addMessage');
 
     // Log action
-    const { error: actionError } = await supabase.from('ticket_actions').insert({
-      ticket_id: ticketId,
-      action_type: 'message_sent',
-      action: 'Message Sent',
-      description: `Sent message: ${String(body).substring(0, 100)}...`,
-      handler_id: handlerInfo?.id || null,
-      handler_name: handlerInfo?.name || null,
-      handler_email: handlerInfo?.email || null,
-      performed_by: handlerInfo?.name || sender,
-    });
-    if (actionError) console.error('Error logging action:', actionError);
+    if (await this.isAuditLoggingEnabled()) {
+      await insertTicketActionSafe({
+        ticket_id: ticketId,
+        action_type: 'message_sent',
+        action: 'Message Sent',
+        description: `Sent message: ${String(body).substring(0, 100)}...`,
+        handler_id: handlerInfo?.id || null,
+        handler_name: handlerInfo?.name || null,
+        handler_email: handlerInfo?.email || null,
+        performed_by: handlerInfo?.name || sender,
+      }, 'addMessage(log)');
+    }
 
     const result = toCamelCase(data);
 
@@ -2045,14 +2379,44 @@ async deleteHandler(handlerId, options = {}) {
   async getHandlerById(handlerId) {
     if (!handlerId) throw new Error('handlerId is required');
 
+    let directData = null;
     const { data, error } = await supabase
       .from('handlers')
       .select('*')
       .eq('id', handlerId)
-      .single();
+      .maybeSingle();
 
-    throwIfError(error, 'getHandlerById');
-    return normalizeHandlerRecord(toCamelCase(data));
+    if (error) {
+      if (isAuthOrRlsError(error)) {
+        console.warn('[ticketService] getHandlerById direct lookup blocked by policy, trying API fallback', error);
+      } else {
+        throwIfError(error, 'getHandlerById');
+      }
+    } else {
+      directData = data || null;
+    }
+
+    if (directData) {
+      return normalizeHandlerRecord(toCamelCase(directData));
+    }
+
+    if (!ticketTokenProvider) {
+      return null;
+    }
+
+    try {
+      const apiData = await workflowApiGet(
+        'handlers_by_ids',
+        { ids: String(handlerId), include_inactive: '1' },
+        { requireAuth: true }
+      );
+      const rows = Array.isArray(apiData?.rows) ? apiData.rows : [];
+      const row = rows.find((item) => String(item?.id || '').trim() === String(handlerId).trim()) || null;
+      return row ? normalizeHandlerRecord(toCamelCase(row)) : null;
+    } catch (apiErr) {
+      console.warn('[ticketService] getHandlerById API fallback failed', apiErr);
+      return null;
+    }
   },
 
   async getWorkflows(includeInactive = false) {
@@ -2107,6 +2471,8 @@ async deleteHandler(handlerId, options = {}) {
       isInternal = false,
       noteId = null,
       notifyReporter = false,
+      accessCode = null,
+      ticketInput = null,
     } = options;
 
     if (!ticketId) throw new Error('ticketId is required');
@@ -2146,31 +2512,82 @@ async deleteHandler(handlerId, options = {}) {
       if (pub?.publicUrl) fileUrl = pub.publicUrl;
     }
 
-    const attachment = await this.createAttachmentRecord(ticketId, {
+    const attachmentPayload = {
       name: originalName,
       url: fileUrl,
       type: file.type,
       size: file.size,
       isInternal,
       noteId,
-    });
+    };
+
+    let attachment = null;
+    let attachmentCreatedViaApi = false;
+
+    if (currentHandlerId) {
+      try {
+        const apiData = await ticketApiPost(
+          {
+            action: 'handler_add_attachment',
+            ticket_id: ticketId,
+            file_name: originalName,
+            file_url: fileUrl,
+            mime_type: file.type || 'application/octet-stream',
+            size_bytes: Number(file.size || 0) || 0,
+            is_internal: !!isInternal,
+            note_id: noteId || null,
+          },
+          { requireAuth: true }
+        );
+        attachment = toCamelCase(apiData?.attachment || apiData);
+        attachmentCreatedViaApi = true;
+      } catch (apiError) {
+        console.warn('[ticketService] handler_add_attachment API failed, falling back to direct insert', apiError);
+      }
+    }
+
+    if (!attachment && accessCode) {
+      try {
+        const apiData = await ticketApiPost(
+          {
+            action: 'reporter_add_attachment',
+            ticket_input: String(ticketInput || ticketId),
+            access_code: String(accessCode).trim().padStart(6, '0'),
+            file_name: originalName,
+            file_url: fileUrl,
+            mime_type: file.type || 'application/octet-stream',
+            size_bytes: Number(file.size || 0) || 0,
+          },
+          { requireAuth: false }
+        );
+        attachment = toCamelCase(apiData?.attachment || apiData);
+        attachmentCreatedViaApi = true;
+      } catch (apiError) {
+        console.warn('[ticketService] reporter_add_attachment API failed, falling back to direct insert', apiError);
+      }
+    }
+
+    if (!attachment) {
+      attachment = await this.createAttachmentRecord(ticketId, attachmentPayload);
+    }
     const signedUrl = await createSignedAttachmentUrl(fileUrl, bucket, 600);
     const attachmentWithUrl = signedUrl
       ? { ...attachment, fileUrl: signedUrl, file_url: signedUrl, url: signedUrl }
       : attachment;
 
     // Log action
-    const { error: actionError } = await supabase.from('ticket_actions').insert({
-      ticket_id: ticketId,
-      action_type: 'attachment_added',
-      action: 'Attachment Added',
-      description: `Uploaded file: ${originalName}`,
-      handler_id: handlerInfo?.id || null,
-      handler_name: handlerInfo?.name || null,
-      handler_email: handlerInfo?.email || null,
-      performed_by: handlerInfo?.name || 'System',
-    });
-    if (actionError) console.error('Error logging action:', actionError);
+    if (!attachmentCreatedViaApi && await this.isAuditLoggingEnabled()) {
+      await insertTicketActionSafe({
+        ticket_id: ticketId,
+        action_type: 'attachment_added',
+        action: 'Attachment Added',
+        description: `Uploaded file: ${originalName}`,
+        handler_id: handlerInfo?.id || null,
+        handler_name: handlerInfo?.name || null,
+        handler_email: handlerInfo?.email || null,
+        performed_by: handlerInfo?.name || 'System',
+      }, 'uploadAttachment(log)');
+    }
 
     if (notifyReporter && !isInternal) {
       try {
@@ -2217,6 +2634,9 @@ async deleteHandler(handlerId, options = {}) {
   // ----- Action Logging Utility -----
   async logAction(ticketId, actionType, action, description, options = {}) {
     const { currentHandlerId = null } = options;
+    if (!(await this.isAuditLoggingEnabled())) {
+      return true;
+    }
 
     // Get handler info for logging
     let handlerInfo = null;
@@ -2229,7 +2649,7 @@ async deleteHandler(handlerId, options = {}) {
       handlerInfo = handler;
     }
 
-    const { error: actionError } = await supabase.from('ticket_actions').insert({
+    const result = await insertTicketActionSafe({
       ticket_id: ticketId,
       action_type: actionType,
       action: action,
@@ -2238,13 +2658,9 @@ async deleteHandler(handlerId, options = {}) {
       handler_name: handlerInfo?.name || null,
       handler_email: handlerInfo?.email || null,
       performed_by: handlerInfo?.name || 'System',
-    });
+    }, 'logAction');
 
-    if (actionError) {
-      console.error('Error logging action:', actionError);
-    }
-
-    return !actionError;
+    return result?.ok === true;
   },
 
   // ----- Utilities exposed -----

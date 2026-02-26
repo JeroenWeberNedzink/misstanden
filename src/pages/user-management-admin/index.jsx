@@ -203,7 +203,7 @@ export default function UserManagementAdmin() {
       </Helmet>
 
       <AuthContextNavigator>
-        <div className="min-h-screen bg-background">
+        <div className="min-h-screen app-page-gradient bg-background">
           <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6 md:py-8 lg:py-12">
             {/* Header */}
             <div className="flex items-center justify-between mb-6 md:mb-8">

@@ -85,7 +85,7 @@ export default function TicketAccessPortal() {
         - pt-24 (96px) mobile
         - sm:pt-28 (112px) up
       */}
-      <div className="min-h-screen bg-background pt-24 sm:pt-28">
+      <div className="min-h-screen app-page-gradient bg-background pt-24 sm:pt-28">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-10">
           {/* Optional subtle “page top spacer” so content breathes */}
           <div className="pt-4 sm:pt-6 md:pt-8" />
@@ -166,3 +166,4 @@ export default function TicketAccessPortal() {
     </>
   );
 }
+

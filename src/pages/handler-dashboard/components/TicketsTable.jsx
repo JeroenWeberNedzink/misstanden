@@ -45,7 +45,7 @@ const normalizeStatuses = (raw) => {
     .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
 };
 
-const TicketsTable = ({ tickets, workflows = [], onStatusChange, onAssignHandler, handlerOptions, userRole }) => {
+const TicketsTable = ({ tickets, isLoading = false, workflows = [], onStatusChange, onAssignHandler, handlerOptions, userRole }) => {
   const { t } = useTranslation();
   const [sortConfig, setSortConfig] = useState({ key: 'submitted_at', direction: 'desc' });
 
@@ -117,6 +117,50 @@ const TicketsTable = ({ tickets, workflows = [], onStatusChange, onAssignHandler
       </div>
     </th>
   );
+
+  if (isLoading) {
+    return (
+      <div className="card overflow-hidden animate-pulse">
+        <div className="flex items-center justify-between mb-6 px-4 md:px-0">
+          <div className="h-6 w-56 rounded bg-muted"></div>
+          <div className="h-9 w-24 rounded bg-muted"></div>
+        </div>
+        <div className="hidden lg:block overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-muted/50 border-b border-border">
+              <tr>
+                {Array.from({ length: 8 }).map((_, idx) => (
+                  <th key={`table-head-skeleton-${idx}`} className="px-4 py-4">
+                    <div className="h-4 w-20 rounded bg-muted mx-auto"></div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 6 }).map((_, rowIdx) => (
+                <tr key={`table-row-skeleton-${rowIdx}`} className="border-b border-border">
+                  {Array.from({ length: 8 }).map((__, cellIdx) => (
+                    <td key={`table-cell-skeleton-${rowIdx}-${cellIdx}`} className="px-4 py-4">
+                      <div className="h-4 w-full max-w-[140px] rounded bg-muted/80"></div>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="lg:hidden space-y-3">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={`mobile-table-skeleton-${idx}`} className="rounded-xl border border-border p-4 bg-background/60">
+              <div className="h-4 w-1/2 rounded bg-muted mb-2"></div>
+              <div className="h-3 w-5/6 rounded bg-muted/80 mb-1"></div>
+              <div className="h-3 w-2/3 rounded bg-muted/80"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (!tickets || tickets.length === 0) {
     return (

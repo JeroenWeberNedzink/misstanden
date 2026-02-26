@@ -292,7 +292,12 @@ export default function CaseManagementDetail() {
       fullTicket?.metadata?.workflow_status_code ||
       null;
     const slaResponseHours = getFirstResponseHoursForTicket(fullTicket);
-    const slaResolutionHours = fullTicket?.slaResolutionHours || fullTicket?.sla_resolution_hours || null;
+    const slaResolutionHours =
+      fullTicket?.slaResolutionHours ||
+      fullTicket?.sla_resolution_hours ||
+      fullTicket?.metadata?.sla_resolution_hours ||
+      fullTicket?.metadata?.slaResolutionHours ||
+      null;
     const nextStepDueAt =
       fullTicket?.nextStepDue ||
       fullTicket?.next_step_due ||

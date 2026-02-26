@@ -33,7 +33,7 @@ export default function StatusUpdateModal({
   onUpdate,
 }) {
   const { t } = useTranslation();
-  const { settings } = useSettings();
+  const { workflow: workflowSettings } = useSettings();
   const [workflow, setWorkflow] = useState(null);
   const [isLoadingWorkflow, setIsLoadingWorkflow] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -135,7 +135,7 @@ export default function StatusUpdateModal({
 
     const currentIdx = options.findIndex((o) => safeLower(o.value) === safeLower(currentComparable));
     const newIdx = options.findIndex((o) => o.value === selectedValue);
-    if (currentIdx >= 0 && newIdx >= 0 && newIdx < currentIdx && !settings?.workflow?.allowStatusRollback) {
+    if (currentIdx >= 0 && newIdx >= 0 && newIdx < currentIdx && !workflowSettings?.allowStatusRollback) {
       alert(t('caseManagementDetail.statusModal.rollbackNotAllowedAlert'));
       return;
     }

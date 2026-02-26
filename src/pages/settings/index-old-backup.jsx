@@ -340,7 +340,7 @@ export default function SystemSettingsAdmin() {
       </Helmet>
 
       <AuthContextNavigator>
-        <div className="min-h-screen bg-background py-6 px-4 sm:px-6 lg:px-8 mt-5">
+        <div className="min-h-screen app-page-gradient bg-background py-6 px-4 sm:px-6 lg:px-8 mt-5">
           <div className="max-w-7xl mx-auto">
             {/* Header */}
             <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">

@@ -32,156 +32,124 @@ const formatCategoryLabel = (category) => {
     .join(' ');
 };
 
+const SETTINGS_ACCENT_STYLES = {
+  color: 'from-sky-600 to-sky-700',
+  bgColor: 'bg-card',
+  iconBg: 'bg-sky-100',
+  iconColor: 'text-sky-700',
+};
+
+const withSettingsAccent = (meta) => ({
+  ...meta,
+  ...SETTINGS_ACCENT_STYLES,
+});
+
 const getCategoryDisplayMeta = (category, categoryMeta) => {
   if (categoryMeta[category]) return categoryMeta[category];
-  return {
+  return withSettingsAccent({
     label: formatCategoryLabel(category) || category,
     icon: 'Folder',
     priority: 900,
     description: '',
-    color: 'from-slate-500 to-gray-600',
-    bgColor: 'bg-card',
-    iconBg: 'bg-slate-100',
-    iconColor: 'text-slate-700',
-  };
+  });
 };
 
 const getCategoryMeta = (t) => ({
-  general: {
+  general: withSettingsAccent({
     label: t('settings.categories.general'),
     icon: 'Settings',
     priority: 1,
     description: t('settings.categories.generalDescription'),
-    color: 'from-blue-500 to-indigo-600',
-    bgColor: 'bg-gradient-to-br from-blue-50 to-indigo-50',
-    iconBg: 'bg-blue-100',
-    iconColor: 'text-blue-600'
-  },
-  portal: {
+  }),
+  portal: withSettingsAccent({
     label: t('settings.categories.portal'),
     icon: 'LayoutDashboard',
     priority: 2,
     description: t('settings.categories.portalDescription'),
-    color: 'from-purple-500 to-pink-600',
-    bgColor: 'bg-gradient-to-br from-purple-50 to-pink-50',
-    iconBg: 'bg-purple-100',
-    iconColor: 'text-purple-600'
-  },
-  workflow: {
+  }),
+  workflow: withSettingsAccent({
     label: t('settings.categories.workflow'),
     icon: 'GitBranch',
     priority: 3,
     description: t('settings.categories.workflowDescription'),
-    color: 'from-green-500 to-emerald-600',
-    bgColor: 'bg-gradient-to-br from-green-50 to-emerald-50',
-    iconBg: 'bg-green-100',
-    iconColor: 'text-green-600'
-  },
-  sla: {
+  }),
+  tickets: withSettingsAccent({
+    label: t('settings.categories.tickets', { defaultValue: 'Tickets' }),
+    icon: 'FileText',
+    priority: 4,
+    description: t('settings.categories.ticketsDescription', { defaultValue: 'Ticket intake and handling defaults' }),
+  }),
+  compliance: withSettingsAccent({
+    label: t('settings.categories.compliance', { defaultValue: 'Compliance' }),
+    icon: 'ShieldCheck',
+    priority: 5,
+    description: t('settings.categories.complianceDescription', { defaultValue: 'Audit, retention and privacy compliance settings' }),
+  }),
+  sla: withSettingsAccent({
     label: t('settings.categories.sla'),
     icon: 'Clock',
-    priority: 4,
+    priority: 6,
     description: t('settings.categories.slaDescription'),
-    color: 'from-orange-500 to-red-600',
-    bgColor: 'bg-gradient-to-br from-orange-50 to-red-50',
-    iconBg: 'bg-orange-100',
-    iconColor: 'text-orange-600'
-  },
-  email_notifications: {
+  }),
+  email_notifications: withSettingsAccent({
     label: t('settings.categories.email_notifications'),
     icon: 'Mail',
     isSpecial: true,
-    priority: 5,
+    priority: 7,
     description: t('settings.categories.emailNotificationsDescription'),
-    color: 'from-cyan-500 to-blue-600',
-    bgColor: 'bg-gradient-to-br from-cyan-50 to-blue-50',
-    iconBg: 'bg-cyan-100',
-    iconColor: 'text-cyan-600'
-  },
-  notifications: {
+  }),
+  notifications: withSettingsAccent({
     label: t('settings.categories.notifications'),
     icon: 'Bell',
-    priority: 6,
+    priority: 8,
     description: t('settings.categories.notificationsDescription'),
-    color: 'from-yellow-500 to-amber-600',
-    bgColor: 'bg-gradient-to-br from-yellow-50 to-amber-50',
-    iconBg: 'bg-yellow-100',
-    iconColor: 'text-yellow-600'
-  },
-  security: {
+  }),
+  security: withSettingsAccent({
     label: t('settings.categories.security'),
     icon: 'ShieldCheck',
     isSpecial: true,
-    priority: 7,
+    priority: 9,
     description: t('settings.categories.securityDescription'),
-    color: 'from-red-500 to-rose-600',
-    bgColor: 'bg-gradient-to-br from-red-50 to-rose-50',
-    iconBg: 'bg-red-100',
-    iconColor: 'text-red-600'
-  },
-  audit: {
+  }),
+  audit: withSettingsAccent({
     label: t('settings.categories.audit'),
     icon: 'FileSearch',
-    priority: 8,
+    priority: 10,
     description: t('settings.categories.auditDescription'),
-    color: 'from-violet-500 to-purple-600',
-    bgColor: 'bg-gradient-to-br from-violet-50 to-purple-50',
-    iconBg: 'bg-violet-100',
-    iconColor: 'text-violet-600'
-  },
-  retention: {
+  }),
+  retention: withSettingsAccent({
     label: t('settings.categories.retention'),
     icon: 'Archive',
-    priority: 9,
+    priority: 11,
     description: t('settings.categories.retentionDescription'),
-    color: 'from-slate-500 to-gray-600',
-    bgColor: 'bg-gradient-to-br from-slate-50 to-gray-50',
-    iconBg: 'bg-slate-100',
-    iconColor: 'text-slate-600'
-  },
-  danger: {
+  }),
+  danger: withSettingsAccent({
     label: t('settings.categories.danger'),
     icon: 'Zap',
-    priority: 10,
+    priority: 12,
     description: t('settings.categories.dangerDescription'),
-    color: 'from-amber-500 to-orange-600',
-    bgColor: 'bg-gradient-to-br from-amber-50 to-orange-50',
-    iconBg: 'bg-amber-100',
-    iconColor: 'text-amber-600'
-  },
-  security_bundle: {
+  }),
+  security_bundle: withSettingsAccent({
     label: t('settings.categories.security'),
     icon: 'ShieldCheck',
     isBundle: true,
-    priority: 7,
+    priority: 9,
     description: `${t('settings.categories.securityDescription')} · ${t('settings.categories.slaDescription')} · ${t('settings.categories.dangerDescription')} · ${t('settings.categories.retentionDescription')}`,
-    color: 'from-red-500 to-orange-600',
-    bgColor: 'bg-gradient-to-br from-red-50 to-orange-50',
-    iconBg: 'bg-red-100',
-    iconColor: 'text-red-600'
-  },
-  notifications_bundle: {
+  }),
+  notifications_bundle: withSettingsAccent({
     label: t('settings.categories.notifications'),
     icon: 'Bell',
     isBundle: true,
-    priority: 6,
+    priority: 8,
     description: `${t('settings.categories.notificationsDescription')} · ${t('settings.categories.emailNotificationsDescription')}`,
-    color: 'from-yellow-500 to-cyan-600',
-    bgColor: 'bg-gradient-to-br from-yellow-50 to-cyan-50',
-    iconBg: 'bg-yellow-100',
-    iconColor: 'text-yellow-600'
-  },
-  locations: {
+  }),
+  locations: withSettingsAccent({
     label: t('settings.categories.locations'),
     icon: 'MapPin',
     isSpecial: true,
-    priority: 11,
+    priority: 13,
     description: t('settings.categories.locationsDescription'),
-    color: 'from-teal-500 to-emerald-600',
-    bgColor: 'bg-gradient-to-br from-teal-50 to-emerald-50',
-    iconBg: 'bg-teal-100',
-    iconColor: 'text-teal-600'
-  },
+  }),
 });
 
 export default function SystemSettingsAdmin() {
@@ -203,7 +171,7 @@ export default function SystemSettingsAdmin() {
   const [original, setOriginal] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('all'); // 'all', 'security', 'email_notifications'
-  const [pageMode, setPageMode] = useState('settings'); // 'settings' | 'admin'
+  const [pageMode, setPageMode] = useState('admin'); // 'settings' | 'admin'
   const [selectedCategory, setSelectedCategory] = useState(null); // For focused category view
 
   const [isLoading, setIsLoading] = useState(true);
@@ -322,11 +290,11 @@ export default function SystemSettingsAdmin() {
 
   useEffect(() => {
     const modeParam = new URLSearchParams(location.search).get('mode');
-    if (modeParam === 'admin') {
-      setPageMode('admin');
+    if (modeParam === 'settings') {
+      setPageMode('settings');
       return;
     }
-    setPageMode('settings');
+    setPageMode('admin');
   }, [location.search]);
 
   const save = async () => {
@@ -375,7 +343,7 @@ export default function SystemSettingsAdmin() {
       </Helmet>
 
       <AuthContextNavigator>
-        <div className="min-h-screen bg-background py-6 px-4 sm:px-6 lg:px-8 mt-5">
+        <div className="min-h-screen app-page-gradient bg-background -mt-20 pt-24 pb-6 px-4 sm:px-6 lg:px-8">
           <div className="max-w-7xl mx-auto">
             {/* Header */}
             <div className="mb-6">
@@ -484,7 +452,7 @@ export default function SystemSettingsAdmin() {
                   onClick={save}
                   disabled={isLoading || isSaving || dirtyKeys.length === 0}
                   size="sm"
-                  className={dirtyKeys.length > 0 ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md' : ''}
+                  className={dirtyKeys.length > 0 ? 'bg-gradient-to-r from-sky-600 to-sky-700 hover:from-sky-700 hover:to-sky-800 shadow-md' : ''}
                 >
                   {isSaving ? t('settings.saving') : `${t('common.save')} (${dirtyKeys.length})`}
                 </Button>
@@ -716,7 +684,7 @@ export default function SystemSettingsAdmin() {
                                 <Icon name={meta.icon} size={28} className={meta.iconColor} />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <h3 className={`text-lg font-bold text-foreground mb-1 group-hover:${meta.iconColor} transition-colors`}>
+                                <h3 className="text-lg font-bold text-foreground mb-1 group-hover:text-sky-700 transition-colors">
                                   {meta.label}
                                 </h3>
                                 <p className="text-sm text-muted-foreground mb-2">
@@ -739,7 +707,7 @@ export default function SystemSettingsAdmin() {
                                   )}
                                 </div>
                               </div>
-                              <Icon name="ChevronRight" size={20} className={`text-muted-foreground group-hover:${meta.iconColor} group-hover:translate-x-1 transition-all duration-300 flex-shrink-0 mt-2`} />
+                              <Icon name="ChevronRight" size={20} className="text-muted-foreground group-hover:text-sky-700 group-hover:translate-x-1 transition-all duration-300 flex-shrink-0 mt-2" />
                             </div>
                           </div>
                         </button>
@@ -767,6 +735,8 @@ export default function SystemSettingsAdmin() {
     </>
   );
 }
+
+
 
 
 

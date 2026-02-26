@@ -5,6 +5,7 @@ import AnonymousNavHeader from '../../components/navigation/AnonymousNavHeader';
 import Icon from '../../components/AppIcon';
 import { ticketService } from '../../services/ticketService';
 import { inferPriorityFromReport } from '../../utils/priorityInference';
+import { useSettings } from '../../contexts/SettingsContext';
 
 // Step components
 import WorkflowSelector from './components/WorkflowSelector';
@@ -24,6 +25,10 @@ const STEPS = [
 ];
 
 const safeTrim = (v) => String(v ?? '').trim();
+const normalizeSeverityCode = (value, fallback = 'low') => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ['low', 'medium', 'high', 'critical'].includes(normalized) ? normalized : fallback;
+};
 const toWorkflowKey = (v) =>
   safeTrim(v)
     .toLowerCase()
@@ -37,6 +42,12 @@ export default function AnonymousReportForm() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
+  const { portal, tickets, sla, compliance } = useSettings();
+
+  const isPublicSubmissionEnabled = tickets?.allowPublicSubmission !== false && portal?.enablePublicSubmissions !== false;
+  const requireEmailVerification = tickets?.requireEmailVerification !== false;
+  const defaultSeverity = normalizeSeverityCode(tickets?.defaultPriority, 'low');
+  const ticketNumberPrefix = String(tickets?.ticketNumberPrefix || 'NZ').trim() || 'NZ';
 
   const [currentStep, setCurrentStep] = useState(1);
   const [workflows, setWorkflows] = useState([]);
@@ -139,7 +150,7 @@ export default function AnonymousReportForm() {
         validationErrors.location = t('reportForm.locationRequired');
       }
     }
-    if (step === 4) {
+    if (step === 4 && requireEmailVerification) {
       if (!formData?.reporterEmail || !String(formData?.reporterEmail).trim()) {
         validationErrors.reporterEmail = t('reportForm.emailRequired');
       }
@@ -171,6 +182,11 @@ export default function AnonymousReportForm() {
   const handleSubmit = async () => {
     setError('');
 
+    if (!isPublicSubmissionEnabled) {
+      setError(t('reportForm.publicSubmissionDisabled', { defaultValue: 'Public submissions are currently disabled.' }));
+      return;
+    }
+
     if (!validateStep(2) || !validateStep(3)) {
       setCurrentStep(2);
       return;
@@ -192,13 +208,17 @@ export default function AnonymousReportForm() {
         workflowType: formData?.workflow,
         location: formData?.location,
       });
-      const severityToSubmit = String(priorityDecision?.severityCode || 'low').toLowerCase();
+      const inferredSeverity = normalizeSeverityCode(priorityDecision?.severityCode, defaultSeverity);
+      const severityToSubmit = inferredSeverity === 'low' ? defaultSeverity : inferredSeverity;
 
       const newTicket = await ticketService?.createTicket({
         description: formData?.description,
         location: formData?.location,
         workflowType: formData?.workflow,
         severity: severityToSubmit,
+        ticketNumberPrefix,
+        slaResponseHours: Number(sla?.defaultResponseHours || tickets?.slaResponseTimeHours || 24),
+        slaResolutionHours: Number(sla?.defaultResolutionHours || tickets?.slaResolutionTimeHours || 72),
         reporterLanguage: i18n?.resolvedLanguage || i18n?.language || 'en',
         reporterEmail: email || null,
         reporterName: String(formData?.reporterName || '').trim() || null,
@@ -208,12 +228,19 @@ export default function AnonymousReportForm() {
         isAnonymous,
         metadata: {
           priority_inference: priorityDecision,
+          compliance: {
+            gdpr_compliant: compliance?.gdprCompliant !== false,
+            anonymize_closed_tickets: compliance?.anonymizeClosedTickets === true,
+          },
         },
       });
 
       if (formData?.files?.length) {
         for (const file of formData.files) {
-          await ticketService?.uploadAttachment(newTicket?.id, file);
+          await ticketService?.uploadAttachment(newTicket?.id, file, {
+            accessCode: newTicket?.accessCode,
+            ticketInput: newTicket?.ticketNumber || newTicket?.id,
+          });
         }
       }
 
@@ -435,6 +462,7 @@ export default function AnonymousReportForm() {
                   phone={formData?.reporterPhone}
                   isAnonymous={formData?.isAnonymous}
                   onAnonymousChange={(value) => setFormData(prev => ({ ...prev, isAnonymous: value }))}
+                  emailRequired={requireEmailVerification}
                   emailError={errors?.reporterEmail}
                   onNameChange={(value) => setFormData(prev => ({ ...prev, reporterName: value }))}
                   onEmailChange={(value) => setFormData(prev => ({ ...prev, reporterEmail: value }))}
@@ -826,6 +854,14 @@ export default function AnonymousReportForm() {
             </div>
           )}
 
+          {!isPublicSubmissionEnabled && (
+            <div className="mb-6 max-w-3xl mx-auto bg-warning/10 border border-warning/30 text-warning px-4 py-3 rounded-lg">
+              <p className="text-sm font-medium">
+                {t('reportForm.publicSubmissionDisabled', { defaultValue: 'Public submissions are currently disabled.' })}
+              </p>
+            </div>
+          )}
+
           {/* Step content */}
           <div className="mb-8">
             {renderStep()}
@@ -850,6 +886,7 @@ export default function AnonymousReportForm() {
                   <button
                     type="button"
                     onClick={handleNext}
+                    disabled={!isPublicSubmissionEnabled}
                     className="w-full btn-sky-600 h-14 text-lg font-semibold shadow-lg hover:shadow-xl transition-shadow"
                   >
                     <span>{t('reportForm.continue')}</span>
@@ -859,7 +896,7 @@ export default function AnonymousReportForm() {
                   <button
                     type="button"
                     onClick={handleSubmit}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !isPublicSubmissionEnabled}
                     className="w-full btn-sky-600"
                   >
                     {isSubmitting ? (

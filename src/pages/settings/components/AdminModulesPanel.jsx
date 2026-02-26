@@ -14,84 +14,68 @@ import { ticketService } from '../../../services/ticketService';
 import { workflowService } from '../../../services/workflowService';
 import { permissionService } from '../../../services/permissionService';
 
+const MODULE_ACCENT_STYLES = {
+  color: 'from-sky-600 to-sky-700',
+  bgColor: 'bg-card',
+  iconBg: 'bg-sky-100',
+  iconColor: 'text-sky-700',
+};
+
+const withModuleAccent = (meta) => ({
+  ...meta,
+  ...MODULE_ACCENT_STYLES,
+});
+
 const getModuleMeta = (usersCount, rolesCount, workflowsCount) => ({
-  users: {
+  users: withModuleAccent({
     label: 'Gebruikers',
     icon: 'Users',
     priority: 1,
     description: 'Beheer gebruikersaccounts, rollen en toegangsrechten',
     meta: `${usersCount} gebruikers`,
-    color: 'from-sky-500 to-sky-700',
-    bgColor: 'bg-card',
-    iconBg: 'bg-sky-100',
-    iconColor: 'text-sky-700'
-  },
-  permissions: {
+  }),
+  permissions: withModuleAccent({
     label: 'Rechten & Rollen',
     icon: 'Key',
     priority: 2,
     description: 'Configureer permissies en beheer rol-gebaseerde toegang',
     meta: `${rolesCount} rollen`,
-    color: 'from-sky-500 to-sky-700',
-    bgColor: 'bg-card',
-    iconBg: 'bg-sky-100',
-    iconColor: 'text-sky-700'
-  },
-  workflows: {
+  }),
+  workflows: withModuleAccent({
     label: 'Workflows',
     icon: 'GitBranch',
     priority: 3,
     description: 'Bekijk en beheer ticket workflows en processtatistieken',
     meta: `${workflowsCount} workflows`,
-    color: 'from-sky-500 to-sky-700',
-    bgColor: 'bg-card',
-    iconBg: 'bg-sky-100',
-    iconColor: 'text-sky-700'
-  },
-  translations: {
+  }),
+  translations: withModuleAccent({
     label: 'Vertalingen',
     icon: 'Languages',
     priority: 4,
     description: 'Beheer meertalige content en i18n vertalingen',
     meta: '4 talen',
-    color: 'from-sky-600 to-sky-700',
-    bgColor: 'bg-card',
-    iconBg: 'bg-sky-100',
-    iconColor: 'text-sky-700'
-  },
-  locations: {
+  }),
+  locations: withModuleAccent({
     label: 'Locaties',
     icon: 'MapPin',
     priority: 5,
     description: 'Beheer landen die beschikbaar zijn voor meldingen',
     meta: 'Klik om te configureren',
-    color: 'from-sky-600 to-sky-700',
-    bgColor: 'bg-card',
-    iconBg: 'bg-sky-100',
-    iconColor: 'text-sky-700'
-  },
-  logging: {
+  }),
+  logging: withModuleAccent({
     label: 'Audit Logs',
     icon: 'ScrollText',
     priority: 6,
     description: 'Bekijk database wijzigingen en audit trails',
     meta: 'Database logs',
-    color: 'from-sky-600 to-sky-700',
-    bgColor: 'bg-card',
-    iconBg: 'bg-sky-100',
-    iconColor: 'text-sky-700'
-  },
-  slaTools: {
+  }),
+  slaTools: withModuleAccent({
     label: 'SLA Tools',
     icon: 'Clock',
     priority: 7,
     description: 'Eenmalige SLA acties en onderhoud',
     meta: 'Backfill next_step_due',
-    color: 'from-sky-500 to-cyan-600',
-    bgColor: 'bg-gradient-to-br from-sky-50 to-cyan-50',
-    iconBg: 'bg-sky-100',
-    iconColor: 'text-sky-600'
-  },
+  }),
 });
 
 const AdminModulesPanel = () => {
@@ -290,7 +274,7 @@ const AdminModulesPanel = () => {
                         <Icon name={meta.icon} size={28} className={meta.iconColor} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className={`text-lg font-bold text-foreground mb-1 group-hover:${meta.iconColor} transition-colors`}>
+                        <h3 className="text-lg font-bold text-foreground mb-1 group-hover:text-sky-700 transition-colors">
                           {meta.label}
                         </h3>
                         <p className="text-sm text-muted-foreground mb-2">
@@ -302,7 +286,7 @@ const AdminModulesPanel = () => {
                           </span>
                         </div>
                       </div>
-                      <Icon name="ChevronRight" size={20} className={`text-muted-foreground group-hover:${meta.iconColor} group-hover:translate-x-1 transition-all duration-300 flex-shrink-0 mt-2`} />
+                      <Icon name="ChevronRight" size={20} className="text-muted-foreground group-hover:text-sky-700 group-hover:translate-x-1 transition-all duration-300 flex-shrink-0 mt-2" />
                     </div>
                   </div>
                 </button>

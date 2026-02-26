@@ -14,7 +14,7 @@ require_once __DIR__ . '/_errors.php';
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-SLA-CRON-KEY');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -35,6 +35,26 @@ function sla_json(int $status, bool $success, string $message, array $data = [])
         'message' => $message,
     ], $data), JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+function sla_header_value(string $name): string {
+    $serverKey = 'HTTP_' . strtoupper(str_replace('-', '_', $name));
+    $value = $_SERVER[$serverKey] ?? '';
+    return trim((string)$value);
+}
+
+function sla_scheduler_authorized(): bool {
+    $expected = trim((string)(getenv('SLA_BACKFILL_CRON_KEY') ?: ''));
+    if ($expected === '') {
+        return false;
+    }
+
+    $provided = sla_header_value('X-SLA-CRON-KEY');
+    if ($provided === '') {
+        return false;
+    }
+
+    return hash_equals($expected, $provided);
 }
 
 function add_days_iso(?string $dateLike, $days): ?string {
@@ -74,9 +94,13 @@ try {
     load_env_file(__DIR__ . '/../../.env.local', true);
     load_env_file(__DIR__ . '/../../.env', false);
 
-    api_authz_require_admin(static function (int $status, string $message): void {
-        sla_json($status, false, $message);
-    });
+    $authMode = 'scheduler';
+    if (!sla_scheduler_authorized()) {
+        api_authz_require_admin(static function (int $status, string $message): void {
+            sla_json($status, false, $message);
+        });
+        $authMode = 'admin';
+    }
 
     $supabaseUrl = getenv('VITE_SUPABASE_URL');
     $supabaseKey = supabase_get_service_role_key();
@@ -166,7 +190,8 @@ try {
         'updated' => $updated,
         'skipped' => $skipped,
         'limit' => $limit,
-        'force' => $force
+        'force' => $force,
+        'auth_mode' => $authMode,
     ]);
 } catch (Exception $e) {
     $errorId = api_log_exception('sla-backfill.api', $e);

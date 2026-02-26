@@ -66,7 +66,12 @@ export default function TicketDetailsView() {
       const submissionDate = ticket?.submitted_at || ticket?.submittedAt || ticket?.created_at || ticket?.createdAt;
       const submittedAtDate = toDateSafe(submissionDate);
       const slaResponseHours = getFirstResponseHoursForTicket(ticket);
-      const slaResolutionHours = ticket?.sla_resolution_hours || ticket?.slaResolutionHours || null;
+      const slaResolutionHours =
+        ticket?.sla_resolution_hours ||
+        ticket?.slaResolutionHours ||
+        ticket?.metadata?.sla_resolution_hours ||
+        ticket?.metadata?.slaResolutionHours ||
+        null;
       const nextStepDueAt = ticket?.next_step_due || ticket?.nextStepDue || ticket?.sla_deadline || ticket?.slaDeadline || null;
       const expectedResolutionDate = ticket?.expected_resolution_date || ticket?.expectedResolutionDate || null;
 
@@ -196,7 +201,7 @@ export default function TicketDetailsView() {
     return (
       <>
         <AnonymousNavHeader />
-        <div className="min-h-screen bg-background pt-20">
+        <div className="min-h-screen app-page-gradient bg-background pt-20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
             <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
               <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
@@ -212,7 +217,7 @@ export default function TicketDetailsView() {
     return (
       <>
         <AnonymousNavHeader />
-        <div className="min-h-screen bg-background pt-20">
+        <div className="min-h-screen app-page-gradient bg-background pt-20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
             <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6">
               <div className="w-20 h-20 rounded-full bg-error/10 flex items-center justify-center">
@@ -256,7 +261,7 @@ export default function TicketDetailsView() {
   return (
     <>
       <AnonymousNavHeader />
-      <div className="min-h-screen bg-background pt-20">
+      <div className="min-h-screen app-page-gradient bg-background pt-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="space-y-6">
             {error && (
@@ -358,3 +363,4 @@ export default function TicketDetailsView() {
     </>
   );
 }
+

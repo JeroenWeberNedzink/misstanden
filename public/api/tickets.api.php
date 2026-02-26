@@ -222,6 +222,172 @@ function get_first_row($decoded) {
     return is_array($decoded) ? $decoded : null;
 }
 
+function ticket_setting_unwrap_value($raw) {
+    if (is_array($raw) && array_key_exists('value', $raw)) {
+        return $raw['value'];
+    }
+    return $raw;
+}
+
+function ticket_load_system_settings(string $baseUrl, string $serviceKey): array {
+    static $cache = null;
+    if (is_array($cache)) {
+        return $cache;
+    }
+
+    $cache = [];
+    try {
+        [$code, $decoded, $raw] = supabase_request(
+            'GET',
+            $baseUrl . '/rest/v1/system_settings?select=setting_key,setting_value&limit=500',
+            $serviceKey
+        );
+        if ($code < 200 || $code >= 300) {
+            $msg = is_array($decoded) ? json_encode($decoded, JSON_UNESCAPED_UNICODE) : (string)$raw;
+            error_log('[tickets.api] Could not load system_settings: ' . api_redact_sensitive($msg));
+            return $cache;
+        }
+        foreach (($decoded ?? []) as $row) {
+            $key = trim((string)($row['setting_key'] ?? ''));
+            if ($key === '') continue;
+            $cache[$key] = ticket_setting_unwrap_value($row['setting_value'] ?? null);
+        }
+    } catch (Throwable $e) {
+        error_log('[tickets.api] Could not load system_settings: ' . api_redact_sensitive($e->getMessage()));
+    }
+
+    return $cache;
+}
+
+function ticket_setting_value(array $settings, array $aliases, $default = null) {
+    foreach ($aliases as $key) {
+        if (array_key_exists($key, $settings)) {
+            return $settings[$key];
+        }
+    }
+    return $default;
+}
+
+function ticket_setting_bool(array $settings, array $aliases, bool $default = false): bool {
+    $raw = ticket_setting_value($settings, $aliases, $default);
+    if (is_bool($raw)) return $raw;
+    if ($raw === null) return $default;
+    $normalized = strtolower(trim((string)$raw));
+    if (in_array($normalized, ['true', '1', 'yes', 'ja', 'on'], true)) return true;
+    if (in_array($normalized, ['false', '0', 'no', 'nee', 'off'], true)) return false;
+    return $default;
+}
+
+function ticket_setting_int(array $settings, array $aliases, int $default = 0): int {
+    $raw = ticket_setting_value($settings, $aliases, $default);
+    if (is_numeric($raw)) return (int)$raw;
+    return $default;
+}
+
+function ticket_setting_string(array $settings, array $aliases, string $default = ''): string {
+    $raw = ticket_setting_value($settings, $aliases, $default);
+    $str = trim((string)$raw);
+    return $str !== '' ? $str : $default;
+}
+
+function ticket_normalize_severity(string $value, string $fallback = 'low'): string {
+    $normalized = strtolower(trim($value));
+    if (in_array($normalized, ['low', 'medium', 'high', 'critical'], true)) {
+        return $normalized;
+    }
+    return $fallback;
+}
+
+function ticket_sanitize_prefix(string $value, string $fallback = 'NZ'): string {
+    $upper = strtoupper(trim($value));
+    $upper = preg_replace('/[^A-Z0-9-]+/', '', $upper) ?? '';
+    $upper = preg_replace('/-+/', '-', $upper) ?? '';
+    $upper = trim($upper, '-');
+    return $upper !== '' ? $upper : $fallback;
+}
+
+function ticket_generate_ticket_number(string $prefix): string {
+    $year = gmdate('Y');
+    $randomNum = (string)random_int(100000, 999999);
+    return $prefix . '-' . $year . '-' . $randomNum;
+}
+
+function ticket_generate_access_code(): string {
+    return str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+}
+
+function ticket_try_auto_assign_handler(string $baseUrl, string $serviceKey, string $ticketId, string $workflowType): ?array {
+    if (!ticket_is_uuid($ticketId) || trim($workflowType) === '') {
+        return null;
+    }
+
+    [$wfCode, $wfDecoded] = supabase_request(
+        'GET',
+        $baseUrl . '/rest/v1/workflows?select=id,code&code=eq.' . rawurlencode($workflowType) . '&limit=1',
+        $serviceKey
+    );
+    if ($wfCode < 200 || $wfCode >= 300) {
+        return null;
+    }
+    $workflow = get_first_row($wfDecoded);
+    $workflowId = trim((string)($workflow['id'] ?? ''));
+    if (!ticket_is_uuid($workflowId)) {
+        return null;
+    }
+
+    [$hwCode, $hwDecoded] = supabase_request(
+        'GET',
+        $baseUrl . '/rest/v1/handler_workflows?select=handler_id&workflow_id=eq.' . rawurlencode($workflowId) . '&limit=100',
+        $serviceKey
+    );
+    if ($hwCode < 200 || $hwCode >= 300) {
+        return null;
+    }
+
+    foreach (($hwDecoded ?? []) as $link) {
+        $handlerId = trim((string)($link['handler_id'] ?? ''));
+        if (!ticket_is_uuid($handlerId)) {
+            continue;
+        }
+
+        [$hCode, $hDecoded] = supabase_request(
+            'GET',
+            $baseUrl . '/rest/v1/handlers?select=id,name,email,active&id=eq.' . rawurlencode($handlerId) . '&active=eq.true&limit=1',
+            $serviceKey
+        );
+        if ($hCode < 200 || $hCode >= 300) {
+            continue;
+        }
+        $handler = get_first_row($hDecoded);
+        if (!is_array($handler) || !ticket_is_uuid(trim((string)($handler['id'] ?? '')))) {
+            continue;
+        }
+
+        [$uCode, $uDecoded] = supabase_request(
+            'PATCH',
+            $baseUrl . '/rest/v1/tickets?id=eq.' . rawurlencode($ticketId),
+            $serviceKey,
+            [
+                'handler_id' => $handler['id'],
+                'last_update_at' => gmdate('c'),
+            ],
+            true
+        );
+        if ($uCode < 200 || $uCode >= 300) {
+            continue;
+        }
+
+        return $handler;
+    }
+
+    return null;
+}
+
+function ticket_action_logging_enabled(string $baseUrl, string $serviceKey): bool {
+    $settings = ticket_load_system_settings($baseUrl, $serviceKey);
+    return ticket_setting_bool($settings, ['compliance.audit_log_enabled', 'audit.enable_logging'], true);
+}
+
 function is_absolute_url(string $value): bool {
     return preg_match('#^https?://#i', $value) === 1;
 }
@@ -361,6 +527,17 @@ function ticket_require_active_handler_context(): array {
 function sanitize_reporter_ticket(array $ticket, string $baseUrl, string $serviceKey): array {
     unset($ticket['access_code'], $ticket['reporter_email'], $ticket['reporter_email_encrypted'], $ticket['reporter_email_hash']);
 
+    $settings = ticket_load_system_settings($baseUrl, $serviceKey);
+    $maskClosed = ticket_setting_bool($settings, ['compliance.anonymize_closed_tickets'], false);
+    $statusCode = strtolower(trim((string)($ticket['status_code'] ?? '')));
+    if ($maskClosed && in_array($statusCode, ['closed', 'gesloten', 'resolved', 'opgelost'], true)) {
+        $ticket['reporter_name'] = null;
+        $ticket['reporter_phone'] = null;
+        if (is_array($ticket['metadata'] ?? null)) {
+            unset($ticket['metadata']['reporter_meta_client']);
+        }
+    }
+
     $attachments = is_array($ticket['attachments'] ?? null) ? $ticket['attachments'] : [];
     $ticket['attachments'] = array_values(array_filter($attachments, static function ($att) {
         if (!is_array($att)) return false;
@@ -439,16 +616,62 @@ function fetch_ticket_by_credentials(string $baseUrl, string $key, string $ticke
 function handle_create(array $data): void {
     $baseUrl = get_supabase_url();
     $serviceKey = get_supabase_service_key();
+    $settings = ticket_load_system_settings($baseUrl, $serviceKey);
+
+    $allowPublicSubmission = ticket_setting_bool(
+        $settings,
+        ['tickets.allow_public_submission', 'portal.enable_public_submissions'],
+        true
+    );
+    if (!$allowPublicSubmission) {
+        api_json(403, false, 'Public submissions are disabled by system policy');
+    }
 
     $email = trim((string)($data['reporter_email'] ?? ''));
     $isAnonymous = !empty($data['is_anonymous']);
+    $requireEmailVerification = ticket_setting_bool($settings, ['tickets.require_email_verification'], true);
 
     if ($isAnonymous) {
         $email = null;
     } else {
-        if ($email === '') {
+        if ($requireEmailVerification && $email === '') {
             throw new Exception('reporter_email is required for non-anonymous reports');
         }
+    }
+
+    $defaultPriority = ticket_normalize_severity(
+        ticket_setting_string($settings, ['tickets.default_priority', 'workflow.default_priority', 'portal.default_priority'], 'low'),
+        'low'
+    );
+    $severityCode = ticket_normalize_severity((string)($data['severity_code'] ?? ''), $defaultPriority);
+
+    $ticketPrefix = ticket_sanitize_prefix(
+        ticket_setting_string($settings, ['tickets.ticket_number_prefix'], 'NZ'),
+        'NZ'
+    );
+    $ticketNumber = ticket_generate_ticket_number($ticketPrefix);
+    $accessCode = normalize_access_code($data['access_code'] ?? '') ?: ticket_generate_access_code();
+
+    $slaResponseHours = ticket_setting_int($settings, ['tickets.sla_response_time_hours', 'sla.default_response_hours'], 24);
+    $slaResolutionHours = ticket_setting_int($settings, ['tickets.sla_resolution_time_hours', 'sla.default_resolution_hours'], 72);
+    $gdprCompliant = ticket_setting_bool($settings, ['compliance.gdpr_compliant'], true);
+    $anonymizeClosedTickets = ticket_setting_bool($settings, ['compliance.anonymize_closed_tickets'], false);
+    $backupFrequency = ticket_setting_string($settings, ['compliance.backup_frequency'], 'weekly');
+    $dataRetentionDays = ticket_setting_int($settings, ['compliance.data_retention_days', 'audit.retention_days'], 365);
+    $autoAssignEnabled = ticket_setting_bool($settings, ['tickets.auto_assign_enabled', 'workflow.auto_assign'], true);
+
+    $incomingMetadata = is_array($data['metadata'] ?? null) ? $data['metadata'] : [];
+    $incomingCompliance = is_array($incomingMetadata['compliance'] ?? null) ? $incomingMetadata['compliance'] : [];
+    $incomingMetadata['sla_response_hours'] = $slaResponseHours;
+    $incomingMetadata['sla_resolution_hours'] = $slaResolutionHours;
+    $incomingMetadata['compliance'] = array_merge($incomingCompliance, [
+        'gdpr_compliant' => $gdprCompliant,
+        'anonymize_closed_tickets' => $anonymizeClosedTickets,
+        'backup_frequency' => $backupFrequency,
+        'data_retention_days' => $dataRetentionDays,
+    ]);
+    if ($gdprCompliant) {
+        unset($incomingMetadata['reporter_meta_client']);
     }
 
     $key = get_email_crypto_key();
@@ -456,22 +679,22 @@ function handle_create(array $data): void {
     $emailHash = $email ? hash_email($email) : null;
 
     $payload = [
-        'ticket_number' => $data['ticket_number'] ?? null,
-        'access_code' => $data['access_code'] ?? null,
+        'ticket_number' => $ticketNumber,
+        'access_code' => $accessCode,
         'description' => $data['description'] ?? null,
         'location' => $data['location'] ?? null,
         'workflow_type' => $data['workflow_type'] ?? null,
-        'severity_code' => $data['severity_code'] ?? null,
+        'severity_code' => $severityCode,
         'reporter_name' => $data['reporter_name'] ?? null,
         'reporter_phone' => $data['reporter_phone'] ?? null,
-        'email_notify' => !empty($data['email_notify']),
+        'email_notify' => !$isAnonymous && $email !== '' ? !empty($data['email_notify']) : false,
         'status_email_notify' => array_key_exists('status_email_notify', $data)
-            ? !empty($data['status_email_notify'])
-            : true,
+            ? (!$isAnonymous && $email !== '' ? !empty($data['status_email_notify']) : false)
+            : (!$isAnonymous && $email !== ''),
         'status_code' => $data['status_code'] ?? null,
         'current_stage' => $data['current_stage'] ?? null,
-        'metadata' => $data['metadata'] ?? null,
-        'reporter_email' => $isAnonymous ? null : $email,
+        'metadata' => $incomingMetadata,
+        'reporter_email' => ($isAnonymous || $email === '') ? null : $email,
         'reporter_email_encrypted' => $encryptedEmail,
         'reporter_email_hash' => $emailHash,
         'next_step_due' => $data['next_step_due'] ?? null,
@@ -492,6 +715,20 @@ function handle_create(array $data): void {
     }
 
     $row = get_first_row($decoded);
+    $ticketId = trim((string)($row['id'] ?? ''));
+    $workflowType = trim((string)($row['workflow_type'] ?? $payload['workflow_type'] ?? ''));
+    if ($autoAssignEnabled && ticket_is_uuid($ticketId) && $workflowType !== '') {
+        try {
+            $assignedHandler = ticket_try_auto_assign_handler($baseUrl, $serviceKey, $ticketId, $workflowType);
+            if (is_array($assignedHandler) && ticket_is_uuid(trim((string)($assignedHandler['id'] ?? '')))) {
+                $row['handler_id'] = $assignedHandler['id'];
+                $row['handler_name'] = $assignedHandler['name'] ?? null;
+            }
+        } catch (Throwable $e) {
+            error_log('[tickets.api] Auto-assign skipped: ' . api_redact_sensitive($e->getMessage()));
+        }
+    }
+
     api_json(200, true, 'Ticket created', $row);
 }
 
@@ -589,10 +826,12 @@ function handle_reporter_message(array $data): void {
         'description' => 'Reporter sent a message',
         'performed_by' => $performedBy,
     ];
-    try {
-        supabase_request('POST', $baseUrl . '/rest/v1/ticket_actions', $serviceKey, $actionPayload, false);
-    } catch (Throwable $e) {
-        error_log('[tickets.api] Could not write ticket_actions for reporter message: ' . api_redact_sensitive($e->getMessage()));
+    if (ticket_action_logging_enabled($baseUrl, $serviceKey)) {
+        try {
+            supabase_request('POST', $baseUrl . '/rest/v1/ticket_actions', $serviceKey, $actionPayload, false);
+        } catch (Throwable $e) {
+            error_log('[tickets.api] Could not write ticket_actions for reporter message: ' . api_redact_sensitive($e->getMessage()));
+        }
     }
 
     $ticketAfter = fetch_ticket_by_credentials($baseUrl, $serviceKey, $ticketInput, $accessCode);
@@ -707,25 +946,27 @@ function handle_handler_add_comment(array $data): void {
         throw new Exception('Failed to add ticket comment: ' . $msg);
     }
 
-    try {
-        supabase_request(
-            'POST',
-            $baseUrl . '/rest/v1/ticket_actions',
-            $serviceKey,
-            [
-                'ticket_id' => $ticketId,
-                'action_type' => 'note_added',
-                'action' => 'Note Added',
-                'description' => 'Added investigation note: ' . mb_substr($comment, 0, 100) . '...',
-                'handler_id' => $handlerId !== '' ? $handlerId : null,
-                'handler_name' => $performedBy,
-                'handler_email' => $handlerEmail !== '' ? $handlerEmail : null,
-                'performed_by' => $performedBy,
-            ],
-            false
-        );
-    } catch (Throwable $e) {
-        error_log('[tickets.api] Could not write ticket_actions for handler comment: ' . api_redact_sensitive($e->getMessage()));
+    if (ticket_action_logging_enabled($baseUrl, $serviceKey)) {
+        try {
+            supabase_request(
+                'POST',
+                $baseUrl . '/rest/v1/ticket_actions',
+                $serviceKey,
+                [
+                    'ticket_id' => $ticketId,
+                    'action_type' => 'note_added',
+                    'action' => 'Note Added',
+                    'description' => 'Added investigation note: ' . mb_substr($comment, 0, 100) . '...',
+                    'handler_id' => $handlerId !== '' ? $handlerId : null,
+                    'handler_name' => $performedBy,
+                    'handler_email' => $handlerEmail !== '' ? $handlerEmail : null,
+                    'performed_by' => $performedBy,
+                ],
+                false
+            );
+        } catch (Throwable $e) {
+            error_log('[tickets.api] Could not write ticket_actions for handler comment: ' . api_redact_sensitive($e->getMessage()));
+        }
     }
 
     api_json(200, true, 'Comment added', [
@@ -793,31 +1034,276 @@ function handle_handler_add_message(array $data): void {
         false
     );
 
-    try {
-        supabase_request(
-            'POST',
-            $baseUrl . '/rest/v1/ticket_actions',
-            $serviceKey,
-            [
-                'ticket_id' => $ticketId,
-                'action_type' => 'message_sent',
-                'action' => 'Message Sent',
-                'description' => 'Sent message: ' . mb_substr($body, 0, 100) . '...',
-                'handler_id' => $handlerId !== '' ? $handlerId : null,
-                'handler_name' => $performedBy,
-                'handler_email' => $handlerEmail !== '' ? $handlerEmail : null,
-                'performed_by' => $performedBy,
-            ],
-            false
-        );
-    } catch (Throwable $e) {
-        error_log('[tickets.api] Could not write ticket_actions for handler message: ' . api_redact_sensitive($e->getMessage()));
+    if (ticket_action_logging_enabled($baseUrl, $serviceKey)) {
+        try {
+            supabase_request(
+                'POST',
+                $baseUrl . '/rest/v1/ticket_actions',
+                $serviceKey,
+                [
+                    'ticket_id' => $ticketId,
+                    'action_type' => 'message_sent',
+                    'action' => 'Message Sent',
+                    'description' => 'Sent message: ' . mb_substr($body, 0, 100) . '...',
+                    'handler_id' => $handlerId !== '' ? $handlerId : null,
+                    'handler_name' => $performedBy,
+                    'handler_email' => $handlerEmail !== '' ? $handlerEmail : null,
+                    'performed_by' => $performedBy,
+                ],
+                false
+            );
+        } catch (Throwable $e) {
+            error_log('[tickets.api] Could not write ticket_actions for handler message: ' . api_redact_sensitive($e->getMessage()));
+        }
     }
 
     api_json(200, true, 'Message added', [
         'message' => get_first_row($msgDecoded),
         'performed_by' => $performedBy,
         'public_handler_name' => $publicHandlerName,
+    ]);
+}
+
+function handle_reporter_add_attachment(array $data): void {
+    $baseUrl = get_supabase_url();
+    $serviceKey = get_supabase_service_key();
+
+    $ticketInput = (string)($data['ticket_input'] ?? $data['ticket_number'] ?? $data['ticket_id'] ?? '');
+    $accessCode = normalize_access_code($data['access_code'] ?? '');
+    if ($ticketInput === '' || $accessCode === '') {
+        api_json(400, false, 'ticket_input and a valid 6-digit access_code are required');
+    }
+
+    $fileName = trim((string)($data['file_name'] ?? ''));
+    $fileUrl = trim((string)($data['file_url'] ?? ''));
+    $mimeType = trim((string)($data['mime_type'] ?? 'application/octet-stream'));
+    $sizeBytes = isset($data['size_bytes']) ? (int)$data['size_bytes'] : null;
+
+    if ($fileName === '' || mb_strlen($fileName) > 255) {
+        api_json(400, false, 'file_name is required and must be <= 255 chars');
+    }
+    if ($fileUrl === '') {
+        api_json(400, false, 'file_url is required');
+    }
+
+    ticket_enforce_request_rate_limit('attachment', $ticketInput);
+
+    $ticket = fetch_ticket_by_credentials($baseUrl, $serviceKey, $ticketInput, $accessCode);
+    if (!$ticket) {
+        ticket_register_failed_auth_attempt($ticketInput);
+        usleep(random_int(150000, 350000));
+        api_json(401, false, 'Invalid ticket ID or access code');
+    }
+    ticket_reset_failed_auth_attempts($ticketInput);
+
+    $ticketId = trim((string)($ticket['id'] ?? ''));
+    if (!ticket_is_uuid($ticketId)) {
+        throw new Exception('Ticket lookup returned invalid data');
+    }
+
+    [$attCode, $attDecoded, $attRaw] = supabase_request(
+        'POST',
+        $baseUrl . '/rest/v1/attachments',
+        $serviceKey,
+        [
+            'ticket_id' => $ticketId,
+            'file_name' => $fileName,
+            'file_url' => $fileUrl,
+            'mime_type' => $mimeType !== '' ? $mimeType : 'application/octet-stream',
+            'size_bytes' => $sizeBytes,
+            'is_internal' => false,
+            'note_id' => null,
+        ],
+        true
+    );
+    if ($attCode < 200 || $attCode >= 300) {
+        $msg = is_array($attDecoded) ? json_encode($attDecoded, JSON_UNESCAPED_UNICODE) : (string)$attRaw;
+        throw new Exception('Failed to add attachment: ' . $msg);
+    }
+
+    try {
+        supabase_request(
+            'PATCH',
+            $baseUrl . '/rest/v1/tickets?id=eq.' . rawurlencode($ticketId),
+            $serviceKey,
+            ['last_update_at' => gmdate('c')],
+            false
+        );
+    } catch (Throwable $e) {
+        error_log('[tickets.api] Could not update last_update_at after reporter attachment: ' . api_redact_sensitive($e->getMessage()));
+    }
+
+    if (ticket_action_logging_enabled($baseUrl, $serviceKey)) {
+        try {
+            $performedBy = trim((string)($ticket['reporter_name'] ?? '')) ?: 'Reporter';
+            supabase_request(
+                'POST',
+                $baseUrl . '/rest/v1/ticket_actions',
+                $serviceKey,
+                [
+                    'ticket_id' => $ticketId,
+                    'action_type' => 'attachment_added',
+                    'action' => 'Attachment Added',
+                    'description' => 'Reporter uploaded file: ' . mb_substr($fileName, 0, 200),
+                    'performed_by' => $performedBy,
+                ],
+                false
+            );
+        } catch (Throwable $e) {
+            error_log('[tickets.api] Could not write ticket_actions for reporter attachment: ' . api_redact_sensitive($e->getMessage()));
+        }
+    }
+
+    api_json(200, true, 'Attachment added', [
+        'attachment' => get_first_row($attDecoded),
+    ]);
+}
+
+function handle_handler_add_attachment(array $data): void {
+    $ctx = ticket_require_active_handler_context();
+    $baseUrl = (string)$ctx['base_url'];
+    $serviceKey = (string)$ctx['service_key'];
+    $handler = (array)$ctx['handler'];
+
+    $ticketId = trim((string)($data['ticket_id'] ?? ''));
+    if (!ticket_is_uuid($ticketId)) {
+        api_json(400, false, 'ticket_id must be a valid UUID');
+    }
+
+    $fileName = trim((string)($data['file_name'] ?? ''));
+    $fileUrl = trim((string)($data['file_url'] ?? ''));
+    $mimeType = trim((string)($data['mime_type'] ?? 'application/octet-stream'));
+    $sizeBytes = isset($data['size_bytes']) ? (int)$data['size_bytes'] : null;
+    $isInternal = !empty($data['is_internal']);
+    $noteIdRaw = trim((string)($data['note_id'] ?? ''));
+    $noteId = ticket_is_uuid($noteIdRaw) ? $noteIdRaw : null;
+
+    if ($fileName === '' || mb_strlen($fileName) > 255) {
+        api_json(400, false, 'file_name is required and must be <= 255 chars');
+    }
+    if ($fileUrl === '') {
+        api_json(400, false, 'file_url is required');
+    }
+
+    $performedBy = trim((string)($handler['name'] ?? '')) ?: 'System';
+    $handlerId = trim((string)($handler['id'] ?? ''));
+    $handlerEmail = trim((string)($handler['email'] ?? ''));
+
+    [$attCode, $attDecoded, $attRaw] = supabase_request(
+        'POST',
+        $baseUrl . '/rest/v1/attachments',
+        $serviceKey,
+        [
+            'ticket_id' => $ticketId,
+            'file_name' => $fileName,
+            'file_url' => $fileUrl,
+            'mime_type' => $mimeType !== '' ? $mimeType : 'application/octet-stream',
+            'size_bytes' => $sizeBytes,
+            'is_internal' => $isInternal,
+            'note_id' => $noteId,
+        ],
+        true
+    );
+    if ($attCode < 200 || $attCode >= 300) {
+        $msg = is_array($attDecoded) ? json_encode($attDecoded, JSON_UNESCAPED_UNICODE) : (string)$attRaw;
+        throw new Exception('Failed to add attachment: ' . $msg);
+    }
+
+    try {
+        supabase_request(
+            'PATCH',
+            $baseUrl . '/rest/v1/tickets?id=eq.' . rawurlencode($ticketId),
+            $serviceKey,
+            ['last_update_at' => gmdate('c')],
+            false
+        );
+    } catch (Throwable $e) {
+        error_log('[tickets.api] Could not update last_update_at after handler attachment: ' . api_redact_sensitive($e->getMessage()));
+    }
+
+    if (ticket_action_logging_enabled($baseUrl, $serviceKey)) {
+        try {
+            supabase_request(
+                'POST',
+                $baseUrl . '/rest/v1/ticket_actions',
+                $serviceKey,
+                [
+                    'ticket_id' => $ticketId,
+                    'action_type' => 'attachment_added',
+                    'action' => 'Attachment Added',
+                    'description' => 'Uploaded file: ' . mb_substr($fileName, 0, 200),
+                    'handler_id' => $handlerId !== '' ? $handlerId : null,
+                    'handler_name' => $performedBy,
+                    'handler_email' => $handlerEmail !== '' ? $handlerEmail : null,
+                    'performed_by' => $performedBy,
+                ],
+                false
+            );
+        } catch (Throwable $e) {
+            error_log('[tickets.api] Could not write ticket_actions for handler attachment: ' . api_redact_sensitive($e->getMessage()));
+        }
+    }
+
+    api_json(200, true, 'Attachment added', [
+        'attachment' => get_first_row($attDecoded),
+        'performed_by' => $performedBy,
+    ]);
+}
+
+function handle_handler_log_action(array $data): void {
+    $ctx = ticket_require_active_handler_context();
+    $baseUrl = (string)$ctx['base_url'];
+    $serviceKey = (string)$ctx['service_key'];
+    $handler = (array)$ctx['handler'];
+
+    $ticketId = trim((string)($data['ticket_id'] ?? ''));
+    if (!ticket_is_uuid($ticketId)) {
+        api_json(400, false, 'ticket_id must be a valid UUID');
+    }
+
+    $actionType = trim((string)($data['action_type'] ?? ''));
+    $action = trim((string)($data['action'] ?? ''));
+    $description = trim((string)($data['description'] ?? ''));
+
+    if ($actionType === '' || mb_strlen($actionType) > 80) {
+        api_json(400, false, 'action_type is required and must be <= 80 chars');
+    }
+    if ($action === '' || mb_strlen($action) > 255) {
+        api_json(400, false, 'action is required and must be <= 255 chars');
+    }
+    if ($description !== '' && mb_strlen($description) > 4000) {
+        api_json(400, false, 'description must be <= 4000 chars');
+    }
+
+    $performedBy = trim((string)($handler['name'] ?? '')) ?: 'System';
+    $handlerId = trim((string)($handler['id'] ?? ''));
+    $handlerEmail = trim((string)($handler['email'] ?? ''));
+    $handlerName = trim((string)($data['handler_name'] ?? $performedBy));
+
+    [$code, $decoded, $raw] = supabase_request(
+        'POST',
+        $baseUrl . '/rest/v1/ticket_actions',
+        $serviceKey,
+        [
+            'ticket_id' => $ticketId,
+            'action_type' => $actionType,
+            'action' => $action,
+            'description' => $description !== '' ? $description : null,
+            'handler_id' => $handlerId !== '' ? $handlerId : null,
+            'handler_name' => $handlerName !== '' ? $handlerName : null,
+            'handler_email' => $handlerEmail !== '' ? $handlerEmail : null,
+            'performed_by' => $performedBy,
+            'created_at' => gmdate('c'),
+        ],
+        true
+    );
+    if ($code < 200 || $code >= 300) {
+        $msg = is_array($decoded) ? json_encode($decoded, JSON_UNESCAPED_UNICODE) : (string)$raw;
+        throw new Exception('Failed to log ticket action: ' . $msg);
+    }
+
+    api_json(200, true, 'Action logged', [
+        'ticket_action' => get_first_row($decoded),
     ]);
 }
 
@@ -854,6 +1340,15 @@ try {
             break;
         case 'handler_add_message':
             handle_handler_add_message($data);
+            break;
+        case 'reporter_add_attachment':
+            handle_reporter_add_attachment($data);
+            break;
+        case 'handler_add_attachment':
+            handle_handler_add_attachment($data);
+            break;
+        case 'handler_log_action':
+            handle_handler_log_action($data);
             break;
         default:
             api_json(400, false, 'Unsupported action');

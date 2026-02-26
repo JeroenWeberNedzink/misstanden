@@ -117,6 +117,30 @@ const LocationField = ({ value, onChange, error, rulesByCountry = null }) => {
   const isCountryMissing = !!error && !String(country || '').trim();
   const isSpecificMissing = !!error && !String(specificLocation || '').trim();
 
+  if (isLoadingCountries) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-lg border border-border bg-muted/20 p-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Icon name="Loader2" size={14} className="animate-spin" />
+            <span>{t('reportForm.loadingCountries')}</span>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="h-4 w-28 rounded bg-muted animate-pulse" />
+          <div className="h-10 w-full rounded-md border border-border bg-muted/40 animate-pulse" />
+        </div>
+
+        <div className="space-y-2">
+          <div className="h-4 w-40 rounded bg-muted animate-pulse" />
+          <div className="h-10 w-full rounded-md border border-border bg-muted/40 animate-pulse" />
+          <div className="h-3 w-64 rounded bg-muted/70 animate-pulse" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="space-y-3">
@@ -126,10 +150,11 @@ const LocationField = ({ value, onChange, error, rulesByCountry = null }) => {
           // IMPORTANT: pass value directly, not e.target.value only
           onChange={handleCountryChange}
           options={[
-            { value: '', label: isLoadingCountries ? t('reportForm.loadingCountries') : t('reportForm.selectCountry') },
+            { value: '', label: t('reportForm.selectCountry') },
             ...countries.map((c) => ({ value: c.code, label: c.name })),
           ]}
           required
+          loading={isLoadingCountries}
           disabled={isLoadingCountries}
           error={isCountryMissing ? t('reportForm.countryRequired') : ''}
         />

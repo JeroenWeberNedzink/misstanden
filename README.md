@@ -169,6 +169,28 @@ API/mail/security (optional or environment-specific):
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_AUTH`, `SMTP_USER`, `SMTP_PASS`
 - `MAIL_DEFAULT_FROM`, `MAIL_DEFAULT_FROM_NAME`
 - `SUPABASE_SERVICE_ROLE_KEY` (required for secure server-side settings/workflow/ticket APIs; also used by SLA tooling)
+- `SLA_BACKFILL_CRON_KEY` (optional but recommended; enables non-interactive scheduled calls to `/api/sla-backfill.api.php` via `X-SLA-CRON-KEY`)
+
+## Automated SLA Backfill (Windows/IIS)
+
+Manual backfill in UI is a fallback tool. For production, schedule it.
+
+1. Set a strong `SLA_BACKFILL_CRON_KEY` in the IIS/PHP environment.
+2. Use the provided script:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-sla-backfill.ps1 -ApiUrl "https://your-domain/api/sla-backfill.api.php"
+```
+
+3. Create a Windows Scheduled Task (example: every hour):
+
+```powershell
+schtasks /Create /TN "NZ-SLA-Backfill" /SC HOURLY /MO 1 /TR "powershell -ExecutionPolicy Bypass -File C:\Projects\nz-misstanden\scripts\run-sla-backfill.ps1 -ApiUrl https://your-domain/api/sla-backfill.api.php" /RU "SYSTEM"
+```
+
+Notes:
+- Scheduled mode authenticates with `X-SLA-CRON-KEY` and does not require Auth0 interactive login.
+- Admin-authenticated manual runs from the UI remain supported.
 
 ## Database and Migrations
 

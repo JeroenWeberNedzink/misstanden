@@ -68,7 +68,33 @@ export default function SettingCard({ row, draftValue, onChangeDraft, isChanged 
 
   const type = inferFieldType(draftValue, setting_key);
   const title = setting_key.split('.').pop().replace(/_/g, ' ');
-  const category = setting_key.split('.')[0];
+  const categoryKey = String(row?.category || setting_key.split('.')[0] || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  const shortSettingKey = String(setting_key.split('.').pop() || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  const settingTranslationKey = String(setting_key || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  const prefixedSettingKey = categoryKey && shortSettingKey ? `${categoryKey}_${shortSettingKey}` : shortSettingKey;
+  const localizedTitle = t(`settings.settingKeys.${settingTranslationKey}.label`, {
+    defaultValue: t(`settings.settingKeys.${prefixedSettingKey}.label`, {
+      defaultValue: t(`settings.settingKeys.${shortSettingKey}.label`, { defaultValue: title })
+    })
+  });
+  const localizedDescription = t(`settings.settingKeys.${settingTranslationKey}.description`, {
+    defaultValue: t(`settings.settingKeys.${prefixedSettingKey}.description`, {
+      defaultValue: t(`settings.settingKeys.${shortSettingKey}.description`, { defaultValue: description || '' })
+    })
+  });
+  const modifiedText = t('settings.fields.modified', { defaultValue: 'Modified' });
 
   const isWrapped = draftValue && typeof draftValue === 'object' && 'value' in draftValue;
   const getWrapped = () => (isWrapped ? draftValue.value : undefined);
@@ -99,17 +125,17 @@ export default function SettingCard({ row, draftValue, onChangeDraft, isChanged 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <h3 className="text-base font-semibold text-foreground capitalize">
-                  {title}
+                  {localizedTitle}
                 </h3>
                 {isChanged && (
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 flex-shrink-0">
-                    Modified
+                    {modifiedText}
                   </span>
                 )}
               </div>
-              {description && (
+              {localizedDescription && (
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  {description}
+                  {localizedDescription}
                 </p>
               )}
             </div>
@@ -138,7 +164,7 @@ export default function SettingCard({ row, draftValue, onChangeDraft, isChanged 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-base font-semibold text-foreground capitalize">
-                    {title}
+                    {localizedTitle}
                   </h3>
                   {is_sensitive && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-warning/10 text-warning border border-warning/20 flex-shrink-0">
@@ -147,13 +173,13 @@ export default function SettingCard({ row, draftValue, onChangeDraft, isChanged 
                   )}
                   {isChanged && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 flex-shrink-0">
-                      Modified
+                      {modifiedText}
                     </span>
                   )}
                 </div>
-                {description && (
+                {localizedDescription && (
                   <p className="text-sm text-muted-foreground leading-relaxed">
-                    {description}
+                    {localizedDescription}
                   </p>
                 )}
               </div>

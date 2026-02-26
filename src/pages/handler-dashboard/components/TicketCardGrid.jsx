@@ -45,6 +45,7 @@ const normalizeStatuses = (raw) => {
 
 const TicketCardGrid = ({
   tickets,
+  isLoading = false,
   workflows = [],
   currentHandlerId,
   currentHandlerName,
@@ -76,6 +77,27 @@ const TicketCardGrid = ({
       return bd - ad;
     });
   }, [tickets]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, idx) => (
+            <div key={`ticket-card-skeleton-${idx}`} className="rounded-2xl border border-border bg-white p-6 shadow-sm animate-pulse">
+              <div className="h-5 w-28 bg-muted rounded mb-4"></div>
+              <div className="h-4 w-40 bg-muted/80 rounded mb-3"></div>
+              <div className="h-3 w-full bg-muted/70 rounded mb-2"></div>
+              <div className="h-3 w-4/5 bg-muted/70 rounded mb-5"></div>
+              <div className="flex items-center justify-between">
+                <div className="h-8 w-24 bg-muted/80 rounded"></div>
+                <div className="h-9 w-28 bg-muted rounded"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (!tickets || tickets.length === 0) {
     return (

@@ -22,7 +22,7 @@ const MIME_TYPE_MAP = {
 
 const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
   const { t } = useTranslation();
-  const { settings } = useSettings();
+  const { portal } = useSettings();
   const fileInputRef = useRef(null);
   const [isDragActive, setIsDragActive] = useState(false);
   const [previewFile, setPreviewFile] = useState(null);
@@ -31,8 +31,9 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
   const [previewText, setPreviewText] = useState('');
 
   // Get settings or use defaults
-  const maxFileSize = (settings?.portal?.maxAttachmentSizeMb || 10) * 1024 * 1024;
-  const allowedExtensions = settings?.portal?.allowedFileTypes || ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'];
+  const maxFileSize = (portal?.maxAttachmentSizeMb || 10) * 1024 * 1024;
+  const allowedExtensions = portal?.allowedFileTypes || ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'];
+  const attachmentsEnabled = portal?.enableAttachments !== false;
 
   // Convert allowed extensions to MIME types
   const allowedTypes = useMemo(() => {
@@ -44,6 +45,10 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
     const errors = [];
 
     selectedFiles?.forEach(file => {
+      if (!attachmentsEnabled) {
+        errors?.push(t('reportForm.attachmentsDisabled', { defaultValue: 'Attachments are currently disabled' }));
+        return;
+      }
       if (!allowedTypes?.includes(file?.type)) {
         errors?.push(`${file?.name}: ${t('reportForm.invalidFileType')}`);
         return;
@@ -94,6 +99,7 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
   };
 
   const openFilePicker = () => {
+    if (!attachmentsEnabled) return;
     fileInputRef?.current?.click();
   };
 
@@ -199,7 +205,7 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
           : isDragActive
             ? 'border-primary bg-primary/5'
             : 'border-border hover:border-primary/50 bg-muted/30'
-      }`}>
+      } ${attachmentsEnabled ? '' : 'opacity-60 cursor-not-allowed'}`}>
         <Icon name="Upload" size={40} className="mx-auto mb-1 text-muted-foreground" />
         <p className="text-sm md:text-base text-foreground mb-2">
           {t('reportForm.dragDropOrClick')}
@@ -215,9 +221,15 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
           multiple
           accept={allowedExtensions?.map(ext => `.${ext}`)?.join(',')}
           onChange={handleFileSelect}
+          disabled={!attachmentsEnabled}
           className="hidden"
           aria-label={t('reportForm.selectFilesLabel')}
         />
+        {!attachmentsEnabled && (
+          <p className="text-xs text-muted-foreground mt-2">
+            {t('reportForm.attachmentsDisabled', { defaultValue: 'Attachments are currently disabled' })}
+          </p>
+        )}
         {/* <Button
           variant="outline"
           iconName="FolderOpen"

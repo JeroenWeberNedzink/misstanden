@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
@@ -25,9 +25,6 @@ export default function SlaBackfillPanel({ onShowToast }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [lastRunAt, setLastRunAt] = useState(() => localStorage.getItem(STORAGE_KEY));
-  const [autoRunDone, setAutoRunDone] = useState(Boolean(localStorage.getItem(STORAGE_KEY)));
-
-  const canAutoRun = useMemo(() => !autoRunDone && !isRunning, [autoRunDone, isRunning]);
 
   const runBackfill = async (opts = {}) => {
     setIsRunning(true);
@@ -50,7 +47,6 @@ export default function SlaBackfillPanel({ onShowToast }) {
       const now = new Date().toISOString();
       localStorage.setItem(STORAGE_KEY, now);
       setLastRunAt(now);
-      setAutoRunDone(true);
       setResult(json);
       onShowToast?.(`Backfill afgerond (${json.updated} bijgewerkt)`);
     } catch (err) {
@@ -61,12 +57,6 @@ export default function SlaBackfillPanel({ onShowToast }) {
       setIsRunning(false);
     }
   };
-
-  useEffect(() => {
-    if (canAutoRun) {
-      runBackfill({ auto: true });
-    }
-  }, [canAutoRun]);
 
   return (
     <div className="space-y-4">
@@ -81,23 +71,20 @@ export default function SlaBackfillPanel({ onShowToast }) {
               Zet <span className="font-mono">next_step_due</span> voor bestaande tickets op basis van
               <span className="font-mono"> workflow_statuses.expected_duration_days</span>.
             </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Gebruik dit handmatig voor onderhoud; in productie hoort dit via een geplande taak te lopen.
+            </p>
             <div className="mt-3 flex flex-wrap gap-2 text-xs">
               <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 text-sky-800 px-3 py-1 font-semibold">
                 Laatst uitgevoerd: {formatDateTime(lastRunAt)}
               </span>
               {result && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 px-3 py-1 font-semibold">
-                  {result.updated} bijgewerkt · {result.skipped} overgeslagen
+                  {result.updated} bijgewerkt - {result.skipped} overgeslagen
                 </span>
               )}
             </div>
           </div>
-          {autoRunDone && (
-            <div className="inline-flex items-center gap-1 rounded-full bg-success/10 text-success px-3 py-1 text-xs font-semibold">
-              <Icon name="CheckCircle" size={14} />
-              Eenmalig uitgevoerd
-            </div>
-          )}
         </div>
 
         {error && (

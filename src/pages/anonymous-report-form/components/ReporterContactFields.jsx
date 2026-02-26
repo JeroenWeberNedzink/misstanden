@@ -9,6 +9,7 @@ const ReporterContactFields = ({
   phone,
   isAnonymous,
   onAnonymousChange,
+  emailRequired = true,
   emailError,
   onNameChange,
   onEmailChange,
@@ -83,7 +84,7 @@ const ReporterContactFields = ({
             label={t('reportForm.emailLabel')}
             placeholder={t('reportForm.emailPlaceholder')}
             value={email}
-            required
+            required={emailRequired}
             error={emailError}
             onChange={(e) => onEmailChange(e?.target?.value)}
           />

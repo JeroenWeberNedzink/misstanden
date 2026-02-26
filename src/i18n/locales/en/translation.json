@@ -340,6 +340,8 @@
         "country": "Country",
         "selectCountry": "Select country",
         "loadingCountries": "Loading countries...",
+        "publicSubmissionDisabled": "Public submissions are currently disabled.",
+        "attachmentsDisabled": "Attachments are currently disabled",
         "countryRequired": "Country is required",
         "specificLocation": "Specific location",
         "specificLocationRequired": "Specific location is required",
@@ -665,6 +667,8 @@
             "general": "General",
             "portal": "Portal",
             "workflow": "Workflows",
+            "tickets": "Tickets",
+            "compliance": "Compliance",
             "sla": "SLA & Timeline",
             "email_notifications": "Email Notifications",
             "notifications": "Notifications (Legacy)",
@@ -675,6 +679,8 @@
             "generalDescription": "Core platform configuration",
             "portalDescription": "Portal behavior and user-facing options",
             "workflowDescription": "Case workflows and process logic",
+            "ticketsDescription": "Intake, priority and assignment defaults",
+            "complianceDescription": "Privacy, audit and retention compliance settings",
             "slaDescription": "Deadlines, response targets and timeline rules",
             "emailNotificationsDescription": "Email delivery, templates and notification rules",
             "notificationsDescription": "Legacy notification preferences",
@@ -689,8 +695,63 @@
             "value": "Value",
             "currentValue": "Current value",
             "sensitive": "Sensitive",
+            "modified": "Modified",
             "onOff": "On / Off",
             "jsonAdvanced": "JSON (for advanced settings)"
+        },
+        "settingKeys": {
+            "tickets_allow_public_submission": {
+                "label": "Allow public submission",
+                "description": "Allow public users to submit tickets"
+            },
+            "tickets_auto_assign_enabled": {
+                "label": "Auto assign enabled",
+                "description": "Enable automatic ticket assignment to handlers"
+            },
+            "tickets_auto_close_resolved_days": {
+                "label": "Auto close resolved days",
+                "description": "Auto-close tickets after X days in resolved status"
+            },
+            "tickets_default_priority": {
+                "label": "Default priority",
+                "description": "Default priority for new tickets"
+            },
+            "tickets_require_email_verification": {
+                "label": "Require email verification",
+                "description": "Require email verification for public submissions"
+            },
+            "tickets_sla_resolution_time_hours": {
+                "label": "SLA resolution time hours",
+                "description": "SLA resolution time in hours"
+            },
+            "tickets_sla_response_time_hours": {
+                "label": "SLA response time hours",
+                "description": "SLA response time in hours"
+            },
+            "tickets_ticket_number_prefix": {
+                "label": "Ticket number prefix",
+                "description": "Prefix for ticket numbers (e.g., INC-001)"
+            },
+            "compliance_anonymize_closed_tickets": {
+                "label": "Anonymize closed tickets",
+                "description": "Anonymize personal data in closed tickets"
+            },
+            "compliance_audit_log_enabled": {
+                "label": "Audit log enabled",
+                "description": "Enable audit logging"
+            },
+            "compliance_backup_frequency": {
+                "label": "Backup frequency",
+                "description": "Backup frequency: daily, weekly, monthly"
+            },
+            "compliance_data_retention_days": {
+                "label": "Data retention days",
+                "description": "Data retention period in days (5 years)"
+            },
+            "compliance_gdpr_compliant": {
+                "label": "GDPR compliant",
+                "description": "GDPR compliance mode enabled"
+            }
         },
         "twoFactor": {
             "title": "Two-Factor Authentication (2FA)",
@@ -1237,6 +1298,7 @@
         },
         "sla": {
             "breached": "SLA breached",
+            "completedAt": "Completed at {{date}}",
             "contact": "Contact",
             "contactPerson": "Contact person",
             "days": "days",
