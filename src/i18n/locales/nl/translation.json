@@ -445,7 +445,49 @@
         "filesWillBeUploaded": "Uw bestanden worden geï¿½pload met uw melding",
         "incidentType": "Incidenttype",
         "anonymousReport": "Anonieme Melding",
-        "anonymousDescription": "Deze melding wordt anoniem ingediend zonder contactgegevens."
+        "anonymousDescription": "Deze melding wordt anoniem ingediend zonder contactgegevens.",
+        "workflowOptions": {
+            "klokkenluidersmeldingen": {
+                "name": "Klokkenluidersmeldingen",
+                "description": "Fraude, misstanden en integriteitsschendingen"
+            },
+            "omgangsvormen": {
+                "name": "Omgangsvormen",
+                "description": "Ongewenst gedrag, intimidatie en pesten"
+            },
+            "misstanden": {
+                "name": "Misstanden",
+                "description": "Fraude, misstanden en integriteitsschendingen"
+            },
+            "whistleblower": {
+                "name": "Klokkenluidersmeldingen",
+                "description": "Fraude, misstanden en integriteitsschendingen"
+            },
+            "whistleblower_reports": {
+                "name": "Klokkenluidersmeldingen",
+                "description": "Fraude, misstanden en integriteitsschendingen"
+            },
+            "whistleblower_report": {
+                "name": "Klokkenluidersmeldingen",
+                "description": "Fraude, misstanden en integriteitsschendingen"
+            },
+            "hr": {
+                "name": "Omgangsvormen",
+                "description": "Ongewenst gedrag, intimidatie en pesten"
+            },
+            "workplace_conduct": {
+                "name": "Omgangsvormen",
+                "description": "Ongewenst gedrag, intimidatie en pesten"
+            },
+            "workplace_behaviour": {
+                "name": "Omgangsvormen",
+                "description": "Ongewenst gedrag, intimidatie en pesten"
+            },
+            "workplace_behavior": {
+                "name": "Omgangsvormen",
+                "description": "Ongewenst gedrag, intimidatie en pesten"
+            }
+        }
     },
     "reportConfirmation": {
         "title": "Melding Succesvol Ingediend",
