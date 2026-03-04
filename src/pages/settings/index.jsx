@@ -5,6 +5,7 @@ import { useLocation } from 'react-router-dom';
 import AuthContextNavigator from '../../components/navigation/AuthContextNavigator';
 import Icon from '../../components/AppIcon';
 import Button from '../../components/ui/Button';
+import Input from '../../components/ui/Input';
 import { settingsService } from '../../services/SettingsService';
 import { useSettings } from '../../contexts/SettingsContext';
 import EmailNotificationSettings from './components/EmailNotificationSettings';
@@ -43,6 +44,13 @@ const HIDDEN_SETTING_KEYS = new Set([
   'general.company_name',
   'portal.enable_registration',
   'compliance.gdpr_compliant',
+  // Notifications settings hidden by request.
+  'notifications.rate_limit_per_user',
+  'notifications.enable_in_app',
+  'notifications.batch_digest',
+  'notifications.digest_time',
+  // Security setting hidden by request.
+  'security.api_rate_limit_per_minute',
   // Workflow behaviour is now managed in Admin Center > Workflows.
   'workflow.allow_status_rollback',
   'workflow.auto_assign',
@@ -53,8 +61,66 @@ const HIDDEN_SETTING_KEYS = new Set([
   'sla.default_resolution_hours',
   'tickets.sla_response_time_hours',
   'tickets.sla_resolution_time_hours',
+  // Maintenance is managed via dedicated maintenance modal.
+  'danger.maintenance_mode',
+  'danger.maintenance_message',
+  'danger.maintenance_reason',
+  'danger.maintenance_window_start',
+  'danger.maintenance_window_end',
+  'danger.maintenance_eta_minutes',
+  'danger.maintenance_contact_note',
 ]);
 const SETTINGS_ONLY_HIDDEN_CATEGORIES = new Set(['locations', 'branding', 'audit']);
+
+const MAINTENANCE_SETTING_DEFS = [
+  {
+    key: 'danger.maintenance_mode',
+    category: 'danger',
+    description: 'Enable maintenance mode (blocks non-admin access)',
+    defaultValue: false,
+  },
+  {
+    key: 'danger.maintenance_message',
+    category: 'danger',
+    description: 'Message shown during maintenance',
+    defaultValue: 'De portal is tijdelijk niet beschikbaar voor onderhoud.',
+  },
+  {
+    key: 'danger.maintenance_reason',
+    category: 'danger',
+    description: 'Reason for maintenance window',
+    defaultValue: '',
+  },
+  {
+    key: 'danger.maintenance_window_start',
+    category: 'danger',
+    description: 'Planned maintenance start time',
+    defaultValue: '',
+  },
+  {
+    key: 'danger.maintenance_window_end',
+    category: 'danger',
+    description: 'Planned maintenance end time',
+    defaultValue: '',
+  },
+  {
+    key: 'danger.maintenance_eta_minutes',
+    category: 'danger',
+    description: 'Expected maintenance duration in minutes',
+    defaultValue: 0,
+  },
+  {
+    key: 'danger.maintenance_contact_note',
+    category: 'danger',
+    description: 'Additional maintenance contact details',
+    defaultValue: '',
+  },
+];
+
+const MAINTENANCE_META_BY_KEY = MAINTENANCE_SETTING_DEFS.reduce((acc, def) => {
+  acc[def.key] = def;
+  return acc;
+}, {});
 
 const isVisibleSettingRow = (row) => {
   const key = String(row?.setting_key || '').trim();
@@ -189,6 +255,7 @@ export default function SystemSettingsAdmin() {
   const [viewMode, setViewMode] = useState('all'); // 'all', 'security', 'email_notifications'
   const [pageMode, setPageMode] = useState('admin'); // 'settings' | 'admin'
   const [selectedCategory, setSelectedCategory] = useState(null); // For focused category view
+  const [maintenanceModalOpen, setMaintenanceModalOpen] = useState(false);
 
   const [isLoading, setIsLoading] = useState(false);
   const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
@@ -281,7 +348,8 @@ export default function SystemSettingsAdmin() {
     setError('');
     try {
       const { rows: dataRows, warning } = await settingsService.getSettings();
-      const visibleRows = (dataRows || []).filter(isVisibleSettingRow);
+      const allRows = dataRows || [];
+      const visibleRows = allRows.filter(isVisibleSettingRow);
       setRows(visibleRows);
 
       const o = {};
@@ -290,6 +358,15 @@ export default function SystemSettingsAdmin() {
         o[r.setting_key] = r.setting_value;
         d[r.setting_key] = r.setting_value;
       }
+
+      // Keep maintenance values available in draft/original even when hidden from generic cards.
+      for (const def of MAINTENANCE_SETTING_DEFS) {
+        const fromRow = allRows.find((r) => r.setting_key === def.key);
+        const initialValue = fromRow ? fromRow.setting_value : def.defaultValue;
+        o[def.key] = initialValue;
+        d[def.key] = initialValue;
+      }
+
       setOriginal(o);
       setDraft(d);
       if (warning) {
@@ -327,12 +404,13 @@ export default function SystemSettingsAdmin() {
     try {
       const changedItems = dirtyKeys.map((key) => {
         const row = rows.find((r) => r.setting_key === key);
+        const fallbackMeta = MAINTENANCE_META_BY_KEY[key];
         return {
           settingKey: key,
           value: draft[key],
-          category: row?.category || 'general',
-          description: row?.description ?? null,
-          isSensitive: !!row?.is_sensitive,
+          category: row?.category || fallbackMeta?.category || 'general',
+          description: row?.description ?? fallbackMeta?.description ?? null,
+          isSensitive: !!row?.is_sensitive || false,
         };
       });
 
@@ -356,6 +434,127 @@ export default function SystemSettingsAdmin() {
   const resetAll = () => {
     setDraft({ ...original });
   };
+
+  const getDraftPrimitive = (settingKey, fallbackValue) => {
+    const value = draft?.[settingKey];
+    if (value === undefined || value === null) return fallbackValue;
+    if (typeof value === 'object' && !Array.isArray(value) && value && Object.prototype.hasOwnProperty.call(value, 'value')) {
+      return value.value;
+    }
+    return value;
+  };
+
+  const setDraftPreserveShape = (settingKey, nextValue) => {
+    setDraft((prev) => {
+      const current = prev?.[settingKey];
+      if (current && typeof current === 'object' && !Array.isArray(current) && Object.prototype.hasOwnProperty.call(current, 'value')) {
+        return { ...prev, [settingKey]: { ...current, value: nextValue } };
+      }
+      return { ...prev, [settingKey]: nextValue };
+    });
+  };
+
+  const formatMaintenanceDate = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '-';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return raw;
+    return date.toLocaleString('nl-NL');
+  };
+
+  const maintenanceModeEnabled = !!getDraftPrimitive('danger.maintenance_mode', false);
+  const maintenanceMessage = String(
+    getDraftPrimitive('danger.maintenance_message', 'De portal is tijdelijk niet beschikbaar voor onderhoud.') || ''
+  );
+  const maintenanceReason = String(getDraftPrimitive('danger.maintenance_reason', '') || '');
+  const maintenanceWindowStart = String(getDraftPrimitive('danger.maintenance_window_start', '') || '');
+  const maintenanceWindowEnd = String(getDraftPrimitive('danger.maintenance_window_end', '') || '');
+  const maintenanceEtaMinutes = Number(getDraftPrimitive('danger.maintenance_eta_minutes', 0) || 0);
+  const maintenanceContactNote = String(getDraftPrimitive('danger.maintenance_contact_note', '') || '');
+
+  const maintenanceDirtyCount = MAINTENANCE_SETTING_DEFS.filter((def) => {
+    try {
+      return JSON.stringify(draft[def.key]) !== JSON.stringify(original[def.key]);
+    } catch {
+      return draft[def.key] !== original[def.key];
+    }
+  }).length;
+
+  const openMaintenanceModal = () => setMaintenanceModalOpen(true);
+  const closeMaintenanceModal = () => setMaintenanceModalOpen(false);
+
+  const handleMaintenanceSave = async () => {
+    if (!maintenanceModeEnabled) {
+      await save();
+      closeMaintenanceModal();
+      return;
+    }
+    const confirmed = window.confirm(
+      'Onderhoudsmodus inschakelen blokkeert niet-admin gebruikers. Weet je zeker dat je dit nu wilt activeren?'
+    );
+    if (!confirmed) return;
+    await save();
+    closeMaintenanceModal();
+  };
+
+  const renderMaintenanceControl = () => (
+    <div className="mb-6 rounded-2xl border-2 border-amber-300/70 bg-gradient-to-r from-amber-50 to-red-50 p-5 shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
+            <Icon name="AlertTriangle" size={20} />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-foreground">Onderhoudsmodus (kritiek)</h3>
+            <p className="text-sm text-muted-foreground">
+              Beheer waarom, wanneer en hoe lang de portal in onderhoud staat. Dit blokkeert niet-admin gebruikers.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
+              maintenanceModeEnabled
+                ? 'bg-red-100 text-red-700 border border-red-200'
+                : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+            }`}
+          >
+            {maintenanceModeEnabled ? 'Actief' : 'Uitgeschakeld'}
+          </span>
+          <Button
+            variant={maintenanceModeEnabled ? 'warning' : 'primary'}
+            iconName="Settings2"
+            iconPosition="left"
+            size="sm"
+            onClick={openMaintenanceModal}
+          >
+            Configureer
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="rounded-lg border border-amber-200/70 bg-white/80 p-3">
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Reden</div>
+          <div className="mt-1 text-sm text-foreground">{maintenanceReason || '-'}</div>
+        </div>
+        <div className="rounded-lg border border-amber-200/70 bg-white/80 p-3">
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Start</div>
+          <div className="mt-1 text-sm text-foreground">{formatMaintenanceDate(maintenanceWindowStart)}</div>
+        </div>
+        <div className="rounded-lg border border-amber-200/70 bg-white/80 p-3">
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Einde</div>
+          <div className="mt-1 text-sm text-foreground">{formatMaintenanceDate(maintenanceWindowEnd)}</div>
+        </div>
+        <div className="rounded-lg border border-amber-200/70 bg-white/80 p-3">
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Verwachte duur</div>
+          <div className="mt-1 text-sm text-foreground">
+            {Number.isFinite(maintenanceEtaMinutes) && maintenanceEtaMinutes > 0 ? `${maintenanceEtaMinutes} min` : '-'}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -569,7 +768,7 @@ export default function SystemSettingsAdmin() {
 
                         {bundle.categories.map((category) => {
                           const categoryMetaItem = getCategoryDisplayMeta(category, categoryMeta);
-                          const categoryRows = byCategory[category] || [];
+                          const categoryRows = (byCategory[category] || []).filter((row) => !MAINTENANCE_META_BY_KEY[row.setting_key]);
 
                           return (
                             <div key={category} className={`rounded-2xl border border-border ${categoryMetaItem.bgColor || 'bg-card'} p-6 shadow-sm`}>
@@ -579,6 +778,8 @@ export default function SystemSettingsAdmin() {
                                 </div>
                                 <h3 className="text-lg font-bold text-foreground">{categoryMetaItem.label}</h3>
                               </div>
+
+                              {category === 'danger' && renderMaintenanceControl()}
 
                               {category === 'email_notifications' ? (
                                 <EmailNotificationSettings />
@@ -603,7 +804,7 @@ export default function SystemSettingsAdmin() {
                   }
 
                   const meta = getCategoryDisplayMeta(selectedCategory, categoryMeta);
-                  const categoryRows = byCategory[selectedCategory] || [];
+                  const categoryRows = (byCategory[selectedCategory] || []).filter((row) => !MAINTENANCE_META_BY_KEY[row.setting_key]);
                   const changedInCategory = categoryRows.filter(row => {
                     try {
                       return JSON.stringify(draft[row.setting_key]) !== JSON.stringify(original[row.setting_key]);
@@ -638,6 +839,8 @@ export default function SystemSettingsAdmin() {
                       </div>
 
                       {/* Settings Grid */}
+                      {selectedCategory === 'danger' && renderMaintenanceControl()}
+
                       {selectedCategory === 'email_notifications' ? (
                         <EmailNotificationSettings />
                       ) : (
@@ -750,6 +953,139 @@ export default function SystemSettingsAdmin() {
             )}
           </div>
         </div>
+
+        {maintenanceModalOpen && (
+          <>
+            <div className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm" onClick={closeMaintenanceModal} />
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+              <div
+                className="w-full max-w-3xl rounded-2xl border border-border bg-card shadow-2xl overflow-hidden"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="px-6 py-4 border-b border-border bg-gradient-to-r from-amber-50 to-red-50">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                        <Icon name="AlertTriangle" size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold text-foreground">Onderhoudsmodus configureren</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Deze instelling beïnvloedt direct de bereikbaarheid van de portal.
+                        </p>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon" iconName="X" onClick={closeMaintenanceModal} />
+                  </div>
+                </div>
+
+                <div className="p-6 space-y-5">
+                  <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-foreground">Onderhoudsmodus inschakelen</div>
+                        <div className="text-xs text-muted-foreground">
+                          Blokkeert niet-admin gebruikers en toont onderhoudsbericht.
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setDraftPreserveShape('danger.maintenance_mode', !maintenanceModeEnabled)}
+                        className={`w-14 h-7 rounded-full transition-all relative flex-shrink-0 shadow-sm ${
+                          maintenanceModeEnabled ? 'bg-gradient-to-r from-red-500 to-rose-600' : 'bg-muted'
+                        }`}
+                        aria-pressed={maintenanceModeEnabled}
+                      >
+                        <div
+                          className={`w-6 h-6 rounded-full bg-white shadow-md transition-transform absolute top-0.5 ${
+                            maintenanceModeEnabled ? 'translate-x-7' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Input
+                      label="Start onderhoud"
+                      type="datetime-local"
+                      value={maintenanceWindowStart}
+                      onChange={(event) => setDraftPreserveShape('danger.maintenance_window_start', event.target.value)}
+                    />
+                    <Input
+                      label="Einde onderhoud"
+                      type="datetime-local"
+                      value={maintenanceWindowEnd}
+                      onChange={(event) => setDraftPreserveShape('danger.maintenance_window_end', event.target.value)}
+                    />
+                  </div>
+
+                  <Input
+                    label="Verwachte duur (minuten)"
+                    type="number"
+                    min={0}
+                    value={Number.isFinite(maintenanceEtaMinutes) ? String(maintenanceEtaMinutes) : '0'}
+                    onChange={(event) => {
+                      const raw = event.target.value;
+                      setDraftPreserveShape('danger.maintenance_eta_minutes', raw === '' ? 0 : Number(raw));
+                    }}
+                  />
+
+                  <Input
+                    label="Reden"
+                    placeholder="Bijv. beveiligingsupdate, database onderhoud, release..."
+                    value={maintenanceReason}
+                    onChange={(event) => setDraftPreserveShape('danger.maintenance_reason', event.target.value)}
+                  />
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Onderhoudsbericht voor gebruikers</label>
+                    <textarea
+                      className="w-full min-h-[96px] rounded-xl border border-border bg-background p-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      value={maintenanceMessage}
+                      onChange={(event) => setDraftPreserveShape('danger.maintenance_message', event.target.value)}
+                      placeholder="Het systeem is tijdelijk niet beschikbaar voor onderhoud. Probeer het later opnieuw."
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Extra contactinformatie (optioneel)</label>
+                    <textarea
+                      className="w-full min-h-[72px] rounded-xl border border-border bg-background p-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      value={maintenanceContactNote}
+                      onChange={(event) => setDraftPreserveShape('danger.maintenance_contact_note', event.target.value)}
+                      placeholder="Bijv. ServiceDesk +31..., statuspagina URL, intern contactpunt..."
+                    />
+                  </div>
+                </div>
+
+                <div className="px-6 py-4 border-t border-border bg-background/80 flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-xs text-muted-foreground">
+                    {maintenanceDirtyCount > 0
+                      ? `${maintenanceDirtyCount} niet-opgeslagen onderhoudswijziging(en)`
+                      : 'Geen niet-opgeslagen onderhoudswijzigingen'}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" onClick={closeMaintenanceModal}>
+                      Sluiten
+                    </Button>
+                    <Button
+                      variant="primary"
+                      iconName="Save"
+                      iconPosition="left"
+                      onClick={handleMaintenanceSave}
+                      disabled={isSaving || dirtyKeys.length === 0}
+                      loading={isSaving}
+                      className={maintenanceModeEnabled ? 'bg-red-600 hover:bg-red-700' : ''}
+                    >
+                      {maintenanceModeEnabled ? 'Opslaan en activeren' : 'Opslaan'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </AuthContextNavigator>
     </>
   );

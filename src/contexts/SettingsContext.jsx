@@ -181,6 +181,11 @@ export const SettingsProvider = ({ children }) => {
       enableDataExport: getSetting('danger.enable_data_export', true),
       maintenanceMode: getSetting('danger.maintenance_mode', false),
       maintenanceMessage: getSetting('danger.maintenance_message', 'De portal is tijdelijk niet beschikbaar voor onderhoud.'),
+      maintenanceReason: String(getSetting('danger.maintenance_reason', '') || ''),
+      maintenanceWindowStart: String(getSetting('danger.maintenance_window_start', '') || ''),
+      maintenanceWindowEnd: String(getSetting('danger.maintenance_window_end', '') || ''),
+      maintenanceEtaMinutes: toNumber(getSetting('danger.maintenance_eta_minutes', 0), 0),
+      maintenanceContactNote: String(getSetting('danger.maintenance_contact_note', '') || ''),
     },
 
     tickets: {
@@ -278,4 +283,9 @@ const getDefaultSettings = () => ({
   'danger.enable_data_export': true,
   'danger.maintenance_mode': false,
   'danger.maintenance_message': 'De portal is tijdelijk niet beschikbaar voor onderhoud.',
+  'danger.maintenance_reason': '',
+  'danger.maintenance_window_start': '',
+  'danger.maintenance_window_end': '',
+  'danger.maintenance_eta_minutes': 0,
+  'danger.maintenance_contact_note': '',
 });
