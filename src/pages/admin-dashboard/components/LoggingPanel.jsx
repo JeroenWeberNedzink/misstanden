@@ -4,6 +4,7 @@ import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
 import { auditLogService } from '../../../services/auditLogService';
+import { settingsService } from '../../../services/SettingsService';
 import { subDays, format } from 'date-fns';
 
 // ------------------------------
@@ -58,6 +59,58 @@ const pretty = (v) => {
     return safe(v);
   }
 };
+
+const readSettingValue = (value, fallback = null) => {
+  if (value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, 'value')) {
+    return value.value;
+  }
+  return value ?? fallback;
+};
+
+const toBoolean = (value, fallback = false) => {
+  if (typeof value === 'boolean') return value;
+  if (value === null || value === undefined) return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (['true', '1', 'yes', 'ja', 'on'].includes(normalized)) return true;
+  if (['false', '0', 'no', 'nee', 'off'].includes(normalized)) return false;
+  return fallback;
+};
+
+const toNumber = (value, fallback = 365) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const AUDIT_SETTING_DEFS = [
+  {
+    key: 'audit.enable_logging',
+    label: 'Audit logging inschakelen',
+    description: 'Schakel audit logging in',
+    type: 'boolean',
+    defaultValue: true,
+  },
+  {
+    key: 'audit.log_failed_logins',
+    label: 'Mislukte logins loggen',
+    description: 'Log mislukte login pogingen',
+    type: 'boolean',
+    defaultValue: true,
+  },
+  {
+    key: 'audit.log_read_operations',
+    label: 'Read-operaties loggen',
+    description: 'Log ook read operaties (kan veel data genereren)',
+    type: 'boolean',
+    defaultValue: false,
+  },
+  {
+    key: 'audit.retention_days',
+    label: 'Bewaartermijn audit logs (dagen)',
+    description: 'Bewaar audit logs voor aantal dagen',
+    type: 'number',
+    defaultValue: 365,
+  },
+];
 
 const diffKeys = (oldData, newData) => {
   if (!oldData || !newData) return [];
@@ -520,6 +573,12 @@ export default function LoggingPanel({ onShowToast }) {
 
   const [selectedLog, setSelectedLog] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [auditSettingsLoading, setAuditSettingsLoading] = useState(true);
+  const [auditSettingsSaving, setAuditSettingsSaving] = useState(false);
+  const [auditSettingsError, setAuditSettingsError] = useState('');
+  const [auditSettingsSuccess, setAuditSettingsSuccess] = useState('');
+  const [auditSettingsDraft, setAuditSettingsDraft] = useState({});
+  const [auditSettingsOriginal, setAuditSettingsOriginal] = useState({});
 
   const handleFilterChange = (key, value) => setFilters((prev) => ({ ...prev, [key]: value }));
   const handleClearFilters = () => setFilters(defaultFilters);
@@ -561,10 +620,127 @@ export default function LoggingPanel({ onShowToast }) {
     }
   };
 
+  const loadAuditSettings = async () => {
+    setAuditSettingsLoading(true);
+    setAuditSettingsError('');
+    setAuditSettingsSuccess('');
+
+    try {
+      const { rows } = await settingsService.getSettings({ category: 'audit' });
+      const byKey = {};
+      (rows || []).forEach((row) => {
+        const key = String(row?.setting_key || '').trim();
+        if (!key) return;
+        byKey[key] = row;
+      });
+
+      const normalized = {};
+      AUDIT_SETTING_DEFS.forEach((item) => {
+        const raw = readSettingValue(byKey[item.key]?.setting_value, item.defaultValue);
+        normalized[item.key] =
+          item.type === 'number'
+            ? toNumber(raw, item.defaultValue)
+            : toBoolean(raw, item.defaultValue);
+      });
+
+      setAuditSettingsDraft(normalized);
+      setAuditSettingsOriginal(normalized);
+    } catch (e) {
+      console.error('Error loading audit settings:', e);
+      setAuditSettingsError(e?.message || 'Audit instellingen laden mislukt');
+    } finally {
+      setAuditSettingsLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadAudit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.tableName, filters.operation, filters.dateFrom, filters.dateTo]);
+
+  useEffect(() => {
+    loadAuditSettings();
+  }, []);
+
+  const hasAuditSettingChanges = useMemo(
+    () =>
+      AUDIT_SETTING_DEFS.some((item) => {
+        const draftValue = item.type === 'number'
+          ? toNumber(auditSettingsDraft[item.key], item.defaultValue)
+          : toBoolean(auditSettingsDraft[item.key], item.defaultValue);
+        const originalValue = item.type === 'number'
+          ? toNumber(auditSettingsOriginal[item.key], item.defaultValue)
+          : toBoolean(auditSettingsOriginal[item.key], item.defaultValue);
+        return draftValue !== originalValue;
+      }),
+    [auditSettingsDraft, auditSettingsOriginal]
+  );
+
+  const handleToggleAuditSetting = (settingKey) => {
+    setAuditSettingsSuccess('');
+    setAuditSettingsDraft((prev) => ({
+      ...prev,
+      [settingKey]: !toBoolean(prev?.[settingKey], false),
+    }));
+  };
+
+  const handleChangeAuditNumberSetting = (settingKey, rawValue) => {
+    setAuditSettingsSuccess('');
+    const numeric = Math.max(1, toNumber(rawValue, 365));
+    setAuditSettingsDraft((prev) => ({
+      ...prev,
+      [settingKey]: numeric,
+    }));
+  };
+
+  const handleResetAuditSettings = () => {
+    setAuditSettingsDraft({ ...auditSettingsOriginal });
+    setAuditSettingsSuccess('');
+    setAuditSettingsError('');
+  };
+
+  const handleSaveAuditSettings = async () => {
+    if (!hasAuditSettingChanges) return;
+
+    setAuditSettingsSaving(true);
+    setAuditSettingsError('');
+    setAuditSettingsSuccess('');
+
+    try {
+      const changedItems = AUDIT_SETTING_DEFS.filter((item) => {
+        const draftValue = item.type === 'number'
+          ? toNumber(auditSettingsDraft[item.key], item.defaultValue)
+          : toBoolean(auditSettingsDraft[item.key], item.defaultValue);
+        const originalValue = item.type === 'number'
+          ? toNumber(auditSettingsOriginal[item.key], item.defaultValue)
+          : toBoolean(auditSettingsOriginal[item.key], item.defaultValue);
+        return draftValue !== originalValue;
+      }).map((item) => ({
+        settingKey: item.key,
+        value: {
+          value: item.type === 'number'
+            ? toNumber(auditSettingsDraft[item.key], item.defaultValue)
+            : toBoolean(auditSettingsDraft[item.key], item.defaultValue),
+        },
+        category: 'audit',
+        description: item.description,
+      }));
+
+      if (!changedItems.length) return;
+
+      await settingsService.upsertSettings(changedItems);
+      await loadAuditSettings();
+      setAuditSettingsSuccess('Audit instellingen opgeslagen');
+      onShowToast?.('Audit instellingen opgeslagen');
+    } catch (e) {
+      console.error('Error saving audit settings:', e);
+      const message = e?.message || 'Audit instellingen opslaan mislukt';
+      setAuditSettingsError(message);
+      onShowToast?.(message, true);
+    } finally {
+      setAuditSettingsSaving(false);
+    }
+  };
 
   const handleExportCSV = () => {
     const csv = auditLogService.exportAuditToCSV(logs);
@@ -595,6 +771,104 @@ export default function LoggingPanel({ onShowToast }) {
 
   return (
     <div className="space-y-6">
+      <div className="rounded-xl border border-border bg-card p-4 md:p-5">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 className="text-base font-semibold text-foreground">Audit logboek instellingen</h3>
+            <p className="text-xs text-muted-foreground">
+              Beheer logginggedrag direct vanuit de Audit Logs module.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              iconName="RotateCcw"
+              onClick={handleResetAuditSettings}
+              disabled={auditSettingsLoading || auditSettingsSaving || !hasAuditSettingChanges}
+            >
+              Reset
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              iconName="Save"
+              iconPosition="left"
+              onClick={handleSaveAuditSettings}
+              disabled={auditSettingsLoading || auditSettingsSaving || !hasAuditSettingChanges}
+            >
+              {auditSettingsSaving ? 'Opslaan...' : 'Opslaan'}
+            </Button>
+          </div>
+        </div>
+
+        {auditSettingsError && (
+          <div className="mb-4 p-3 rounded-lg border border-destructive/30 bg-destructive/10 text-destructive text-sm flex items-start gap-2">
+            <Icon name="AlertCircle" size={16} className="mt-0.5" />
+            <span>{auditSettingsError}</span>
+          </div>
+        )}
+
+        {auditSettingsSuccess && (
+          <div className="mb-4 p-3 rounded-lg border border-success/30 bg-success/10 text-success text-sm flex items-start gap-2">
+            <Icon name="CheckCircle" size={16} className="mt-0.5" />
+            <span>{auditSettingsSuccess}</span>
+          </div>
+        )}
+
+        {auditSettingsLoading ? (
+          <div className="py-6 text-sm text-muted-foreground flex items-center gap-2">
+            <Icon name="Loader" size={16} className="animate-spin" />
+            Audit instellingen laden...
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {AUDIT_SETTING_DEFS.map((item) => {
+              const value = auditSettingsDraft[item.key];
+              const isNumber = item.type === 'number';
+
+              return (
+                <div key={item.key} className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground">{item.label}</p>
+                      <p className="text-xs text-muted-foreground">{item.description}</p>
+                    </div>
+
+                    {isNumber ? (
+                      <div className="w-32">
+                        <Input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={toNumber(value, item.defaultValue)}
+                          onChange={(e) => handleChangeAuditNumberSetting(item.key, e.target.value)}
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleToggleAuditSetting(item.key)}
+                        className={`w-11 h-6 rounded-full relative transition ${
+                          toBoolean(value, item.defaultValue) ? 'bg-success' : 'bg-border'
+                        }`}
+                        aria-label={item.label}
+                      >
+                        <div
+                          className={`w-5 h-5 rounded-full bg-white shadow-sm absolute top-0.5 transition-transform ${
+                            toBoolean(value, item.defaultValue) ? 'translate-x-5' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>

@@ -42,6 +42,7 @@ const HIDDEN_SETTING_KEYS = new Set([
   'general.business_hours',
   'general.company_name',
   'portal.enable_registration',
+  'compliance.gdpr_compliant',
   // Workflow behaviour is now managed in Admin Center > Workflows.
   'workflow.allow_status_rollback',
   'workflow.auto_assign',
@@ -53,7 +54,7 @@ const HIDDEN_SETTING_KEYS = new Set([
   'tickets.sla_response_time_hours',
   'tickets.sla_resolution_time_hours',
 ]);
-const SETTINGS_ONLY_HIDDEN_CATEGORIES = new Set(['locations']);
+const SETTINGS_ONLY_HIDDEN_CATEGORIES = new Set(['locations', 'branding', 'audit']);
 
 const isVisibleSettingRow = (row) => {
   const key = String(row?.setting_key || '').trim();
