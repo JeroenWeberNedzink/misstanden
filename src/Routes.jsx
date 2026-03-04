@@ -1,25 +1,37 @@
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import { BrowserRouter, Routes as RouterRoutes, Route } from "react-router-dom";
 import ScrollToTop from "./components/ScrollToTop";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import MaintenanceModeGuard from "./components/MaintenanceModeGuard";
-import NotFound from "./pages/NotFound";
-import TicketAccessPortal from './pages/ticket-access-portal';
-import HandlerDashboard from './pages/handler-dashboard';
-import TicketDetailsView from './pages/ticket-details-view';
-import AnonymousReportForm from './pages/anonymous-report-form';
-import CaseManagementDetail from './pages/case-management-detail';
-import ReportConfirmation from './pages/report-confirmation';
-import WorkflowConfigurationAdmin from './pages/workflow-configuration-admin';
-import HandlerProfileManagement from './pages/handler-profile-management';
-import CommunicationDeliveryStatusAdmin from './pages/logging';
-import HandlerPriorityWorkflow from './pages/handler-priority-workflow';
-import UserManagementAdmin from './pages/user-management-admin';
-import Settings from './pages/settings';
-import { PERMISSIONS, ROLES } from './utils/permissions';
-import PermissionsAdmin from './pages/permissions-admin';
-import AdminDashboard from './pages/admin-dashboard';
+const NotFound = lazy(() => import("./pages/NotFound"));
+const TicketAccessPortal = lazy(() => import('./pages/ticket-access-portal'));
+const HandlerDashboard = lazy(() => import('./pages/handler-dashboard'));
+const TicketDetailsView = lazy(() => import('./pages/ticket-details-view'));
+const AnonymousReportForm = lazy(() => import('./pages/anonymous-report-form'));
+const CaseManagementDetail = lazy(() => import('./pages/case-management-detail'));
+const ReportConfirmation = lazy(() => import('./pages/report-confirmation'));
+const WorkflowConfigurationAdmin = lazy(() => import('./pages/workflow-configuration-admin'));
+const HandlerProfileManagement = lazy(() => import('./pages/handler-profile-management'));
+const CommunicationDeliveryStatusAdmin = lazy(() => import('./pages/logging'));
+const HandlerPriorityWorkflow = lazy(() => import('./pages/handler-priority-workflow'));
+const UserManagementAdmin = lazy(() => import('./pages/user-management-admin'));
+const Settings = lazy(() => import('./pages/settings'));
+import { PERMISSIONS } from './utils/permissions';
+const PermissionsAdmin = lazy(() => import('./pages/permissions-admin'));
+const AdminDashboard = lazy(() => import('./pages/admin-dashboard'));
+
+const RouteLoadingFallback = () => (
+  <div className="min-h-screen app-page-gradient bg-background flex items-center justify-center">
+    <div className="w-full max-w-sm px-6">
+      <div className="rounded-xl border border-border bg-card p-6 animate-pulse">
+        <div className="h-4 w-1/2 bg-muted rounded mb-4"></div>
+        <div className="h-3 w-full bg-muted/70 rounded mb-2"></div>
+        <div className="h-3 w-4/5 bg-muted/70 rounded"></div>
+      </div>
+    </div>
+  </div>
+);
 
 const Routes = () => {
   return (
@@ -27,6 +39,7 @@ const Routes = () => {
       <ErrorBoundary>
       <MaintenanceModeGuard>
       <ScrollToTop />
+      <Suspense fallback={<RouteLoadingFallback />}>
       <RouterRoutes>
         {/* Public Routes */}
         <Route path="/" element={<AnonymousReportForm />} />
@@ -127,6 +140,7 @@ const Routes = () => {
         {/* 404 */}
         <Route path="*" element={<NotFound />} />
       </RouterRoutes>
+      </Suspense>
       </MaintenanceModeGuard>
       </ErrorBoundary>
     </BrowserRouter>

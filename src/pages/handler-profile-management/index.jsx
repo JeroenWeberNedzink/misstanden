@@ -349,12 +349,12 @@ const HandlerProfileManagement = () => {
               </div>
 
               <div className="space-y-6">
-                <AccessSummaryPanel
+                {/* <AccessSummaryPanel
                   user={user}
                   roles={roles}
                   enabledPermissionLabels={enabledPermissionLabels}
                   handlerProfile={handlerProfile}
-                />
+                /> */}
 
                 <TwoFactorAuthPanel />
 
@@ -722,6 +722,7 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
   const [success, setSuccess] = useState('');
 
   const [preferencesByCategory, setPreferencesByCategory] = useState({});
+  const [preferencesMeta, setPreferencesMeta] = useState({ fallbackActive: false });
   const [originalPreferences, setOriginalPreferences] = useState({});
   const [expandedCategories, setExpandedCategories] = useState({
     ticket: false,
@@ -751,8 +752,12 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
       setLoading(true);
       setError('');
 
-      const prefs = await emailNotificationService.getHandlerEmailPreferencesByCategory(handlerId);
+      const result = await emailNotificationService.getHandlerEmailPreferencesByCategory(handlerId, { withMeta: true });
+      const prefs = result?.preferencesByCategory || {};
       setPreferencesByCategory(prefs);
+      setPreferencesMeta({
+        fallbackActive: Boolean(result?.meta?.fallbackActive),
+      });
 
       const orig = {};
       Object.entries(prefs).forEach(([, events]) => {
@@ -763,6 +768,7 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
       setOriginalPreferences(orig);
     } catch (err) {
       console.error('Error loading email preferences:', err);
+      setPreferencesMeta({ fallbackActive: false });
       setError(err?.message || 'Fout bij laden van email voorkeuren');
     } finally {
       setLoading(false);
@@ -906,6 +912,15 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
       <p className="text-sm text-muted-foreground mb-4">
         Kies welke emails u wilt ontvangen. Verplichte (systeem-kritieke) emails kunnen niet uitgeschakeld worden.
       </p>
+
+      {preferencesMeta?.fallbackActive && (
+        <div className="mb-4 p-3 rounded-lg border border-warning/30 bg-warning/10 text-warning flex items-start gap-2">
+          <Icon name="AlertTriangle" size={16} className="mt-0.5" />
+          <div className="flex-1 text-sm">
+            Fallback actief: standaard e-mailtypes worden gebruikt omdat database eventtypes niet geconfigureerd of niet toegankelijk zijn.
+          </div>
+        </div>
+      )}
 
       {/* Global email enabled toggle */}
       <div className="mb-4 p-3 rounded-lg border border-border bg-muted/30">
@@ -1097,4 +1112,3 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
     </div>
   );
 };
-

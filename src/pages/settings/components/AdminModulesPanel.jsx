@@ -1,14 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 
-import UserManagementPanel from '../../admin-dashboard/components/UserManagementPanel';
-import PermissionsManagementPanel from '../../admin-dashboard/components/PermissionsManagementPanel';
-import WorkflowManagementPanel from '../../admin-dashboard/components/WorkflowManagementPanel';
-import TranslationManagementPanel from '../../admin-dashboard/components/TranslationManagementPanel';
-import LoggingPanel from '../../admin-dashboard/components/LoggingPanel';
-import SlaBackfillPanel from '../../admin-dashboard/components/SlaBackfillPanel';
-import LocationManagementPanel from './LocationManagementPanel';
+const UserManagementPanel = lazy(() => import('../../admin-dashboard/components/UserManagementPanel'));
+const PermissionsManagementPanel = lazy(() => import('../../admin-dashboard/components/PermissionsManagementPanel'));
+const WorkflowManagementPanel = lazy(() => import('../../admin-dashboard/components/WorkflowManagementPanel'));
+const TranslationManagementPanel = lazy(() => import('../../admin-dashboard/components/TranslationManagementPanel'));
+const LoggingPanel = lazy(() => import('../../admin-dashboard/components/LoggingPanel'));
+const SlaBackfillPanel = lazy(() => import('../../admin-dashboard/components/SlaBackfillPanel'));
+const LocationManagementPanel = lazy(() => import('./LocationManagementPanel'));
 
 import { ticketService } from '../../../services/ticketService';
 import { workflowService } from '../../../services/workflowService';
@@ -80,9 +80,10 @@ const getModuleMeta = (usersCount, rolesCount, workflowsCount) => ({
 
 const AdminModulesPanel = () => {
   const [activeModule, setActiveModule] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [hasLoadedModuleData, setHasLoadedModuleData] = useState(false);
 
   const [users, setUsers] = useState([]);
   const [permissions, setPermissions] = useState([]);
@@ -95,7 +96,7 @@ const AdminModulesPanel = () => {
       setError('');
 
       const [usersResult, permsResult, rolesResult, workflowsResult] = await Promise.allSettled([
-        ticketService.getAllHandlers(),
+        ticketService.getAllHandlers({ enrichPermissions: false }),
         permissionService.getAllPermissions(),
         permissionService.getAllRoles(),
         workflowService.getWorkflowsWithStats(),
@@ -119,8 +120,10 @@ const AdminModulesPanel = () => {
   }, []);
 
   useEffect(() => {
-    loadAllData();
-  }, [loadAllData]);
+    // Lazy-load admin datasets only when a module is opened.
+    if (!activeModule || hasLoadedModuleData) return;
+    loadAllData().finally(() => setHasLoadedModuleData(true));
+  }, [activeModule, hasLoadedModuleData, loadAllData]);
 
   const showToast = useCallback((message, isError = false) => {
     if (isError) {
@@ -207,50 +210,60 @@ const AdminModulesPanel = () => {
             </div>
 
             <div className={activeModule === 'workflows' ? 'p-4 md:p-5' : 'p-6'}>
-              {activeModule === 'users' && (
-                <UserManagementPanel
-                  users={users}
-                  roles={roles}
-                  workflows={workflows}
-                  onRefresh={loadAllData}
-                  onShowToast={showToast}
-                />
-              )}
+              <Suspense
+                fallback={
+                  <div className="rounded-xl border border-border bg-background/70 p-5 animate-pulse">
+                    <div className="h-4 w-48 bg-muted rounded mb-3"></div>
+                    <div className="h-3 w-full bg-muted/70 rounded mb-2"></div>
+                    <div className="h-3 w-4/5 bg-muted/70 rounded"></div>
+                  </div>
+                }
+              >
+                {activeModule === 'users' && (
+                  <UserManagementPanel
+                    users={users}
+                    roles={roles}
+                    workflows={workflows}
+                    onRefresh={loadAllData}
+                    onShowToast={showToast}
+                  />
+                )}
 
-              {activeModule === 'permissions' && (
-                <PermissionsManagementPanel
-                  permissions={permissions}
-                  roles={roles}
-                  users={users}
-                  onRefresh={loadAllData}
-                  onShowToast={showToast}
-                />
-              )}
+                {activeModule === 'permissions' && (
+                  <PermissionsManagementPanel
+                    permissions={permissions}
+                    roles={roles}
+                    users={users}
+                    onRefresh={loadAllData}
+                    onShowToast={showToast}
+                  />
+                )}
 
-              {activeModule === 'workflows' && (
-                <WorkflowManagementPanel
-                  workflows={workflows}
-                  users={users}
-                  onRefresh={loadAllData}
-                  onShowToast={showToast}
-                />
-              )}
+                {activeModule === 'workflows' && (
+                  <WorkflowManagementPanel
+                    workflows={workflows}
+                    users={users}
+                    onRefresh={loadAllData}
+                    onShowToast={showToast}
+                  />
+                )}
 
-              {activeModule === 'translations' && (
-                <TranslationManagementPanel onRefresh={loadAllData} onShowToast={showToast} />
-              )}
+                {activeModule === 'translations' && (
+                  <TranslationManagementPanel onRefresh={loadAllData} onShowToast={showToast} />
+                )}
 
-              {activeModule === 'locations' && (
-                <LocationManagementPanel />
-              )}
+                {activeModule === 'locations' && (
+                  <LocationManagementPanel />
+                )}
 
-              {activeModule === 'logging' && (
-                <LoggingPanel onShowToast={showToast} />
-              )}
+                {activeModule === 'logging' && (
+                  <LoggingPanel onShowToast={showToast} />
+                )}
 
-              {activeModule === 'slaTools' && (
-                <SlaBackfillPanel onShowToast={showToast} />
-              )}
+                {activeModule === 'slaTools' && (
+                  <SlaBackfillPanel onShowToast={showToast} />
+                )}
+              </Suspense>
             </div>
           </div>
         </div>

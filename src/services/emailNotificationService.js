@@ -1,5 +1,162 @@
 import { supabase } from '../lib/supabase';
 
+const DEFAULT_EMAIL_EVENT_TYPES = [
+  // Ticket
+  {
+    code: 'TICKET_CREATED',
+    category: 'ticket',
+    nameEn: 'Ticket Created',
+    nameNl: 'Ticket Aangemaakt',
+    descriptionEn: 'Send when a new ticket is created',
+    descriptionNl: 'Versturen wanneer een nieuw ticket wordt aangemaakt',
+    isSystemCritical: false,
+    enabledByDefault: true,
+  },
+  {
+    code: 'TICKET_ASSIGNED',
+    category: 'ticket',
+    nameEn: 'Ticket Assigned',
+    nameNl: 'Ticket Toegewezen',
+    descriptionEn: 'Send when a ticket is assigned to a handler',
+    descriptionNl: 'Versturen wanneer een ticket wordt toegewezen aan een behandelaar',
+    isSystemCritical: false,
+    enabledByDefault: true,
+  },
+  {
+    code: 'TICKET_STATUS_CHANGED',
+    category: 'ticket',
+    nameEn: 'Status Changed',
+    nameNl: 'Status Gewijzigd',
+    descriptionEn: 'Send when ticket status changes',
+    descriptionNl: 'Versturen wanneer de ticket status wijzigt',
+    isSystemCritical: false,
+    enabledByDefault: true,
+  },
+  {
+    code: 'TICKET_COMMENT_ADDED',
+    category: 'ticket',
+    nameEn: 'Comment Added',
+    nameNl: 'Reactie Toegevoegd',
+    descriptionEn: 'Send when a comment is added to a ticket',
+    descriptionNl: 'Versturen wanneer een reactie wordt toegevoegd aan een ticket',
+    isSystemCritical: false,
+    enabledByDefault: true,
+  },
+  {
+    code: 'TICKET_RESOLVED',
+    category: 'ticket',
+    nameEn: 'Ticket Resolved',
+    nameNl: 'Ticket Opgelost',
+    descriptionEn: 'Send when a ticket is marked as resolved',
+    descriptionNl: 'Versturen wanneer een ticket als opgelost wordt gemarkeerd',
+    isSystemCritical: false,
+    enabledByDefault: true,
+  },
+  {
+    code: 'TICKET_CLOSED',
+    category: 'ticket',
+    nameEn: 'Ticket Closed',
+    nameNl: 'Ticket Gesloten',
+    descriptionEn: 'Send when a ticket is closed',
+    descriptionNl: 'Versturen wanneer een ticket wordt gesloten',
+    isSystemCritical: false,
+    enabledByDefault: true,
+  },
+  {
+    code: 'TICKET_REOPENED',
+    category: 'ticket',
+    nameEn: 'Ticket Reopened',
+    nameNl: 'Ticket Heropend',
+    descriptionEn: 'Send when a resolved/closed ticket is reopened',
+    descriptionNl: 'Versturen wanneer een opgelost/gesloten ticket wordt heropend',
+    isSystemCritical: false,
+    enabledByDefault: true,
+  },
+  // Handler
+  {
+    code: 'HANDLER_ASSIGNED',
+    category: 'handler',
+    nameEn: 'Assigned to You',
+    nameNl: 'Aan Jou Toegewezen',
+    descriptionEn: 'Send when a ticket is assigned to you',
+    descriptionNl: 'Versturen wanneer een ticket aan jou wordt toegewezen',
+    isSystemCritical: false,
+    enabledByDefault: true,
+  },
+  {
+    code: 'HANDLER_MENTIONED',
+    category: 'handler',
+    nameEn: 'Mentioned in Comment',
+    nameNl: 'Vermeld in Reactie',
+    descriptionEn: 'Send when you are mentioned in a comment',
+    descriptionNl: 'Versturen wanneer je wordt vermeld in een reactie',
+    isSystemCritical: false,
+    enabledByDefault: true,
+  },
+  {
+    code: 'HANDLER_DAILY_DIGEST',
+    category: 'handler',
+    nameEn: 'Daily Digest',
+    nameNl: 'Dagelijkse Samenvatting',
+    descriptionEn: 'Daily summary of pending tickets',
+    descriptionNl: 'Dagelijkse samenvatting van openstaande tickets',
+    isSystemCritical: false,
+    enabledByDefault: false,
+  },
+  // SLA
+  {
+    code: 'SLA_WARNING',
+    category: 'sla',
+    nameEn: 'SLA Warning',
+    nameNl: 'SLA Waarschuwing',
+    descriptionEn: 'Send when SLA deadline is approaching',
+    descriptionNl: 'Versturen wanneer SLA deadline nadert',
+    isSystemCritical: true,
+    enabledByDefault: true,
+  },
+  {
+    code: 'SLA_BREACH',
+    category: 'sla',
+    nameEn: 'SLA Breach',
+    nameNl: 'SLA Schending',
+    descriptionEn: 'Send when SLA deadline is exceeded',
+    descriptionNl: 'Versturen wanneer SLA deadline wordt overschreden',
+    isSystemCritical: true,
+    enabledByDefault: true,
+  },
+  // System
+  {
+    code: 'SYSTEM_ERROR',
+    category: 'system',
+    nameEn: 'System Error',
+    nameNl: 'Systeemfout',
+    descriptionEn: 'Send when a critical system error occurs',
+    descriptionNl: 'Versturen bij een kritieke systeemfout',
+    isSystemCritical: true,
+    enabledByDefault: true,
+  },
+  {
+    code: 'SYSTEM_MAINTENANCE',
+    category: 'system',
+    nameEn: 'Maintenance Notice',
+    nameNl: 'Onderhoudsbericht',
+    descriptionEn: 'Send maintenance notifications',
+    descriptionNl: 'Versturen van onderhoudsberichten',
+    isSystemCritical: false,
+    enabledByDefault: true,
+  },
+  {
+    code: 'SYSTEM_UPDATE',
+    category: 'system',
+    nameEn: 'System Update',
+    nameNl: 'Systeem Update',
+    descriptionEn: 'Send notifications about system updates',
+    descriptionNl: 'Versturen van berichten over systeem updates',
+    isSystemCritical: false,
+    enabledByDefault: false,
+  },
+];
+
 // Helper function to convert snake_case to camelCase
 const toCamelCase = (obj) => {
   if (!obj) return obj;
@@ -29,10 +186,7 @@ const toSnakeCase = (obj) => {
 };
 
 export const emailNotificationService = {
-  /**
-   * Get all email event types
-   */
-  async getEmailEventTypes() {
+  async getEmailEventTypesWithMeta() {
     const { data, error } = await supabase
       .from('email_event_types')
       .select('*')
@@ -47,7 +201,23 @@ export const emailNotificationService = {
       }
       throw error;
     }
-    return toCamelCase(data || []);
+
+    const rows = toCamelCase(data || []);
+    if (rows.length > 0) {
+      return { rows, fallbackActive: false };
+    }
+
+    // Fallback for environments where seed data is missing or hidden by policy.
+    // Keeps handler-profile UI usable and avoids empty preference screens.
+    return { rows: DEFAULT_EMAIL_EVENT_TYPES, fallbackActive: true };
+  },
+
+  /**
+   * Get all email event types
+   */
+  async getEmailEventTypes() {
+    const result = await this.getEmailEventTypesWithMeta();
+    return result.rows || [];
   },
 
   /**
@@ -127,13 +297,17 @@ export const emailNotificationService = {
   /**
    * Get handler email preferences grouped by category
    */
-  async getHandlerEmailPreferencesByCategory(handlerId) {
-    const preferences = await this.getHandlerEmailPreferences(handlerId);
-    const eventTypes = await this.getEmailEventTypes();
+  async getHandlerEmailPreferencesByCategory(handlerId, options = {}) {
+    const withMeta = Boolean(options?.withMeta);
+    const [preferences, eventTypes] = await Promise.all([
+      this.getHandlerEmailPreferences(handlerId),
+      this.getEmailEventTypesWithMeta(),
+    ]);
 
+    const typeRows = Array.isArray(eventTypes?.rows) ? eventTypes.rows : [];
     const grouped = {};
 
-    eventTypes.forEach(type => {
+    typeRows.forEach(type => {
       if (!grouped[type.category]) {
         grouped[type.category] = [];
       }
@@ -146,6 +320,15 @@ export const emailNotificationService = {
         hasHandlerPreference: !!handlerPref
       });
     });
+
+    if (withMeta) {
+      return {
+        preferencesByCategory: grouped,
+        meta: {
+          fallbackActive: Boolean(eventTypes?.fallbackActive),
+        },
+      };
+    }
 
     return grouped;
   },

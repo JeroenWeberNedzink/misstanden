@@ -68,7 +68,9 @@ export const SettingsProvider = ({ children }) => {
   const loadSettings = async () => {
     try {
       setIsLoading(true);
-      const { byKey } = await settingsService.getSettings();
+      // Runtime settings do not require sensitive admin-only fields.
+      // Keeping this lightweight avoids 403->retry flows on protected pages.
+      const { byKey } = await settingsService.getSettings({ includeSensitive: false });
 
       // Convert to simple object with extracted values
       const normalized = {};

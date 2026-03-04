@@ -44,12 +44,19 @@ const normalizeRows = (rows) => {
 export const settingsService = {
   setTokenProvider,
 
-  async getSettings({ category = null } = {}) {
+  async getSettings({ category = null, includeSensitive = 'auto' } = {}) {
     const authHeaders = await getAuthHeaders();
     const params = new URLSearchParams();
     if (category) params.set('category', category);
-    // If auth header exists, ask for full admin view including sensitive settings.
-    if (authHeaders.Authorization) params.set('include_sensitive', '1');
+    // `includeSensitive`:
+    // - true: force include_sensitive=1
+    // - false: never request sensitive fields
+    // - auto: include only when an auth header exists
+    const shouldIncludeSensitive =
+      includeSensitive === true ||
+      (includeSensitive === 'auto' && Boolean(authHeaders.Authorization));
+
+    if (shouldIncludeSensitive) params.set('include_sensitive', '1');
 
     const url = `${API_URL}?${params.toString()}`;
 
@@ -69,6 +76,7 @@ export const settingsService = {
       // Graceful fallback for non-admin sessions: retry without sensitive flag.
       const msg = String(error?.message || '').toLowerCase();
       const shouldRetryWithoutSensitive =
+        shouldIncludeSensitive &&
         authHeaders.Authorization &&
         (
           msg.includes('admin') ||

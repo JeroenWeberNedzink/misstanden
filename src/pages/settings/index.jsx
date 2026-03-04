@@ -189,7 +189,8 @@ export default function SystemSettingsAdmin() {
   const [pageMode, setPageMode] = useState('admin'); // 'settings' | 'admin'
   const [selectedCategory, setSelectedCategory] = useState(null); // For focused category view
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -293,6 +294,7 @@ export default function SystemSettingsAdmin() {
       if (warning) {
         setError(`Settings API warning: ${warning}`);
       }
+      setHasLoadedSettings(true);
     } catch (e) {
       console.error(e);
       setError(e?.message || t('settings.messages.errorLoading'));
@@ -302,10 +304,6 @@ export default function SystemSettingsAdmin() {
   };
 
   useEffect(() => {
-    load();
-  }, []);
-
-  useEffect(() => {
     const modeParam = new URLSearchParams(location.search).get('mode');
     if (modeParam === 'settings') {
       setPageMode('settings');
@@ -313,6 +311,11 @@ export default function SystemSettingsAdmin() {
     }
     setPageMode('admin');
   }, [location.search]);
+
+  useEffect(() => {
+    if (pageMode !== 'settings' || hasLoadedSettings) return;
+    load();
+  }, [pageMode, hasLoadedSettings]);
 
   const save = async () => {
     if (!dirtyKeys.length) return;
