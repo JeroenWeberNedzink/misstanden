@@ -370,6 +370,82 @@ function ticket_setting_string(array $settings, array $aliases, string $default 
     return $str !== '' ? $str : $default;
 }
 
+function ticket_attachment_policy(array $settings): array {
+    $enabled = ticket_setting_bool($settings, ['portal.enable_attachments'], true);
+    $maxSizeMb = ticket_setting_int($settings, ['portal.max_attachment_size_mb'], 10);
+    if ($maxSizeMb <= 0) {
+        $maxSizeMb = 10;
+    }
+    $maxSizeMb = min($maxSizeMb, 250);
+    $maxBytes = $maxSizeMb * 1024 * 1024;
+
+    $rawAllowed = ticket_setting_value($settings, ['portal.allowed_file_types'], ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx']);
+    $allowedExtensions = [];
+
+    if (is_array($rawAllowed)) {
+        foreach ($rawAllowed as $entry) {
+            $ext = strtolower(trim((string)$entry));
+            $ext = ltrim($ext, '.');
+            if ($ext !== '') {
+                $allowedExtensions[] = $ext;
+            }
+        }
+    } elseif (is_string($rawAllowed) && trim($rawAllowed) !== '') {
+        foreach (explode(',', $rawAllowed) as $entry) {
+            $ext = strtolower(trim((string)$entry));
+            $ext = ltrim($ext, '.');
+            if ($ext !== '') {
+                $allowedExtensions[] = $ext;
+            }
+        }
+    }
+
+    $allowedExtensions = array_values(array_unique($allowedExtensions));
+    if (count($allowedExtensions) === 0) {
+        $allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'];
+    }
+
+    return [
+        'enabled' => $enabled,
+        'max_mb' => $maxSizeMb,
+        'max_bytes' => $maxBytes,
+        'allowed_extensions' => $allowedExtensions,
+    ];
+}
+
+function ticket_attachment_extension(string $fileName): string {
+    $name = trim(strtolower($fileName));
+    if ($name === '') return '';
+    $parts = explode('.', $name);
+    if (count($parts) < 2) return '';
+    return trim((string)end($parts));
+}
+
+function ticket_validate_attachment_policy(array $settings, string $fileName, ?int $sizeBytes): void {
+    $policy = ticket_attachment_policy($settings);
+    if (!$policy['enabled']) {
+        api_json(403, false, 'Attachments are currently disabled by system policy');
+    }
+
+    $extension = ticket_attachment_extension($fileName);
+    if ($extension === '' || !in_array($extension, $policy['allowed_extensions'], true)) {
+        api_json(400, false, 'Attachment file type is not allowed', [
+            'allowed_file_types' => $policy['allowed_extensions'],
+        ]);
+    }
+
+    if ($sizeBytes !== null) {
+        if ($sizeBytes < 0) {
+            api_json(400, false, 'Attachment size is invalid');
+        }
+        if ($sizeBytes > (int)$policy['max_bytes']) {
+            api_json(400, false, 'Attachment file is too large', [
+                'max_attachment_size_mb' => (int)$policy['max_mb'],
+            ]);
+        }
+    }
+}
+
 function ticket_normalize_workflow_scope(string $workflowType): string {
     $normalized = strtolower(trim($workflowType));
     if ($normalized === '') {
@@ -1204,6 +1280,7 @@ function handle_reporter_add_attachment(array $data): void {
     api_apply_no_store_headers();
     $baseUrl = get_supabase_url();
     $serviceKey = get_supabase_service_key();
+    $settings = ticket_load_system_settings($baseUrl, $serviceKey);
 
     $ticketInput = (string)($data['ticket_input'] ?? $data['ticket_number'] ?? $data['ticket_id'] ?? '');
     $accessCode = normalize_access_code($data['access_code'] ?? '');
@@ -1222,6 +1299,7 @@ function handle_reporter_add_attachment(array $data): void {
     if ($fileUrl === '') {
         api_json(400, false, 'file_url is required');
     }
+    ticket_validate_attachment_policy($settings, $fileName, $sizeBytes);
 
     ticket_enforce_request_rate_limit('attachment', $ticketInput);
 
@@ -1302,6 +1380,7 @@ function handle_handler_add_attachment(array $data): void {
     $baseUrl = (string)$ctx['base_url'];
     $serviceKey = (string)$ctx['service_key'];
     $handler = (array)$ctx['handler'];
+    $settings = ticket_load_system_settings($baseUrl, $serviceKey);
 
     $ticketId = trim((string)($data['ticket_id'] ?? ''));
     if (!ticket_is_uuid($ticketId)) {
@@ -1323,6 +1402,7 @@ function handle_handler_add_attachment(array $data): void {
     if ($fileUrl === '') {
         api_json(400, false, 'file_url is required');
     }
+    ticket_validate_attachment_policy($settings, $fileName, $sizeBytes);
 
     $performedBy = trim((string)($handler['name'] ?? '')) ?: 'System';
     $handlerId = trim((string)($handler['id'] ?? ''));

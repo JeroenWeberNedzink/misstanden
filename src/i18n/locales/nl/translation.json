@@ -682,8 +682,8 @@
         "categories": {
             "general": "Algemene Instellingen",
             "generalDescription": "Basis portal configuratie",
-            "portal": "Portal Functies",
-            "portalDescription": "Configureer wat gebruikers kunnen doen",
+            "portal": "Bijlagen",
+            "portalDescription": "Beheer bestandstypes, uploadgrootte en bijlagegedrag",
             "workflow": "Workflow",
             "workflowDescription": "Hoe tickets worden verwerkt",
             "tickets": "Tickets",

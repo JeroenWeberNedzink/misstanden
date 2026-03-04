@@ -4,7 +4,7 @@ import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import Image from '../../../components/AppImage';
 
-const AttachmentsPanel = ({ attachments, onAddAttachment, isLoading = false }) => {
+const AttachmentsPanel = ({ attachments, onAddAttachment, isLoading = false, canAdd = true }) => {
   const { t } = useTranslation();
   const [selectedFile, setSelectedFile] = useState(null);
 
@@ -72,7 +72,7 @@ const AttachmentsPanel = ({ attachments, onAddAttachment, isLoading = false }) =
             iconName="Plus"
             iconPosition="left"
             onClick={onAddAttachment}
-            disabled={isLoading}
+            disabled={isLoading || !canAdd}
           >
             {t('caseManagementDetail.attachments.add')}
           </Button>

@@ -43,6 +43,7 @@ const HIDDEN_SETTING_KEYS = new Set([
   'general.business_hours',
   'general.company_name',
   'portal.enable_registration',
+  'portal.enable_public_submissions',
   'compliance.gdpr_compliant',
   // Notifications settings hidden by request.
   'notifications.rate_limit_per_user',
@@ -152,7 +153,7 @@ const getCategoryMeta = (t) => ({
   }),
   portal: withSettingsAccent({
     label: t('settings.categories.portal'),
-    icon: 'LayoutDashboard',
+    icon: 'Paperclip',
     priority: 2,
     description: t('settings.categories.portalDescription'),
   }),

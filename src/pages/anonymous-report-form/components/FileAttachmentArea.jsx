@@ -3,22 +3,7 @@ import { useTranslation } from 'react-i18next';
 import Button from '../../../components/ui/Button';
 import Icon from '../../../components/AppIcon';
 import { useSettings } from '../../../contexts/SettingsContext';
-
-// Map file extensions to MIME types
-const MIME_TYPE_MAP = {
-  'jpg': 'image/jpeg',
-  'jpeg': 'image/jpeg',
-  'png': 'image/png',
-  'gif': 'image/gif',
-  'pdf': 'application/pdf',
-  'doc': 'application/msword',
-  'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'xls': 'application/vnd.ms-excel',
-  'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'txt': 'text/plain',
-  'csv': 'text/csv',
-  'zip': 'application/zip',
-};
+import { buildAttachmentPolicy, validateAttachmentSelection } from '../../../utils/attachmentPolicy';
 
 const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
   const { t } = useTranslation();
@@ -31,37 +16,23 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
   const [previewText, setPreviewText] = useState('');
 
   // Get settings or use defaults
-  const maxFileSize = (portal?.maxAttachmentSizeMb || 10) * 1024 * 1024;
-  const allowedExtensions = portal?.allowedFileTypes || ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'];
-  const attachmentsEnabled = portal?.enableAttachments !== false;
-
-  // Convert allowed extensions to MIME types
-  const allowedTypes = useMemo(() => {
-    return allowedExtensions.map(ext => MIME_TYPE_MAP[ext.toLowerCase()]).filter(Boolean);
-  }, [allowedExtensions]);
+  const attachmentPolicy = useMemo(() => buildAttachmentPolicy(portal), [portal]);
+  const { attachmentsEnabled, accept } = attachmentPolicy;
 
   const processSelectedFiles = (selectedFiles = []) => {
-    const validFiles = [];
-    const errors = [];
-
-    selectedFiles?.forEach(file => {
-      if (!attachmentsEnabled) {
-        errors?.push(t('reportForm.attachmentsDisabled', { defaultValue: 'Attachments are currently disabled' }));
-        return;
-      }
-      if (!allowedTypes?.includes(file?.type)) {
-        errors?.push(`${file?.name}: ${t('reportForm.invalidFileType')}`);
-        return;
-      }
-      if (file?.size > maxFileSize) {
-        errors?.push(`${file?.name}: ${t('reportForm.fileTooLarge')}`);
-        return;
-      }
-      validFiles?.push(file);
-    });
+    const { validFiles, errors } = validateAttachmentSelection(selectedFiles, attachmentPolicy);
 
     if (errors?.length > 0) {
-      alert(errors?.join('\n'));
+      const formatted = errors.map((err) => {
+        if (err.reason === 'disabled') {
+          return t('reportForm.attachmentsDisabled', { defaultValue: 'Attachments are currently disabled' });
+        }
+        if (err.reason === 'size') {
+          return `${err.fileName}: ${t('reportForm.fileTooLarge')}`;
+        }
+        return `${err.fileName}: ${t('reportForm.invalidFileType')}`;
+      });
+      alert(formatted.join('\n'));
     }
 
     if (validFiles?.length > 0) {
@@ -219,7 +190,7 @@ const FileAttachmentArea = ({ files, onFilesAdd, onFileRemove, error }) => {
           ref={fileInputRef}
           type="file"
           multiple
-          accept={allowedExtensions?.map(ext => `.${ext}`)?.join(',')}
+          accept={accept}
           onChange={handleFileSelect}
           disabled={!attachmentsEnabled}
           className="hidden"

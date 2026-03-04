@@ -585,7 +585,7 @@
         },
         "categories": {
             "general": "Allgemein",
-            "portal": "Portal",
+            "portal": "Anhaenge",
             "workflow": "Workflows",
             "sla": "SLA & Zeitplan",
             "email_notifications": "E-Mail-Benachrichtigungen",
@@ -595,7 +595,7 @@
             "retention": "Aufbewahrungsfristen",
             "danger": "Gefahrenzone",
             "generalDescription": "Grundlegende Portal-Konfiguration",
-            "portalDescription": "Portalverhalten und Benutzerfunktionen konfigurieren",
+            "portalDescription": "Dateitypen, Upload-Groesse und Anhang-Verhalten verwalten",
             "workflowDescription": "Workflows und Prozessablaeufe verwalten",
             "slaDescription": "Fristen, Reaktionszeiten und SLA-Ziele konfigurieren",
             "emailNotificationsDescription": "E-Mail-Benachrichtigungen und Vorlagen konfigurieren",

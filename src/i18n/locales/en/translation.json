@@ -665,7 +665,7 @@
         },
         "categories": {
             "general": "General",
-            "portal": "Portal",
+            "portal": "Attachments",
             "workflow": "Workflows",
             "tickets": "Tickets",
             "compliance": "Compliance",
@@ -677,7 +677,7 @@
             "retention": "Retention Periods",
             "danger": "Danger Zone",
             "generalDescription": "Core platform configuration",
-            "portalDescription": "Portal behavior and user-facing options",
+            "portalDescription": "Manage file types, upload size and attachment behavior",
             "workflowDescription": "Case workflows and process logic",
             "ticketsDescription": "Intake, priority and assignment defaults",
             "complianceDescription": "Privacy, audit and retention compliance settings",

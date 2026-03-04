@@ -17,6 +17,8 @@ import { ticketService } from '../../services/ticketService';
 import { supabase } from '../../lib/supabase';
 import { getApiAccessToken } from '../../lib/auth0ApiToken';
 import { addHours, getFirstResponseAt, getFirstResponseHoursForTicket, toDateSafe } from '../../utils/slaUtils';
+import { useSettings } from '../../contexts/SettingsContext';
+import { buildAttachmentPolicy, validateAttachmentSelection } from '../../utils/attachmentPolicy';
 
 const fmtDateTime = (value, locale) => {
   if (!value) return '-';
@@ -192,8 +194,10 @@ export default function CaseManagementDetail() {
   const isMountedRef = useRef(true);
   const { t, i18n } = useTranslation();
   const { user, getAccessTokenSilently } = useAuth0();
+  const { portal } = useSettings();
   const availableHandlersRef = useRef([]);
   const activeLoadRef = useRef(0);
+  const attachmentPolicy = useMemo(() => buildAttachmentPolicy(portal), [portal]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -742,11 +746,23 @@ export default function CaseManagementDetail() {
     if (!ticketId) return navigate('/handler-dashboard');
 
     try {
+      const { validFiles, errors: attachmentErrors } = validateAttachmentSelection(attachments, attachmentPolicy);
+      if (attachmentErrors.length > 0) {
+        const first = attachmentErrors[0];
+        if (first.reason === 'disabled') {
+          showToast(t('reportForm.attachmentsDisabled', { defaultValue: 'Attachments are currently disabled' }));
+        } else if (first.reason === 'size') {
+          showToast(`${first.fileName}: ${t('reportForm.fileTooLarge')}`);
+        } else {
+          showToast(`${first.fileName}: ${t('reportForm.invalidFileType')}`);
+        }
+      }
+
       const result = await ticketService.addInvestigationNote(
         ticketId,
         noteContent,
         authorName,
-        attachments,
+        validFiles,
         { currentHandlerId }
       );
       const created = result?.comment;
@@ -842,20 +858,36 @@ export default function CaseManagementDetail() {
   const handleAddAttachment = async () => {
     const ticketId = getStoredTicketId();
     if (!ticketId) return navigate('/handler-dashboard');
+    if (!attachmentPolicy.attachmentsEnabled) {
+      showToast(t('reportForm.attachmentsDisabled', { defaultValue: 'Attachments are currently disabled' }));
+      return;
+    }
 
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*,application/pdf,.doc,.docx,.xls,.xlsx';
+    input.accept = attachmentPolicy.accept;
     input.multiple = true;
 
     input.onchange = async (e) => {
       const files = Array.from(e.target.files || []);
       if (!files.length) return;
+      const { validFiles, errors: attachmentErrors } = validateAttachmentSelection(files, attachmentPolicy);
+      if (attachmentErrors.length > 0) {
+        const first = attachmentErrors[0];
+        if (first.reason === 'disabled') {
+          showToast(t('reportForm.attachmentsDisabled', { defaultValue: 'Attachments are currently disabled' }));
+        } else if (first.reason === 'size') {
+          showToast(`${first.fileName}: ${t('reportForm.fileTooLarge')}`);
+        } else {
+          showToast(`${first.fileName}: ${t('reportForm.invalidFileType')}`);
+        }
+      }
+      if (!validFiles.length) return;
 
       try {
-        showToast(t('caseManagementDetail.toasts.uploadingFiles', { count: files.length }));
+        showToast(t('caseManagementDetail.toasts.uploadingFiles', { count: validFiles.length }));
 
-        for (const file of files) {
+        for (const file of validFiles) {
           const att = await ticketService.uploadAttachment(ticketId, file, { currentHandlerId, notifyReporter: true });
 
           // Update attachments list locally.
@@ -1079,12 +1111,15 @@ export default function CaseManagementDetail() {
                 attachments={attachments}
                 onAddAttachment={handleAddAttachment}
                 isLoading={isRelationsLoading}
+                canAdd={attachmentPolicy.attachmentsEnabled}
               />
 
               <InvestigationNotesPanel
                 notes={investigationNotes}
                 onAddNote={handleAddNote}
                 isLoading={isRelationsLoading}
+                attachmentsPolicy={attachmentPolicy}
+                onAttachmentValidationError={(message) => showToast(message)}
               />
 
               <CommunicationPanel

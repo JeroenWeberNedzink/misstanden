@@ -2598,10 +2598,13 @@ async deleteHandler(handlerId, options = {}) {
 
     let attachment = null;
     let attachmentCreatedViaApi = false;
+    let handlerApiAttempted = false;
+    let handlerApiError = null;
     let reporterApiAttempted = false;
     let reporterApiError = null;
 
     if (currentHandlerId) {
+      handlerApiAttempted = true;
       try {
         const apiData = await ticketApiPost(
           {
@@ -2619,7 +2622,8 @@ async deleteHandler(handlerId, options = {}) {
         attachment = toCamelCase(apiData?.attachment || apiData);
         attachmentCreatedViaApi = true;
       } catch (apiError) {
-        console.warn('[ticketService] handler_add_attachment API failed, falling back to direct insert', apiError);
+        handlerApiError = apiError;
+        console.warn('[ticketService] handler_add_attachment API failed', apiError);
       }
     }
 
@@ -2659,7 +2663,19 @@ async deleteHandler(handlerId, options = {}) {
       throw e;
     }
 
+    if (!attachment && handlerApiAttempted && currentHandlerId) {
+      try {
+        await supabase.storage.from(bucket).remove([path]);
+      } catch (cleanupError) {
+        console.warn('[ticketService] Failed to cleanup uploaded handler attachment after API failure', cleanupError);
+      }
+      const e = new Error(`uploadAttachment(handler_add_attachment): ${handlerApiError?.message || 'Failed to attach file'}`);
+      e.original = handlerApiError || null;
+      throw e;
+    }
+
     if (!attachment) {
+      // Legacy fallback only for internal flows without handler/reporter API context.
       attachment = await this.createAttachmentRecord(ticketId, attachmentPayload);
     }
     const signedUrl = await createSignedAttachmentUrl(fileUrl, bucket, 600);

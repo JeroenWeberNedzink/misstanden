@@ -518,7 +518,7 @@
         },
         "categories": {
             "general": "General",
-            "portal": "Portal",
+            "portal": "Attachments",
             "workflow": "Workflows",
             "sla": "SLA & Timeline",
             "email_notifications": "Email Notifications",
@@ -528,7 +528,7 @@
             "retention": "Retention Periods",
             "danger": "Danger Zone",
             "generalDescription": "Core platform configuration",
-            "portalDescription": "Portal behavior and user-facing options",
+            "portalDescription": "Manage file types, upload size and attachment behavior",
             "workflowDescription": "Case workflows and process logic",
             "slaDescription": "Deadlines, response targets and timeline rules",
             "emailNotificationsDescription": "Email delivery, templates and notification rules",

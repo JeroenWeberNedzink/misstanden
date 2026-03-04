@@ -585,7 +585,7 @@
         },
         "categories": {
             "general": "Général",
-            "portal": "Portail",
+            "portal": "Pieces jointes",
             "workflow": "Workflows",
             "sla": "SLA & Chronologie",
             "email_notifications": "Notifications Email",
@@ -595,7 +595,7 @@
             "retention": "Périodes de rétention",
             "danger": "Zone dangereuse",
             "generalDescription": "Configuration generale du portail",
-            "portalDescription": "Comportement du portail et options cote utilisateur",
+            "portalDescription": "Gerer les types de fichiers, la taille et le comportement des pieces jointes",
             "workflowDescription": "Workflows et logique de traitement des dossiers",
             "slaDescription": "Delais, objectifs de reponse et regles de chronologie",
             "emailNotificationsDescription": "Parametres e-mail, modeles et regles de notification",

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
+import { validateAttachmentSelection } from '../../../utils/attachmentPolicy';
 
 const initialsFromName = (name) => {
   const safe = String(name || '').trim();
@@ -13,7 +14,13 @@ const initialsFromName = (name) => {
   return (first + last).toUpperCase();
 };
 
-const InvestigationNotesPanel = ({ notes, onAddNote, isLoading = false }) => {
+const InvestigationNotesPanel = ({
+  notes,
+  onAddNote,
+  isLoading = false,
+  attachmentsPolicy = null,
+  onAttachmentValidationError = null,
+}) => {
   const { t } = useTranslation();
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [newNote, setNewNote] = useState('');
@@ -45,7 +52,23 @@ const InvestigationNotesPanel = ({ notes, onAddNote, isLoading = false }) => {
   const handleFilesSelected = (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
-    setSelectedFiles((prev) => [...prev, ...files]);
+    const { validFiles, errors } = validateAttachmentSelection(files, attachmentsPolicy);
+    if (errors.length > 0 && typeof onAttachmentValidationError === 'function') {
+      const first = errors[0];
+      if (first.reason === 'disabled') {
+        onAttachmentValidationError(t('reportForm.attachmentsDisabled', { defaultValue: 'Attachments are currently disabled' }));
+      } else if (first.reason === 'size') {
+        onAttachmentValidationError(`${first.fileName}: ${t('reportForm.fileTooLarge')}`);
+      } else {
+        onAttachmentValidationError(`${first.fileName}: ${t('reportForm.invalidFileType')}`);
+      }
+    }
+    if (!validFiles.length) {
+      e.target.value = '';
+      return;
+    }
+
+    setSelectedFiles((prev) => [...prev, ...validFiles]);
     e.target.value = '';
   };
 
@@ -112,9 +135,23 @@ const InvestigationNotesPanel = ({ notes, onAddNote, isLoading = false }) => {
               />
 
               <div className="flex items-center gap-2">
-                <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFilesSelected} />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={handleFilesSelected}
+                  accept={attachmentsPolicy?.accept || undefined}
+                />
 
-                <Button variant="outline" size="sm" iconName="Paperclip" iconPosition="left" onClick={handleAddFiles}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  iconName="Paperclip"
+                  iconPosition="left"
+                  onClick={handleAddFiles}
+                  disabled={attachmentsPolicy?.attachmentsEnabled === false}
+                >
                   {t('caseManagementDetail.notes.attachment')}
                 </Button>
 
