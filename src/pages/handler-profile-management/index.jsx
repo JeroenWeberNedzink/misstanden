@@ -5,6 +5,7 @@ import { Helmet } from 'react-helmet';
 import AuthContextNavigator from '../../components/navigation/AuthContextNavigator';
 import { handlerProfileService } from '../../services/handlerProfileService';
 import { emailNotificationService } from '../../services/emailNotificationService';
+import { emailVerificationService } from '../../services/emailVerificationService';
 import Icon from '../../components/AppIcon';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -78,6 +79,19 @@ const HandlerProfileManagement = () => {
 
   // Global email channel toggle (stored in notification settings table)
   const [emailChannel, setEmailChannel] = useState({ emailEnabled: true });
+  const [emailVerification, setEmailVerification] = useState({
+    isVerified: Boolean(user?.email_verified),
+    email: String(user?.email || ''),
+    statusAvailable: true,
+    sendAvailable: true,
+    warning: '',
+    loading: false,
+    sending: false,
+    message: '',
+    error: '',
+    updatedAt: null,
+    requestedAt: null,
+  });
 
   const roles = useMemo(() => {
     const list = Array.isArray(handlerProfile?.roles) ? handlerProfile.roles : [];
@@ -95,6 +109,77 @@ const HandlerProfileManagement = () => {
     if (user?.sub) loadProfileData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.sub]);
+
+  useEffect(() => {
+    setEmailVerification((prev) => ({
+      ...prev,
+      isVerified: Boolean(user?.email_verified),
+      email: String(user?.email || prev.email || ''),
+    }));
+  }, [user?.email, user?.email_verified]);
+
+  const refreshEmailVerificationStatus = async ({ silent = false } = {}) => {
+    try {
+      setEmailVerification((prev) => ({
+        ...prev,
+        loading: !silent,
+        error: '',
+      }));
+
+      const token = await getApiAccessToken(getAccessTokenSilently);
+      const status = await emailVerificationService.getStatus(token);
+      setEmailVerification((prev) => ({
+        ...prev,
+        loading: false,
+        isVerified: Boolean(status?.emailVerified),
+        email: status?.email || prev.email,
+        updatedAt: status?.updatedAt || prev.updatedAt || null,
+        statusAvailable: status?.verificationAvailable !== false,
+        sendAvailable: status?.sendAvailable !== false,
+        warning: status?.warning || '',
+      }));
+    } catch (err) {
+      console.error('Error loading email verification status:', err);
+      setEmailVerification((prev) => ({
+        ...prev,
+        loading: false,
+        error: err?.message || 'Kon verificatiestatus niet laden',
+      }));
+    }
+  };
+
+  const handleSendVerificationEmail = async () => {
+    try {
+      setEmailVerification((prev) => ({
+        ...prev,
+        sending: true,
+        message: '',
+        error: '',
+      }));
+
+      const token = await getApiAccessToken(getAccessTokenSilently);
+      const result = await emailVerificationService.sendVerificationEmail(token);
+      setEmailVerification((prev) => ({
+        ...prev,
+        sending: false,
+        isVerified: Boolean(result?.emailVerified),
+        email: result?.email || prev.email,
+        requestedAt: result?.requestedAt || prev.requestedAt || null,
+        message: Boolean(result?.emailVerified)
+          ? 'E-mailadres is al geverifieerd.'
+          : 'Verificatie e-mail verzonden. Controleer uw inbox.',
+      }));
+
+      await refreshEmailVerificationStatus({ silent: true });
+    } catch (err) {
+      console.error('Error sending verification email:', err);
+      setEmailVerification((prev) => ({
+        ...prev,
+        sending: false,
+        error: err?.message || 'Verificatie e-mail verzenden mislukt',
+      }));
+    }
+  };
 
   const loadProfileData = async () => {
     try {
@@ -149,6 +234,8 @@ const HandlerProfileManagement = () => {
       } else {
         setEmailChannel({ emailEnabled: true });
       }
+
+      await refreshEmailVerificationStatus({ silent: true });
     } catch (err) {
       console.error('Error loading profile data:', err);
       setError(err?.message || 'Fout bij het laden van profielgegevens');
@@ -224,6 +311,9 @@ const HandlerProfileManagement = () => {
               handlerProfile={handlerProfile}
               roles={roles}
               permissionCount={enabledPermissionLabels.length}
+              emailVerification={emailVerification}
+              onSendVerification={handleSendVerificationEmail}
+              onRefreshVerification={refreshEmailVerificationStatus}
             />
 
             {error && (
@@ -338,6 +428,16 @@ const compactId = (value) => {
   return `${raw.slice(0, 8)}...${raw.slice(-6)}`;
 };
 
+const formatDateTimeNl = (iso) => {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('nl-NL', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
+};
+
 const StatTile = ({ label, value, icon, compact = false }) => (
   <div className="rounded-xl border border-border bg-muted/20 px-3.5 py-3 min-h-[84px] flex flex-col justify-between">
     <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -348,10 +448,25 @@ const StatTile = ({ label, value, icon, compact = false }) => (
   </div>
 );
 
-const AccountOverviewPanel = ({ user, handlerProfile, roles, permissionCount }) => {
+const AccountOverviewPanel = ({
+  user,
+  handlerProfile,
+  roles,
+  permissionCount,
+  emailVerification,
+  onSendVerification,
+  onRefreshVerification,
+}) => {
   const displayName = user?.name || handlerProfile?.name || 'Handler';
-  const displayEmail = handlerProfile?.email || user?.email || '-';
+  const displayEmail = emailVerification?.email || handlerProfile?.email || user?.email || '-';
   const primaryRole = formatRoleLabel(pickPrimaryRole(roles, handlerProfile?.role));
+  const isEmailVerified = Boolean(emailVerification?.isVerified);
+  const statusAvailable = emailVerification?.statusAvailable !== false;
+  const sendAvailable = emailVerification?.sendAvailable !== false;
+  const isExternallyManagedEmail = !isEmailVerified && statusAvailable && !sendAvailable;
+  const verificationWarning = String(emailVerification?.warning || '').trim();
+  const verificationMessage = String(emailVerification?.message || '').trim();
+  const verificationError = String(emailVerification?.error || '').trim();
   const initials = String(displayName)
     .split(' ')
     .map((part) => part.charAt(0))
@@ -388,11 +503,97 @@ const AccountOverviewPanel = ({ user, handlerProfile, roles, permissionCount }) 
                 <Icon name="CheckCircle" size={12} />
                 OAuth verbonden
               </span>
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${user?.email_verified ? 'bg-success/10 text-success border-success/20' : 'bg-warning/10 text-warning border-warning/20'}`}>
-                <Icon name={user?.email_verified ? 'CheckCircle' : 'AlertCircle'} size={12} />
-                {user?.email_verified ? 'E-mail geverifieerd' : 'E-mail niet geverifieerd'}
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${(isEmailVerified || isExternallyManagedEmail) ? 'bg-success/10 text-success border-success/20' : 'bg-warning/10 text-warning border-warning/20'}`}>
+                <Icon name={isEmailVerified || isExternallyManagedEmail ? 'CheckCircle' : 'AlertCircle'} size={12} />
+                {isEmailVerified
+                  ? 'E-mail geverifieerd'
+                  : isExternallyManagedEmail
+                    ? 'E-mailstatus via organisatie (SSO)'
+                    : 'E-mail niet geverifieerd'}
               </span>
             </div>
+
+            {isExternallyManagedEmail && (
+              <div className="mt-3 rounded-lg border border-success/30 bg-success/10 px-3 py-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">E-mailstatus is correct ingesteld</p>
+                    <p className="text-xs text-muted-foreground">
+                      Verificatie wordt beheerd door uw organisatie (SSO/Entra). Er is geen actie nodig in dit portaal.
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      iconName="RefreshCw"
+                      onClick={() => onRefreshVerification?.({ silent: false })}
+                      disabled={emailVerification?.loading}
+                      className="w-full sm:w-auto"
+                    >
+                      {emailVerification?.loading ? 'Bezig...' : 'Status vernieuwen'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!isEmailVerified && !isExternallyManagedEmail && (
+              <div className="mt-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Bevestig uw e-mailadres</p>
+                    <p className="text-xs text-muted-foreground">
+                      Verificatie is nodig voor betrouwbare e-mailnotificaties.
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      iconName="RefreshCw"
+                      onClick={() => onRefreshVerification?.({ silent: false })}
+                      disabled={emailVerification?.loading || emailVerification?.sending}
+                      className="w-full sm:w-auto"
+                    >
+                      {emailVerification?.loading ? 'Bezig...' : 'Status vernieuwen'}
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      iconName="Mail"
+                      onClick={onSendVerification}
+                      loading={emailVerification?.sending}
+                      disabled={emailVerification?.sending || !sendAvailable}
+                      className="w-full sm:w-auto"
+                    >
+                      Verificatie e-mail sturen
+                    </Button>
+                  </div>
+                </div>
+
+                {!!verificationWarning && (
+                  <p className="text-xs text-warning mt-2">{verificationWarning}</p>
+                )}
+                {!!verificationMessage && (
+                  <p className="text-xs text-success mt-2">{verificationMessage}</p>
+                )}
+                {!!verificationError && (
+                  <p className="text-xs text-destructive mt-2">{verificationError}</p>
+                )}
+                {!!emailVerification?.requestedAt && (
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Laatst verzonden: {formatDateTimeNl(emailVerification.requestedAt)}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {isEmailVerified && emailVerification?.updatedAt && (
+              <p className="text-[11px] text-muted-foreground mt-3">
+                Verificatie bevestigd op {formatDateTimeNl(emailVerification.updatedAt)}
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3 w-full md:w-[320px] lg:w-[340px]">

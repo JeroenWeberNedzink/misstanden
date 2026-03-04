@@ -82,7 +82,7 @@ const TICKETS_API_URL = '/api/tickets.api.php';
 const WORKFLOWS_API_URL = '/api/workflows.api.php';
 let ticketTokenProvider = null;
 const TICKET_RUNTIME_SETTINGS_TTL_MS = 2 * 60 * 1000;
-let cachedTicketRuntimeSettings = null;
+let cachedTicketSettingsByKey = null;
 let cachedTicketRuntimeSettingsAt = 0;
 
 const setTokenProvider = (provider) => {
@@ -149,13 +149,38 @@ const readSettingByAliases = (normalizedByKey, aliases = [], fallback = undefine
   return fallback;
 };
 
-const buildTicketRuntimeSettings = (normalizedByKey = {}) => {
+const normalizeWorkflowCode = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const buildScopedWorkflowSettingKey = (workflowType, workflowSettingKey) => {
+  const code = normalizeWorkflowCode(workflowType);
+  const base = String(workflowSettingKey || '').trim();
+  if (!code || !base.startsWith('workflow.')) return null;
+  const suffix = base.slice('workflow.'.length);
+  return suffix ? `workflow.${code}.${suffix}` : null;
+};
+
+const buildTicketRuntimeSettings = (normalizedByKey = {}, workflowType = '') => {
+  const scopedWorkflowKey = (workflowKey) => buildScopedWorkflowSettingKey(workflowType, workflowKey);
+
   const allowPublicSubmission = normalizeSettingBoolean(
     readSettingByAliases(normalizedByKey, ['tickets.allow_public_submission', 'portal.enable_public_submissions'], true),
     true
   );
   const autoAssignEnabled = normalizeSettingBoolean(
-    readSettingByAliases(normalizedByKey, ['tickets.auto_assign_enabled', 'workflow.auto_assign'], true),
+    readSettingByAliases(
+      normalizedByKey,
+      [
+        ...(scopedWorkflowKey('workflow.auto_assign') ? [scopedWorkflowKey('workflow.auto_assign')] : []),
+        'tickets.auto_assign_enabled',
+        'workflow.auto_assign',
+      ],
+      true
+    ),
     true
   );
   const autoCloseResolvedDays = normalizeSettingNumber(
@@ -199,10 +224,46 @@ const buildTicketRuntimeSettings = (normalizedByKey = {}) => {
     readSettingByAliases(normalizedByKey, ['compliance.gdpr_compliant'], true),
     true
   );
+  const allowStatusRollback = normalizeSettingBoolean(
+    readSettingByAliases(
+      normalizedByKey,
+      [
+        ...(scopedWorkflowKey('workflow.allow_status_rollback') ? [scopedWorkflowKey('workflow.allow_status_rollback')] : []),
+        'workflow.allow_status_rollback',
+      ],
+      false
+    ),
+    false
+  );
+  const requireCommentOnStatusChange = normalizeSettingBoolean(
+    readSettingByAliases(
+      normalizedByKey,
+      [
+        ...(scopedWorkflowKey('workflow.require_comment_on_status_change') ? [scopedWorkflowKey('workflow.require_comment_on_status_change')] : []),
+        'workflow.require_comment_on_status_change',
+      ],
+      true
+    ),
+    true
+  );
+  const notifyOnAssignment = normalizeSettingBoolean(
+    readSettingByAliases(
+      normalizedByKey,
+      [
+        ...(scopedWorkflowKey('workflow.notify_on_assignment') ? [scopedWorkflowKey('workflow.notify_on_assignment')] : []),
+        'workflow.notify_on_assignment',
+      ],
+      true
+    ),
+    true
+  );
 
   return {
     allowPublicSubmission,
     autoAssignEnabled,
+    allowStatusRollback,
+    requireCommentOnStatusChange,
+    notifyOnAssignment,
     autoCloseResolvedDays,
     defaultPriority,
     requireEmailVerification,
@@ -217,10 +278,10 @@ const buildTicketRuntimeSettings = (normalizedByKey = {}) => {
   };
 };
 
-const getTicketRuntimeSettings = async () => {
+const getNormalizedTicketSettingsByKey = async () => {
   const now = Date.now();
-  if (cachedTicketRuntimeSettings && now - cachedTicketRuntimeSettingsAt < TICKET_RUNTIME_SETTINGS_TTL_MS) {
-    return cachedTicketRuntimeSettings;
+  if (cachedTicketSettingsByKey && now - cachedTicketRuntimeSettingsAt < TICKET_RUNTIME_SETTINGS_TTL_MS) {
+    return cachedTicketSettingsByKey;
   }
 
   try {
@@ -235,14 +296,19 @@ const getTicketRuntimeSettings = async () => {
         : raw;
       normalizedByKey[key] = value;
     });
-    cachedTicketRuntimeSettings = buildTicketRuntimeSettings(normalizedByKey);
+    cachedTicketSettingsByKey = normalizedByKey;
   } catch (error) {
     console.warn('[ticketService] Failed to load runtime settings, using defaults', error);
-    cachedTicketRuntimeSettings = buildTicketRuntimeSettings({});
+    cachedTicketSettingsByKey = {};
   }
 
   cachedTicketRuntimeSettingsAt = now;
-  return cachedTicketRuntimeSettings;
+  return cachedTicketSettingsByKey;
+};
+
+const getTicketRuntimeSettings = async (workflowType = '') => {
+  const normalizedByKey = await getNormalizedTicketSettingsByKey();
+  return buildTicketRuntimeSettings(normalizedByKey, workflowType);
 };
 
 const isResolvedStatus = (statusCode) => {
@@ -1267,7 +1333,7 @@ export const ticketService = {
     }
 
     const ticket = toCamelCase(data);
-    const runtimeSettings = await getTicketRuntimeSettings();
+    const runtimeSettings = await getTicketRuntimeSettings(ticket?.workflowType || ticket?.workflow_type);
     const withHandlers = await decorateTicketWithTicketHandlers(ticket);
     if (!includeRelations) {
       return applyTicketRuntimePolicies(withHandlers, runtimeSettings);
@@ -1318,8 +1384,9 @@ export const ticketService = {
       throw new Error(json?.message || 'Ongeldige ticket-ID of toegangscode');
     }
 
-    const runtimeSettings = await getTicketRuntimeSettings();
-    return applyTicketRuntimePolicies(toCamelCase(json.data), runtimeSettings, { reporterView: true });
+    const loadedTicket = toCamelCase(json.data);
+    const runtimeSettings = await getTicketRuntimeSettings(loadedTicket?.workflowType || loadedTicket?.workflow_type);
+    return applyTicketRuntimePolicies(loadedTicket, runtimeSettings, { reporterView: true });
   },
 
   async addReporterMessageByCredentials(ticketInput, accessCode, body) {
@@ -1348,20 +1415,19 @@ export const ticketService = {
 
     const message = toCamelCase(json?.data?.message || null);
     const updatedTicket = toCamelCase(json?.data?.ticket || null);
-    const runtimeSettings = await getTicketRuntimeSettings();
+    const runtimeSettings = await getTicketRuntimeSettings(updatedTicket?.workflowType || updatedTicket?.workflow_type);
     return { message, ticket: applyTicketRuntimePolicies(updatedTicket, runtimeSettings, { reporterView: true }) };
   },
 
   // ----- Create -----
   async createTicket(ticketData) {
     if (!ticketData?.description) throw new Error('description is required');
-    const runtimeSettings = await getTicketRuntimeSettings();
+    const workflowType = safeTrim(ticketData?.workflowType);
+    if (!workflowType) throw new Error('workflowType is required');
+    const runtimeSettings = await getTicketRuntimeSettings(workflowType);
     if (!runtimeSettings.allowPublicSubmission) {
       throw new Error('Public submissions are currently disabled by system settings.');
     }
-
-    const workflowType = safeTrim(ticketData?.workflowType);
-    if (!workflowType) throw new Error('workflowType is required');
 
     const isAnonymous = !!ticketData?.isAnonymous;
     const reporterEmail = safeTrim(ticketData?.reporterEmail);
@@ -1866,6 +1932,10 @@ async deleteHandler(handlerId, options = {}) {
     return runtimeSettings.auditLogEnabled !== false;
   },
 
+  async getWorkflowRuntimeSettings(workflowType = '') {
+    return getTicketRuntimeSettings(workflowType);
+  },
+
   // ----- Generic ticket update -----
   async updateTicket(ticketId, updates = {}) {
     if (!ticketId) throw new Error('ticketId is required');
@@ -1893,7 +1963,7 @@ async deleteHandler(handlerId, options = {}) {
     let ticketBefore = null;
     const { data: ticketBeforeData, error: ticketBeforeError } = await supabase
       .from('tickets')
-      .select('handler_id')
+      .select('handler_id, workflow_type')
       .eq('id', ticketId)
       .maybeSingle();
     if (ticketBeforeError) {
@@ -1969,6 +2039,10 @@ async deleteHandler(handlerId, options = {}) {
     }
 
     const updatedTicket = await this.updateTicket(ticketId, { handlerId: primaryHandlerId });
+    const workflowRuntimeSettings = await getTicketRuntimeSettings(
+      safeTrim(ticketBefore?.workflow_type || updatedTicket?.workflowType || updatedTicket?.workflow_type)
+    );
+    const shouldNotifyOnAssignment = workflowRuntimeSettings.notifyOnAssignment !== false;
 
     // Get handler info for logging
     let handlerInfo = null;
@@ -2014,7 +2088,7 @@ async deleteHandler(handlerId, options = {}) {
       : primaryHandlerId
         ? [primaryHandlerId]
         : [];
-    if (addedHandlerIds.length > 0) {
+    if (shouldNotifyOnAssignment && addedHandlerIds.length > 0) {
       for (const assignedId of addedHandlerIds) {
         const assignedHandler = handlerMap.get(assignedId);
         if (!assignedHandler) continue;
@@ -2029,7 +2103,7 @@ async deleteHandler(handlerId, options = {}) {
     const hasAnyAssignmentNow = normalizedHandlerIds.length > 0;
     const firstAssignment = !hadAnyAssignmentBefore && hasAnyAssignmentNow;
 
-    if (firstAssignment) {
+    if (shouldNotifyOnAssignment && firstAssignment) {
       const assignedHandlersForReporter = normalizedHandlerIds
         .map((id) => handlerMap.get(id))
         .filter(Boolean);

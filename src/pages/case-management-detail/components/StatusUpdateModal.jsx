@@ -4,7 +4,7 @@ import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
 import { workflowService } from '../../../services/workflowService';
-import { useSettings } from '../../../contexts/SettingsContext';
+import { ticketService } from '../../../services/ticketService';
 
 const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
@@ -33,8 +33,11 @@ export default function StatusUpdateModal({
   onUpdate,
 }) {
   const { t } = useTranslation();
-  const { workflow: workflowSettings } = useSettings();
   const [workflow, setWorkflow] = useState(null);
+  const [workflowRuntimeSettings, setWorkflowRuntimeSettings] = useState({
+    allowStatusRollback: false,
+    requireCommentOnStatusChange: true,
+  });
   const [isLoadingWorkflow, setIsLoadingWorkflow] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [updateNote, setUpdateNote] = useState('');
@@ -56,7 +59,14 @@ export default function StatusUpdateModal({
         if (!wf?.id) throw new Error('Workflow not found');
 
         const statuses = await workflowService.getWorkflowStatuses(wf.id, { useCache: true });
+        const runtime = await ticketService.getWorkflowRuntimeSettings(code);
         if (!cancelled) setWorkflow({ ...wf, statusesArray: statuses });
+        if (!cancelled) {
+          setWorkflowRuntimeSettings({
+            allowStatusRollback: runtime?.allowStatusRollback === true,
+            requireCommentOnStatusChange: runtime?.requireCommentOnStatusChange !== false,
+          });
+        }
       } catch (e) {
         console.error('[StatusUpdateModal] Error loading workflow:', e);
         if (!cancelled) setLoadError(t('caseManagementDetail.statusFlow.workflowLoadError'));
@@ -128,14 +138,15 @@ export default function StatusUpdateModal({
   const handleUpdate = () => {
     if (!selectedValue || isUnchanged) return;
 
-    if (!safeTrim(updateNote)) {
+    const requiresNote = workflowRuntimeSettings?.requireCommentOnStatusChange !== false;
+    if (requiresNote && !safeTrim(updateNote)) {
       alert(t('caseManagementDetail.statusModal.noteRequiredAlert'));
       return;
     }
 
     const currentIdx = options.findIndex((o) => safeLower(o.value) === safeLower(currentComparable));
     const newIdx = options.findIndex((o) => o.value === selectedValue);
-    if (currentIdx >= 0 && newIdx >= 0 && newIdx < currentIdx && !workflowSettings?.allowStatusRollback) {
+    if (currentIdx >= 0 && newIdx >= 0 && newIdx < currentIdx && !workflowRuntimeSettings?.allowStatusRollback) {
       alert(t('caseManagementDetail.statusModal.rollbackNotAllowedAlert'));
       return;
     }

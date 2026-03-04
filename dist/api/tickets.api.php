@@ -370,6 +370,44 @@ function ticket_setting_string(array $settings, array $aliases, string $default 
     return $str !== '' ? $str : $default;
 }
 
+function ticket_normalize_workflow_scope(string $workflowType): string {
+    $normalized = strtolower(trim($workflowType));
+    if ($normalized === '') {
+        return '';
+    }
+    $normalized = preg_replace('/[^a-z0-9_]+/', '_', $normalized) ?? '';
+    $normalized = trim($normalized, '_');
+    return $normalized;
+}
+
+function ticket_workflow_scoped_setting_key(string $workflowType, string $workflowSettingKey): ?string {
+    $scope = ticket_normalize_workflow_scope($workflowType);
+    if ($scope === '' || !str_starts_with($workflowSettingKey, 'workflow.')) {
+        return null;
+    }
+    $suffix = substr($workflowSettingKey, strlen('workflow.'));
+    if ($suffix === false || $suffix === '') {
+        return null;
+    }
+    return 'workflow.' . $scope . '.' . $suffix;
+}
+
+function ticket_setting_bool_for_workflow(array $settings, string $workflowType, array $aliases, bool $default = false): bool {
+    $orderedAliases = [];
+    foreach ($aliases as $alias) {
+        $alias = trim((string)$alias);
+        if ($alias === '') {
+            continue;
+        }
+        $scoped = ticket_workflow_scoped_setting_key($workflowType, $alias);
+        if ($scoped !== null) {
+            $orderedAliases[] = $scoped;
+        }
+        $orderedAliases[] = $alias;
+    }
+    return ticket_setting_bool($settings, $orderedAliases, $default);
+}
+
 function ticket_normalize_severity(string $value, string $fallback = 'low'): string {
     $normalized = strtolower(trim($value));
     if (in_array($normalized, ['low', 'medium', 'high', 'critical'], true)) {
@@ -743,7 +781,13 @@ function handle_create(array $data): void {
     $anonymizeClosedTickets = ticket_setting_bool($settings, ['compliance.anonymize_closed_tickets'], false);
     $backupFrequency = ticket_setting_string($settings, ['compliance.backup_frequency'], 'weekly');
     $dataRetentionDays = ticket_setting_int($settings, ['compliance.data_retention_days', 'audit.retention_days'], 365);
-    $autoAssignEnabled = ticket_setting_bool($settings, ['tickets.auto_assign_enabled', 'workflow.auto_assign'], true);
+    $workflowTypeInput = trim((string)($data['workflow_type'] ?? ''));
+    $autoAssignEnabled = ticket_setting_bool_for_workflow(
+        $settings,
+        $workflowTypeInput,
+        ['tickets.auto_assign_enabled', 'workflow.auto_assign'],
+        true
+    );
 
     $incomingMetadata = is_array($data['metadata'] ?? null) ? $data['metadata'] : [];
     $incomingCompliance = is_array($incomingMetadata['compliance'] ?? null) ? $incomingMetadata['compliance'] : [];

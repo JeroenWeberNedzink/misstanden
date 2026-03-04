@@ -8,7 +8,6 @@ import Button from '../../components/ui/Button';
 import { settingsService } from '../../services/SettingsService';
 import { useSettings } from '../../contexts/SettingsContext';
 import EmailNotificationSettings from './components/EmailNotificationSettings';
-import LocationManagementPanel from './components/LocationManagementPanel';
 import SettingCard from './components/SettingCard';
 import AdminModulesPanel from './components/AdminModulesPanel';
 
@@ -37,6 +36,29 @@ const SETTINGS_ACCENT_STYLES = {
   bgColor: 'bg-card',
   iconBg: 'bg-sky-100',
   iconColor: 'text-sky-700',
+};
+
+const HIDDEN_SETTING_KEYS = new Set([
+  'general.business_hours',
+  'general.company_name',
+  'portal.enable_registration',
+  // Workflow behaviour is now managed in Admin Center > Workflows.
+  'workflow.allow_status_rollback',
+  'workflow.auto_assign',
+  'workflow.notify_on_assignment',
+  'workflow.require_comment_on_status_change',
+  // Legacy global SLA defaults: SLA is managed per workflow status now.
+  'sla.default_response_hours',
+  'sla.default_resolution_hours',
+  'tickets.sla_response_time_hours',
+  'tickets.sla_resolution_time_hours',
+]);
+const SETTINGS_ONLY_HIDDEN_CATEGORIES = new Set(['locations']);
+
+const isVisibleSettingRow = (row) => {
+  const key = String(row?.setting_key || '').trim();
+  if (!key) return false;
+  return !HIDDEN_SETTING_KEYS.has(key);
 };
 
 const withSettingsAccent = (meta) => ({
@@ -143,13 +165,6 @@ const getCategoryMeta = (t) => ({
     priority: 8,
     description: `${t('settings.categories.notificationsDescription')} · ${t('settings.categories.emailNotificationsDescription')}`,
   }),
-  locations: withSettingsAccent({
-    label: t('settings.categories.locations'),
-    icon: 'MapPin',
-    isSpecial: true,
-    priority: 13,
-    description: t('settings.categories.locationsDescription'),
-  }),
 });
 
 export default function SystemSettingsAdmin() {
@@ -204,7 +219,8 @@ export default function SystemSettingsAdmin() {
       .filter((k) => categoryMeta[k]?.isSpecial && !found.includes(k))
       .sort((a, b) => (categoryMeta[a]?.priority || 999) - (categoryMeta[b]?.priority || 999));
 
-    return [...knownFound, ...unknownFound, ...specialWithoutRows];
+    const allCategories = [...knownFound, ...unknownFound, ...specialWithoutRows];
+    return allCategories.filter((category) => !SETTINGS_ONLY_HIDDEN_CATEGORIES.has(category));
   }, [byCategory, categoryMeta]);
 
   const bundledCategoryIds = useMemo(() => {
@@ -263,11 +279,12 @@ export default function SystemSettingsAdmin() {
     setError('');
     try {
       const { rows: dataRows, warning } = await settingsService.getSettings();
-      setRows(dataRows);
+      const visibleRows = (dataRows || []).filter(isVisibleSettingRow);
+      setRows(visibleRows);
 
       const o = {};
       const d = {};
-      for (const r of dataRows) {
+      for (const r of visibleRows) {
         o[r.setting_key] = r.setting_value;
         d[r.setting_key] = r.setting_value;
       }
@@ -619,8 +636,6 @@ export default function SystemSettingsAdmin() {
                       {/* Settings Grid */}
                       {selectedCategory === 'email_notifications' ? (
                         <EmailNotificationSettings />
-                      ) : selectedCategory === 'locations' ? (
-                        <LocationManagementPanel />
                       ) : (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                           {categoryRows.map((row) => (
@@ -668,7 +683,7 @@ export default function SystemSettingsAdmin() {
                     }).length;
 
                     // For special categories, show them even if no rows
-                    if (bundle || category === 'email_notifications' || category === 'locations' || categoryRows.length > 0) {
+                    if (bundle || category === 'email_notifications' || categoryRows.length > 0) {
                       return (
                         <button
                           key={category}
@@ -692,7 +707,7 @@ export default function SystemSettingsAdmin() {
                                 </p>
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-xs text-muted-foreground">
-                                    {(bundle || category === 'email_notifications' || category === 'locations')
+                                    {(bundle || category === 'email_notifications')
                                       ? t('settings.navigation.clickToConfigure')
                                       : `${categoryRows.length} ${categoryRows.length === 1 ? t('settings.navigation.setting') : t('settings.navigation.settings')}`
                                     }

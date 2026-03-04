@@ -19,7 +19,8 @@ async function postMfa(action, accessToken, extra = {}) {
 
   const json = await response.json().catch(() => ({}));
   if (!response.ok || json?.success === false) {
-    throw new Error(json?.message || 'MFA proxy error');
+    const suffix = json?.error_id ? ` (ref: ${json.error_id})` : '';
+    throw new Error((json?.message || 'MFA proxy error') + suffix);
   }
   return json?.data ?? null;
 }
@@ -94,7 +95,11 @@ export async function verifyMFAEnrollment(code, accessToken) {
     return true;
   } catch (error) {
     console.error('Error verifying MFA enrollment:', error);
-    return false;
+    const msg = String(error?.message || '').toLowerCase();
+    if (msg.includes('invalid verification code') || msg.includes('invalid code') || msg.includes('otp')) {
+      return false;
+    }
+    throw error;
   }
 }
 

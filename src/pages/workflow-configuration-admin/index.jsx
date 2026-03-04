@@ -8,9 +8,15 @@ import WorkflowFormModal from './components/WorkflowFormModal';
 import WorkflowEditorPanel from './components/WorkflowEditorPanel';
 import AssignHandlersModal from './components/AssignHandlersModal';
 import EditWorkflowStatusesModal from './components/EditWorkflowStatusesModal'; // keep your filename as-is
+import WorkflowRuntimeSettingsPanel, {
+  WORKFLOW_RUNTIME_SETTING_DEFS,
+  getWorkflowRuntimeDefaultValues,
+  normalizeWorkflowRuntimeValue,
+} from './components/WorkflowRuntimeSettingsPanel';
 
 import { workflowService } from '../../services/workflowService'; // ✅ default import (fixes "binding not found")
 
+import { settingsService } from '../../services/SettingsService';
 import Button from '../../components/ui/Button';
 import Icon from '../../components/AppIcon';
 import FilterControls from './components/FilterControls';
@@ -18,6 +24,12 @@ import PermissionGuard from '../../components/auth/PermissionGuard';
 import { PERMISSIONS } from '../../utils/permissions';
 
 const safeLower = (v) => String(v ?? '').toLowerCase();
+const defaultWorkflowRuntimeValues = getWorkflowRuntimeDefaultValues();
+
+const mergeAsBoolean = (value, fallback = false) => {
+  if (typeof value === 'boolean') return value;
+  return Boolean(fallback);
+};
 
 export default function WorkflowConfigurationAdmin() {
   const [workflows, setWorkflows] = useState([]);
@@ -36,6 +48,13 @@ export default function WorkflowConfigurationAdmin() {
   // ✅ Status editor modal state
   const [showStatusesModal, setShowStatusesModal] = useState(false);
   const [statusesWorkflow, setStatusesWorkflow] = useState(null);
+  const [workflowSettingRowsByKey, setWorkflowSettingRowsByKey] = useState({});
+  const [workflowRuntimeDraft, setWorkflowRuntimeDraft] = useState(defaultWorkflowRuntimeValues);
+  const [workflowRuntimeOriginal, setWorkflowRuntimeOriginal] = useState(defaultWorkflowRuntimeValues);
+  const [isLoadingWorkflowRuntimeSettings, setIsLoadingWorkflowRuntimeSettings] = useState(true);
+  const [isSavingWorkflowRuntimeSettings, setIsSavingWorkflowRuntimeSettings] = useState(false);
+  const [workflowRuntimeError, setWorkflowRuntimeError] = useState('');
+  const [workflowRuntimeSuccess, setWorkflowRuntimeSuccess] = useState('');
 
   const { t } = useTranslation();
 
@@ -68,6 +87,35 @@ export default function WorkflowConfigurationAdmin() {
     [t]
   );
 
+  const loadWorkflowRuntimeSettings = useCallback(async () => {
+    setWorkflowRuntimeError('');
+    setIsLoadingWorkflowRuntimeSettings(true);
+    try {
+      const { rows = [] } = await settingsService.getSettings({ category: 'workflow' });
+      const rowsByKey = {};
+      const nextValues = { ...defaultWorkflowRuntimeValues };
+
+      for (const item of WORKFLOW_RUNTIME_SETTING_DEFS) {
+        const row = rows.find((x) => x?.setting_key === item.key) || null;
+        if (row) rowsByKey[item.key] = row;
+        nextValues[item.key] = normalizeWorkflowRuntimeValue(row?.setting_value, item.defaultValue);
+      }
+
+      setWorkflowSettingRowsByKey(rowsByKey);
+      setWorkflowRuntimeDraft(nextValues);
+      setWorkflowRuntimeOriginal(nextValues);
+    } catch (err) {
+      console.error('Error loading workflow runtime settings:', err);
+      setWorkflowRuntimeError(
+        t('workflowConfig.errorLoadingRuntimeSettings', {
+          defaultValue: 'Workflow instellingen konden niet geladen worden.',
+        })
+      );
+    } finally {
+      setIsLoadingWorkflowRuntimeSettings(false);
+    }
+  }, [t]);
+
   // Close modals on first mount (prevents persisted state weirdness)
   useEffect(() => {
     setShowCreateModal(false);
@@ -79,7 +127,8 @@ export default function WorkflowConfigurationAdmin() {
   // Load workflows on mount only
   useEffect(() => {
     loadWorkflows({ keepSelection: false });
-  }, [loadWorkflows]);
+    loadWorkflowRuntimeSettings();
+  }, [loadWorkflows, loadWorkflowRuntimeSettings]);
 
   // If selection disappears, force close assign modal
   useEffect(() => {
@@ -187,6 +236,88 @@ export default function WorkflowConfigurationAdmin() {
     }
   };
 
+  const handleToggleWorkflowRuntimeSetting = useCallback((settingKey) => {
+    setWorkflowRuntimeSuccess('');
+    setWorkflowRuntimeDraft((prev) => ({
+      ...prev,
+      [settingKey]: !mergeAsBoolean(prev?.[settingKey], defaultWorkflowRuntimeValues?.[settingKey]),
+    }));
+  }, []);
+
+  const hasWorkflowRuntimeChanges = useMemo(
+    () =>
+      WORKFLOW_RUNTIME_SETTING_DEFS.some((item) => {
+        const current = mergeAsBoolean(workflowRuntimeDraft?.[item.key], item.defaultValue);
+        const original = mergeAsBoolean(workflowRuntimeOriginal?.[item.key], item.defaultValue);
+        return current !== original;
+      }),
+    [workflowRuntimeDraft, workflowRuntimeOriginal]
+  );
+
+  const handleResetWorkflowRuntimeSettings = useCallback(() => {
+    setWorkflowRuntimeDraft({ ...workflowRuntimeOriginal });
+    setWorkflowRuntimeSuccess('');
+    setWorkflowRuntimeError('');
+  }, [workflowRuntimeOriginal]);
+
+  const handleSaveWorkflowRuntimeSettings = useCallback(async () => {
+    if (!hasWorkflowRuntimeChanges) return;
+    setWorkflowRuntimeSuccess('');
+    setWorkflowRuntimeError('');
+    setIsSavingWorkflowRuntimeSettings(true);
+
+    try {
+      const items = WORKFLOW_RUNTIME_SETTING_DEFS.filter((item) => {
+        const current = mergeAsBoolean(workflowRuntimeDraft?.[item.key], item.defaultValue);
+        const original = mergeAsBoolean(workflowRuntimeOriginal?.[item.key], item.defaultValue);
+        return current !== original;
+      }).map((item) => {
+        const existing = workflowSettingRowsByKey?.[item.key];
+        const current = mergeAsBoolean(workflowRuntimeDraft?.[item.key], item.defaultValue);
+        const existingValue = existing?.setting_value;
+
+        const wrappedValue =
+          existingValue &&
+          typeof existingValue === 'object' &&
+          !Array.isArray(existingValue) &&
+          Object.prototype.hasOwnProperty.call(existingValue, 'value');
+
+        return {
+          settingKey: item.key,
+          value: wrappedValue ? { ...existingValue, value: current } : current,
+          category: existing?.category || 'workflow',
+          description: existing?.description || item.description,
+          isSensitive: Boolean(existing?.is_sensitive),
+        };
+      });
+
+      if (!items.length) return;
+      await settingsService.upsertSettings(items);
+      await loadWorkflowRuntimeSettings();
+      setWorkflowRuntimeSuccess(
+        t('workflowConfig.runtimeSettingsSaved', {
+          defaultValue: 'Workflow instellingen opgeslagen.',
+        })
+      );
+    } catch (err) {
+      console.error('Error saving workflow runtime settings:', err);
+      setWorkflowRuntimeError(
+        t('workflowConfig.errorSavingRuntimeSettings', {
+          defaultValue: 'Workflow instellingen opslaan is mislukt.',
+        })
+      );
+    } finally {
+      setIsSavingWorkflowRuntimeSettings(false);
+    }
+  }, [
+    hasWorkflowRuntimeChanges,
+    loadWorkflowRuntimeSettings,
+    t,
+    workflowRuntimeDraft,
+    workflowRuntimeOriginal,
+    workflowSettingRowsByKey,
+  ]);
+
   const filteredWorkflows = useMemo(() => {
     const q = safeLower(searchQuery).trim();
 
@@ -230,7 +361,10 @@ export default function WorkflowConfigurationAdmin() {
                   size="lg"
                   iconName="RefreshCcw"
                   iconPosition="left"
-                  onClick={() => loadWorkflows({ keepSelection: true })}
+                  onClick={() => {
+                    loadWorkflows({ keepSelection: true });
+                    loadWorkflowRuntimeSettings();
+                  }}
                   disabled={isLoading || isBusy}
                 >
                   {t('common.refresh')}
@@ -292,25 +426,39 @@ export default function WorkflowConfigurationAdmin() {
                 </div>
 
                 <div className="lg:sticky lg:top-24 h-fit">
-                  {selectedWorkflow ? (
-                    <WorkflowEditorPanel
-                      workflow={selectedWorkflow}
-                      isBusy={isBusy}
-                      onSave={(patch) => handleUpdateWorkflow(selectedWorkflow.id, patch)}
-                      onToggleActive={(active) => handleToggleStatus(selectedWorkflow.id, active)}
-                      onOpenHandlerAssign={(e) => openAssignHandlers(e, 'right-panel')}
-                      onDelete={() => handleDeleteWorkflow(selectedWorkflow)}
-                      onEditStatuses={(wf) => {
-                        setStatusesWorkflow(wf);
-                        setShowStatusesModal(true);
-                      }}
+                  <div className="space-y-4">
+                    <WorkflowRuntimeSettingsPanel
+                      values={workflowRuntimeDraft}
+                      initialValues={workflowRuntimeOriginal}
+                      isLoading={isLoadingWorkflowRuntimeSettings}
+                      isSaving={isSavingWorkflowRuntimeSettings}
+                      error={workflowRuntimeError}
+                      successMessage={workflowRuntimeSuccess}
+                      onToggle={handleToggleWorkflowRuntimeSetting}
+                      onSave={handleSaveWorkflowRuntimeSettings}
+                      onReset={handleResetWorkflowRuntimeSettings}
                     />
-                  ) : (
-                    <div className="bg-card border border-border rounded-lg p-8 text-center">
-                      <Icon name="Workflow" size={48} className="mx-auto mb-4 text-muted-foreground" />
-                      <p className="text-muted-foreground">{t('workflowConfig.selectWorkflow')}</p>
-                    </div>
-                  )}
+
+                    {selectedWorkflow ? (
+                      <WorkflowEditorPanel
+                        workflow={selectedWorkflow}
+                        isBusy={isBusy}
+                        onSave={(patch) => handleUpdateWorkflow(selectedWorkflow.id, patch)}
+                        onToggleActive={(active) => handleToggleStatus(selectedWorkflow.id, active)}
+                        onOpenHandlerAssign={(e) => openAssignHandlers(e, 'right-panel')}
+                        onDelete={() => handleDeleteWorkflow(selectedWorkflow)}
+                        onEditStatuses={(wf) => {
+                          setStatusesWorkflow(wf);
+                          setShowStatusesModal(true);
+                        }}
+                      />
+                    ) : (
+                      <div className="bg-card border border-border rounded-lg p-8 text-center">
+                        <Icon name="Workflow" size={48} className="mx-auto mb-4 text-muted-foreground" />
+                        <p className="text-muted-foreground">{t('workflowConfig.selectWorkflow')}</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

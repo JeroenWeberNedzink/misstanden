@@ -1,6 +1,9 @@
 import { supabase } from '../lib/supabase';
 import { normalizeHandlerRecord } from './utils/handlerNormalization';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const isUuid = (value) => UUID_RE.test(String(value || '').trim());
+
 // Helper function to convert snake_case to camelCase
 const toCamelCase = (obj) => {
   if (!obj) return obj;
@@ -32,10 +35,29 @@ const toSnakeCase = (obj) => {
 export const handlerProfileService = {
   // Get handler profile by Auth0 user_id
   async getHandlerByUserId(userId) {
+    const normalizedUserId = String(userId || '').trim();
+    if (!normalizedUserId) return null;
+
     const { data, error } = await supabase
       ?.from('handlers')
       ?.select('*')
-      ?.eq('user_id', userId)
+      ?.eq('user_id', normalizedUserId)
+      ?.maybeSingle();
+
+    if (error && error?.code !== 'PGRST116') throw error;
+    if (!data) return null;
+    return normalizeHandlerRecord(toCamelCase(data));
+  },
+
+  // Fallback lookup by e-mail for users not yet linked by user_id
+  async getHandlerByEmail(email) {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (!normalizedEmail) return null;
+
+    const { data, error } = await supabase
+      ?.from('handlers')
+      ?.select('*')
+      ?.ilike('email', normalizedEmail)
       ?.maybeSingle();
 
     if (error && error?.code !== 'PGRST116') throw error;
@@ -57,6 +79,8 @@ export const handlerProfileService = {
 
   // Get notification settings for handler
   async getNotificationSettings(handlerId) {
+    if (!isUuid(handlerId)) return null;
+
     const { data, error } = await supabase
       ?.from('handler_notification_settings')
       ?.select('*')
@@ -69,6 +93,10 @@ export const handlerProfileService = {
 
   // Update handler contact information
   async updateHandlerContact(handlerId, contactData) {
+    if (!isUuid(handlerId)) {
+      throw new Error('Ongeldig handler ID voor contact update');
+    }
+
     const snakeData = toSnakeCase(contactData);
     const { data, error } = await supabase
       ?.from('handlers')
@@ -122,6 +150,10 @@ export const handlerProfileService = {
 
   // Update notification settings
   async updateNotificationSettings(handlerId, settingsData) {
+    if (!isUuid(handlerId)) {
+      throw new Error('Ongeldig handler ID voor notificatie update');
+    }
+
     const snakeData = toSnakeCase(settingsData);
 
     // Sanitize TIME fields: convert empty strings to null

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import { workflowService } from '../../../services/workflowService';
+import { settingsService } from '../../../services/SettingsService';
 import PermissionGuard from '../../../components/auth/PermissionGuard';
 import { PERMISSIONS } from '../../../utils/permissions';
 
@@ -10,8 +11,38 @@ import WorkflowFormModal from '../../../pages/workflow-configuration-admin/compo
 import WorkflowEditorPanel from '../../../pages/workflow-configuration-admin/components/WorkflowEditorPanel';
 import AssignHandlersModal from '../../../pages/workflow-configuration-admin/components/AssignHandlersModal';
 import EditWorkflowStatusesModal from '../../../pages/workflow-configuration-admin/components/EditWorkflowStatusesModal';
+import WorkflowRuntimeSettingsPanel, {
+  WORKFLOW_RUNTIME_SETTING_DEFS,
+  getWorkflowRuntimeDefaultValues,
+  normalizeWorkflowRuntimeValue,
+} from '../../../pages/workflow-configuration-admin/components/WorkflowRuntimeSettingsPanel';
 
-const safeLower = (v) => String(v ?? '').toLowerCase();
+const defaultWorkflowRuntimeValues = getWorkflowRuntimeDefaultValues();
+
+const normalizeWorkflowCodeForSetting = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const getWorkflowScopedSettingKey = (workflowCode, globalWorkflowKey) => {
+  const normalizedWorkflowCode = normalizeWorkflowCodeForSetting(workflowCode);
+  const normalizedGlobal = String(globalWorkflowKey || '').trim();
+  if (!normalizedWorkflowCode || !normalizedGlobal.startsWith('workflow.')) return null;
+  const suffix = normalizedGlobal.slice('workflow.'.length);
+  return suffix ? `workflow.${normalizedWorkflowCode}.${suffix}` : null;
+};
+
+const readSettingRowValue = (row, fallback = false) => {
+  const raw = row?.setting_value;
+  return normalizeWorkflowRuntimeValue(raw, fallback);
+};
+
+const mergeAsBoolean = (value, fallback = false) => {
+  if (typeof value === 'boolean') return value;
+  return Boolean(fallback);
+};
 
 const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh, onShowToast }) => {
   const [workflows, setWorkflows] = useState(initialWorkflows || []);
@@ -24,17 +55,25 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
 
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
-
   const [showStatusesModal, setShowStatusesModal] = useState(false);
   const [statusesWorkflow, setStatusesWorkflow] = useState(null);
+  const [workflowSettingRowsByKey, setWorkflowSettingRowsByKey] = useState({});
+  const [workflowRuntimeDraft, setWorkflowRuntimeDraft] = useState(defaultWorkflowRuntimeValues);
+  const [workflowRuntimeOriginal, setWorkflowRuntimeOriginal] = useState(defaultWorkflowRuntimeValues);
+  const [isLoadingWorkflowRuntimeSettings, setIsLoadingWorkflowRuntimeSettings] = useState(true);
+  const [isSavingWorkflowRuntimeSettings, setIsSavingWorkflowRuntimeSettings] = useState(false);
+  const [workflowRuntimeError, setWorkflowRuntimeError] = useState('');
+  const [workflowRuntimeSuccess, setWorkflowRuntimeSuccess] = useState('');
 
   const editorRef = useRef(null);
 
   const selectedWorkflow = useMemo(
     () => workflows.find((w) => w?.id === selectedWorkflowId) ?? null,
     [workflows, selectedWorkflowId]
+  );
+  const selectedWorkflowCode = useMemo(
+    () => normalizeWorkflowCodeForSetting(selectedWorkflow?.code),
+    [selectedWorkflow?.code]
   );
 
   useEffect(() => {
@@ -45,6 +84,58 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
       }
     }
   }, [initialWorkflows, selectedWorkflowId]);
+
+  const loadWorkflowRuntimeSettings = useCallback(async () => {
+    setWorkflowRuntimeError('');
+    setIsLoadingWorkflowRuntimeSettings(true);
+    try {
+      const { rows = [] } = await settingsService.getSettings({ category: 'workflow' });
+      const rowsByKey = {};
+      for (const row of rows) {
+        const key = String(row?.setting_key || '').trim();
+        if (!key) continue;
+        rowsByKey[key] = row;
+      }
+
+      setWorkflowSettingRowsByKey(rowsByKey);
+    } catch (err) {
+      console.error('Error loading workflow runtime settings:', err);
+      setWorkflowRuntimeError('Workflow instellingen konden niet geladen worden.');
+    } finally {
+      setIsLoadingWorkflowRuntimeSettings(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedWorkflowCode) {
+      setWorkflowRuntimeDraft({ ...defaultWorkflowRuntimeValues });
+      setWorkflowRuntimeOriginal({ ...defaultWorkflowRuntimeValues });
+      return;
+    }
+
+    const nextValues = { ...defaultWorkflowRuntimeValues };
+    for (const item of WORKFLOW_RUNTIME_SETTING_DEFS) {
+      const scopedKey = getWorkflowScopedSettingKey(selectedWorkflowCode, item.key);
+      const scopedRow = scopedKey ? workflowSettingRowsByKey?.[scopedKey] : null;
+      const globalRow = workflowSettingRowsByKey?.[item.key] || null;
+      if (scopedRow) {
+        nextValues[item.key] = readSettingRowValue(scopedRow, item.defaultValue);
+      } else if (globalRow) {
+        nextValues[item.key] = readSettingRowValue(globalRow, item.defaultValue);
+      } else {
+        nextValues[item.key] = Boolean(item.defaultValue);
+      }
+    }
+
+    setWorkflowRuntimeDraft(nextValues);
+    setWorkflowRuntimeOriginal(nextValues);
+    setWorkflowRuntimeSuccess('');
+    setWorkflowRuntimeError('');
+  }, [selectedWorkflowCode, workflowSettingRowsByKey]);
+
+  useEffect(() => {
+    loadWorkflowRuntimeSettings();
+  }, [loadWorkflowRuntimeSettings]);
 
   const loadWorkflows = useCallback(
     async ({ keepSelection = true } = {}) => {
@@ -193,135 +284,93 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
     }
   };
 
-  const filteredWorkflows = useMemo(() => {
-    const q = safeLower(searchQuery).trim();
+  const hasWorkflowRuntimeChanges = useMemo(
+    () =>
+      WORKFLOW_RUNTIME_SETTING_DEFS.some((item) => {
+        const current = mergeAsBoolean(workflowRuntimeDraft?.[item.key], item.defaultValue);
+        const original = mergeAsBoolean(workflowRuntimeOriginal?.[item.key], item.defaultValue);
+        return current !== original;
+      }),
+    [workflowRuntimeDraft, workflowRuntimeOriginal]
+  );
 
-    return (workflows || []).filter((workflow) => {
-      const matchesStatus =
-        filterStatus === 'all' ||
-        (filterStatus === 'active' && workflow?.active) ||
-        (filterStatus === 'inactive' && !workflow?.active);
+  const handleToggleWorkflowRuntimeSetting = useCallback((settingKey) => {
+    setWorkflowRuntimeSuccess('');
+    setWorkflowRuntimeDraft((prev) => ({
+      ...prev,
+      [settingKey]: !mergeAsBoolean(prev?.[settingKey], defaultWorkflowRuntimeValues?.[settingKey]),
+    }));
+  }, []);
 
-      if (!matchesStatus) return false;
-      if (!q) return true;
+  const handleResetWorkflowRuntimeSettings = useCallback(() => {
+    setWorkflowRuntimeDraft({ ...workflowRuntimeOriginal });
+    setWorkflowRuntimeSuccess('');
+    setWorkflowRuntimeError('');
+  }, [workflowRuntimeOriginal]);
 
-      const haystack = `${safeLower(workflow?.name)} ${safeLower(workflow?.description)} ${safeLower(
-        workflow?.code
-      )}`;
-      return haystack.includes(q);
-    });
-  }, [workflows, filterStatus, searchQuery]);
+  const handleSaveWorkflowRuntimeSettings = useCallback(async () => {
+    if (!selectedWorkflowCode) {
+      setWorkflowRuntimeError('Selecteer eerst een workflow.');
+      return;
+    }
+    if (!hasWorkflowRuntimeChanges) return;
+    setWorkflowRuntimeSuccess('');
+    setWorkflowRuntimeError('');
+    setIsSavingWorkflowRuntimeSettings(true);
 
-  const totalWorkflows = workflows?.length || 0;
-  const activeWorkflows = (workflows || []).filter((w) => w?.active).length;
-  const inactiveWorkflows = totalWorkflows - activeWorkflows;
+    try {
+      const items = WORKFLOW_RUNTIME_SETTING_DEFS.filter((item) => {
+        const current = mergeAsBoolean(workflowRuntimeDraft?.[item.key], item.defaultValue);
+        const original = mergeAsBoolean(workflowRuntimeOriginal?.[item.key], item.defaultValue);
+        return current !== original;
+      }).map((item) => {
+        const scopedKey = getWorkflowScopedSettingKey(selectedWorkflowCode, item.key);
+        const existing = (scopedKey && workflowSettingRowsByKey?.[scopedKey]) || null;
+        const current = mergeAsBoolean(workflowRuntimeDraft?.[item.key], item.defaultValue);
+        const existingValue = existing?.setting_value;
+
+        const wrappedValue =
+          existingValue &&
+          typeof existingValue === 'object' &&
+          !Array.isArray(existingValue) &&
+          Object.prototype.hasOwnProperty.call(existingValue, 'value');
+
+        return {
+          settingKey: scopedKey || item.key,
+          value: wrappedValue ? { ...existingValue, value: current } : current,
+          category: existing?.category || 'workflow',
+          description: existing?.description || `${item.description} (workflow: ${selectedWorkflowCode})`,
+          isSensitive: Boolean(existing?.is_sensitive),
+        };
+      });
+
+      if (!items.length) return;
+      await settingsService.upsertSettings(items);
+      await loadWorkflowRuntimeSettings();
+      setWorkflowRuntimeSuccess(`Workflow instellingen opgeslagen voor "${selectedWorkflow?.name || selectedWorkflowCode}".`);
+      onShowToast?.(`Workflow instellingen opgeslagen (${selectedWorkflow?.name || selectedWorkflowCode})`);
+    } catch (err) {
+      console.error('Error saving workflow runtime settings:', err);
+      setWorkflowRuntimeError('Workflow instellingen opslaan is mislukt.');
+      onShowToast?.('Workflow instellingen opslaan is mislukt', true);
+    } finally {
+      setIsSavingWorkflowRuntimeSettings(false);
+    }
+  }, [
+    hasWorkflowRuntimeChanges,
+    loadWorkflowRuntimeSettings,
+    onShowToast,
+    selectedWorkflow?.name,
+    selectedWorkflowCode,
+    workflowRuntimeDraft,
+    workflowRuntimeOriginal,
+    workflowSettingRowsByKey,
+  ]);
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
-        <div>
-          <h3 className="text-base font-bold text-sky-700">Workflows beheren in 4 stappen</h3>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 font-semibold">
-              <span className="w-5 h-5 rounded-full bg-sky-600 text-white text-xs inline-flex items-center justify-center">
-                1
-              </span>
-              Kies workflow
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-lg border border-border bg-white text-foreground font-medium">
-              <span className="w-5 h-5 rounded-full bg-slate-600 text-white text-xs inline-flex items-center justify-center">
-                2
-              </span>
-              Basisgegevens
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-lg border border-border bg-white text-foreground font-medium">
-              <span className="w-5 h-5 rounded-full bg-slate-600 text-white text-xs inline-flex items-center justify-center">
-                3
-              </span>
-              Beheer stappen
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-lg border border-border bg-white text-foreground font-medium">
-              <span className="w-5 h-5 rounded-full bg-slate-600 text-white text-xs inline-flex items-center justify-center">
-                4
-              </span>
-              Koppel handlers
-            </span>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] px-2 py-0.5 rounded-full border border-border bg-white text-muted-foreground">
-            {totalWorkflows} totaal
-          </span>
-          <span className="text-[11px] px-2 py-0.5 rounded-full border border-sky-300 bg-sky-50 text-sky-700">
-            {activeWorkflows} actief
-          </span>
-          <span className="text-[11px] px-2 py-0.5 rounded-full border border-slate-300 bg-slate-50 text-slate-700">
-            {inactiveWorkflows} inactief
-          </span>
-        </div>
-      </div>
-
-      <div className="flex flex-col lg:flex-row gap-2 lg:items-center lg:justify-between">
-        <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-          <div className="inline-flex bg-white border border-sky-100 rounded-xl p-1">
-            {[
-              { id: 'all', label: 'Alles' },
-              { id: 'active', label: 'Actief' },
-              { id: 'inactive', label: 'Inactief' },
-            ].map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => setFilterStatus(opt.id)}
-                className={[
-                  'px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                  filterStatus === opt.id
-                    ? 'bg-sky-100 text-sky-700'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-sky-50',
-                ].join(' ')}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="relative w-full sm:w-[360px]">
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 opacity-70">
-              <Icon name="Search" size={16} />
-            </div>
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Zoek workflow (naam/code)..."
-              className="w-full pl-9 pr-9 py-2 rounded-xl bg-white border border-sky-200 text-sm outline-none focus:ring-2 focus:ring-sky-300/30"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 opacity-70 hover:opacity-100"
-                aria-label="Clear"
-              >
-                <Icon name="X" size={16} />
-              </button>
-            )}
-          </div>
-
-          <div className="text-xs text-muted-foreground">
-            {filteredWorkflows.length}/{workflows.length}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 justify-end">
-          <Button
-            variant="outline"
-            size="md"
-            iconName="RefreshCcw"
-            iconPosition="left"
-            onClick={() => loadWorkflows({ keepSelection: true })}
-            disabled={isLoading || isBusy}
-          >
-            Vernieuwen
-          </Button>
-
+    <div className="space-y-6">
+      <div className="flex justify-end">
+        <div className="flex flex-wrap items-center gap-2 justify-end">
           <PermissionGuard permission={PERMISSIONS.MANAGE_WORKFLOWS}>
             <Button
               onClick={() => setShowCreateModal(true)}
@@ -346,7 +395,7 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
       <div className="space-y-3">
         <div>
           <WorkflowsTable
-            workflows={filteredWorkflows}
+            workflows={workflows}
             selectedWorkflow={selectedWorkflow}
             onSelectWorkflow={handleSelectWorkflow}
             onToggleStatus={(workflow) => handleToggleStatus(workflow?.id, !workflow?.active)}
@@ -356,7 +405,27 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
           />
         </div>
 
-        <div ref={editorRef}>
+        <div ref={editorRef} className="space-y-3">
+          <WorkflowRuntimeSettingsPanel
+            values={workflowRuntimeDraft}
+            initialValues={workflowRuntimeOriginal}
+            isLoading={isLoadingWorkflowRuntimeSettings}
+            isSaving={isSavingWorkflowRuntimeSettings}
+            error={workflowRuntimeError}
+            successMessage={workflowRuntimeSuccess}
+            onToggle={handleToggleWorkflowRuntimeSetting}
+            onSave={handleSaveWorkflowRuntimeSettings}
+            onReset={handleResetWorkflowRuntimeSettings}
+            title={selectedWorkflow ? `Workflow instellingen: ${selectedWorkflow.name}` : 'Workflow instellingen'}
+            description={
+              selectedWorkflow
+                ? 'Deze instellingen gelden alleen voor de geselecteerde workflow.'
+                : 'Selecteer eerst een workflow om instellingen te beheren.'
+            }
+            disabled={!selectedWorkflow}
+            emptyStateMessage="Kies eerst een workflow in stap 1."
+          />
+
           {selectedWorkflow ? (
             <WorkflowEditorPanel
               workflow={selectedWorkflow}

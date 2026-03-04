@@ -69,11 +69,13 @@ function load_env_file(string $file, bool $override = true): void {
     }
 }
 
-function auth0_request(string $method, string $url, string $token, ?array $body = null): array {
+function auth0_request(string $method, string $url, string $token = '', ?array $body = null): array {
     $headers = [
-        'Authorization: Bearer ' . $token,
         'Content-Type: application/json'
     ];
+    if ($token !== '') {
+        $headers[] = 'Authorization: Bearer ' . $token;
+    }
 
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
@@ -119,6 +121,22 @@ function auth0_request(string $method, string $url, string $token, ?array $body 
         $err = 'file_get_contents failed';
     }
     return [$status, $response, $err];
+}
+
+function auth0_error_message(?string $body, string $fallback = ''): string {
+    if (!is_string($body) || trim($body) === '') return $fallback;
+    $json = json_decode($body, true);
+    if (!is_array($json)) return trim($body) ?: $fallback;
+
+    $parts = [];
+    foreach (['error', 'error_description', 'message'] as $key) {
+        if (!empty($json[$key]) && is_string($json[$key])) {
+            $parts[] = trim($json[$key]);
+        }
+    }
+
+    $merged = trim(implode(' ', array_unique($parts)));
+    return $merged !== '' ? $merged : $fallback;
 }
 
 try {
@@ -181,14 +199,40 @@ try {
 
     if ($action === 'verify_enrollment') {
         if ($otp === '') throw new Exception('otp is required');
+
+        // Preferred path for current MFA API variants.
         [$status, $body, $err] = auth0_request('PATCH', $baseUrl . '/associate', $token, [
             'otp' => $otp
         ]);
+
+        // Fallback for tenants where MFA verify runs via OAuth token exchange.
+        if ($status === 404 || $status === 405) {
+            $clientId = (string)(getenv('VITE_AUTH0_CLIENT_ID') ?: '');
+            if ($clientId === '') {
+                throw new Exception('MFA verify misconfigured: missing Auth0 client id');
+            }
+
+            [$status, $body, $err] = auth0_request('POST', 'https://' . $auth0Domain . '/oauth/token', '', [
+                'grant_type' => 'http://auth0.com/oauth/grant-type/mfa-otp',
+                'client_id' => $clientId,
+                'mfa_token' => $token,
+                'otp' => $otp,
+            ]);
+        }
+
         if ($status >= 200 && $status < 300) {
             echo json_encode(['success' => true], JSON_UNESCAPED_UNICODE);
             exit;
         }
-        throw new Exception('Auth0 error: ' . $status . ' ' . ($err ?: $body));
+
+        $auth0Error = auth0_error_message($body, $err);
+        if ($status === 400 || $status === 401) {
+            if (stripos($auth0Error, 'otp') !== false || stripos($auth0Error, 'invalid') !== false) {
+                throw new Exception('Invalid verification code');
+            }
+        }
+
+        throw new Exception('Auth0 error: ' . $status . ' ' . $auth0Error);
     }
 
     if ($action === 'delete_all') {
@@ -214,6 +258,8 @@ try {
         'action and access_token are required',
         'otp is required',
         'Unknown action',
+        'Invalid verification code',
+        'MFA verify misconfigured: missing Auth0 client id',
     ];
     $message = in_array($e->getMessage(), $safeClientMessages, true)
         ? $e->getMessage()

@@ -91,3 +91,28 @@ Checks:
 - Update status/priority/assignment
 3. Translation admin flow still works:
 - List and update translation key.
+
+## 7) Email Verification Flow
+
+1. Open profile page with an unverified Auth0 email account.
+Expected:
+- Badge shows `E-mail niet geverifieerd`
+- Button `Verificatie e-mail sturen` visible.
+2. Click `Verificatie e-mail sturen`.
+Expected:
+- `200` from `POST /api/email-verification.api.php`
+- Confirmation message shown in UI
+- No secrets/tokens returned in response body.
+3. Complete verification from received email and refresh status.
+Expected:
+- `status` action returns `email_verified: true`
+- Profile badge updates to `E-mail geverifieerd`.
+4. Abuse check:
+- Trigger repeated `send` actions rapidly.
+Expected:
+- Endpoint eventually returns `429` due to rate limit.
+5. Enterprise identity check (Entra/Google/etc):
+- Open profile on an externally federated account.
+Expected:
+- Status still loads.
+- Send button is disabled with a clear warning that Auth0 verification-email is unsupported for this identity type.

@@ -34,7 +34,7 @@ export default function WorkflowsTableList({
   const StatusBadge = ({ active }) => (
     <span
       className={[
-        'inline-flex items-center gap-2 text-[11px] px-2.5 py-1 rounded-full border whitespace-nowrap',
+        'inline-flex items-center gap-2 text-xs px-2.5 py-1 rounded-full border whitespace-nowrap',
         active
           ? 'border-sky-300 bg-sky-50 text-sky-700'
           : 'border-slate-300 bg-slate-50 text-slate-700',
@@ -79,14 +79,14 @@ export default function WorkflowsTableList({
 
   return (
     <div className="bg-transparent">
-      <div className="px-0 py-2.5 border-b border-sky-100">
+      <div className="px-0 pb-4 border-b border-sky-100">
         <div className="flex items-start gap-2">
           <span className="w-7 h-7 rounded-full bg-sky-600 text-white text-sm font-bold inline-flex items-center justify-center mt-0.5">
             1
           </span>
           <div>
             <h4 className="text-base font-bold text-sky-700">Stap 1 - Kies een workflow</h4>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground mt-0.5">
               Selecteer een workflow om de instellingen hieronder te beheren.
             </p>
           </div>
@@ -103,7 +103,7 @@ export default function WorkflowsTableList({
             <div
               key={w?.id}
               className={[
-                'p-3 transition-colors',
+                'p-4 transition-colors',
                 isSelected ? 'bg-sky-50 border-l-4 border-l-sky-600' : 'hover:bg-muted/20',
               ].join(' ')}
             >
@@ -137,21 +137,21 @@ export default function WorkflowsTableList({
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground font-mono truncate max-w-[620px]">
+                      <p className="text-sm text-muted-foreground truncate max-w-[620px]">
                         {w?.code || '-'}
                       </p>
                       {w?.description && (
-                        <p className="text-xs text-muted-foreground truncate max-w-[700px] mt-0.5">
+                        <p className="text-sm text-muted-foreground truncate max-w-[700px] mt-0.5">
                           {w.description}
                         </p>
                       )}
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <StatusBadge active={active} />
-                        <span className="text-[11px] px-2 py-1 rounded-full border border-border bg-white text-muted-foreground">
+                        <span className="text-xs px-2 py-1 rounded-full border border-border bg-white text-muted-foreground">
                           Aangemaakt: {fmtDate(w?.createdAt)}
                         </span>
                         {Number.isFinite(statusCount) && (
-                          <span className="text-[11px] px-2 py-1 rounded-full border border-border bg-white text-muted-foreground">
+                          <span className="text-xs px-2 py-1 rounded-full border border-border bg-white text-muted-foreground">
                             {statusCount} statussen
                           </span>
                         )}

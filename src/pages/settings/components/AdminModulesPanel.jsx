@@ -147,17 +147,17 @@ const AdminModulesPanel = () => {
   return (
     <div className="space-y-6">
       {(error || success) && (
-        <div className="space-y-3">
+        <div className="fixed bottom-4 md:bottom-6 right-4 md:right-6 z-[70] space-y-3 pointer-events-none">
           {error && (
-            <div className="p-4 bg-error/10 border border-error/30 rounded-xl flex items-center gap-3">
-              <Icon name="AlertCircle" size={20} className="text-error" />
-              <p className="text-sm text-error">{error}</p>
+            <div className="bg-destructive text-destructive-foreground px-4 md:px-6 py-3 md:py-4 rounded-lg shadow-xl border border-destructive/40 flex items-center gap-3 animate-in slide-in-from-bottom-5 pointer-events-auto max-w-[min(92vw,560px)]">
+              <Icon name="AlertCircle" size={20} />
+              <p className="text-sm md:text-base font-medium">{error}</p>
             </div>
           )}
           {success && (
-            <div className="p-4 bg-success/10 border border-success/30 rounded-xl flex items-center gap-3">
-              <Icon name="CheckCircle" size={20} className="text-success" />
-              <p className="text-sm text-success">{success}</p>
+            <div className="bg-success text-success-foreground px-4 md:px-6 py-3 md:py-4 rounded-lg shadow-xl border border-success/30 flex items-center gap-3 animate-in slide-in-from-bottom-5 pointer-events-auto max-w-[min(92vw,560px)]">
+              <Icon name="CheckCircle" size={20} />
+              <p className="text-sm md:text-base font-medium">{success}</p>
             </div>
           )}
         </div>
