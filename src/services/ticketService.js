@@ -1110,6 +1110,7 @@ const getWorkflowWithStatuses = async (workflowCode) => {
     color: safeTrim(s.color) || null,
     order: Number(s.sort_order ?? 0),
     isTerminal: Boolean(s.is_terminal),
+    isFirstResponse: Boolean(s.is_first_response),
     nextCodes: Array.isArray(s.next_codes) ? s.next_codes : [],
     expectedDurationDays: Number.isFinite(Number(s.expected_duration_days))
       ? Number(s.expected_duration_days)
@@ -1624,9 +1625,14 @@ export const ticketService = {
       cur?.metadata?.firstResponseAt ||
       null;
     const shouldBackfillFirstResponseOnTerminal = !existingFirstResponseAt && Boolean(resolved?.isTerminal);
+    const shouldStampFirstResponseOnConfiguredStatus = !existingFirstResponseAt && Boolean(resolved?.isFirstResponse);
     const shouldStampFirstResponseAt =
       !existingFirstResponseAt &&
-      (isReceiptConfirmationStatus(resolved?.code, resolved?.label) || shouldBackfillFirstResponseOnTerminal);
+      (
+        shouldStampFirstResponseOnConfiguredStatus ||
+        isReceiptConfirmationStatus(resolved?.code, resolved?.label) ||
+        shouldBackfillFirstResponseOnTerminal
+      );
 
     update.metadata = {
       ...(cur?.metadata || {}),

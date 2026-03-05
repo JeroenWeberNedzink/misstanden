@@ -249,6 +249,7 @@ export const workflowService = {
       color: safeTrim(s.color) || null,
       sort_order: Number(s.sortOrder ?? s.sort_order ?? i),
       is_terminal: Boolean(s.isTerminal ?? s.is_terminal ?? false),
+      is_first_response: Boolean(s.isFirstResponse ?? s.is_first_response ?? false),
       next_codes: Array.isArray(s.nextCodes ?? s.next_codes) ? (s.nextCodes ?? s.next_codes) : [],
       expected_duration_days: s.expectedDurationDays ?? s.expected_duration_days ?? null,
       contact_person_name: safeTrim(s.contactPersonName ?? s.contact_person_name) || null,
@@ -279,6 +280,7 @@ export const workflowService = {
       color: safeTrim(status?.color) || null,
       sort_order: Number(status?.sortOrder ?? status?.sort_order ?? 0),
       is_terminal: Boolean(status?.isTerminal ?? status?.is_terminal ?? false),
+      is_first_response: Boolean(status?.isFirstResponse ?? status?.is_first_response ?? false),
       next_codes: Array.isArray(status?.nextCodes ?? status?.next_codes) ? (status?.nextCodes ?? status?.next_codes) : [],
       expected_duration_days: status?.expectedDurationDays ?? status?.expected_duration_days ?? null,
       contact_person_name: safeTrim(status?.contactPersonName ?? status?.contact_person_name) || null,
@@ -306,6 +308,7 @@ export const workflowService = {
     if (patch.color !== undefined) payload.color = safeTrim(patch.color) || null;
     if (patch.sortOrder !== undefined) payload.sort_order = Number(patch.sortOrder ?? 0);
     if (patch.isTerminal !== undefined) payload.is_terminal = !!patch.isTerminal;
+    if (patch.isFirstResponse !== undefined) payload.is_first_response = !!patch.isFirstResponse;
     if (patch.nextCodes !== undefined) payload.next_codes = patch.nextCodes;
     if (patch.expectedDurationDays !== undefined) payload.expected_duration_days = patch.expectedDurationDays;
     if (patch.contactPersonName !== undefined) payload.contact_person_name = safeTrim(patch.contactPersonName) || null;

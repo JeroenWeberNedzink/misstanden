@@ -17,6 +17,7 @@ function newRow(workflowId) {
     color: '',
     sortOrder: 0,
     isTerminal: false,
+    isFirstResponse: false,
     nextCodes: [],
     expectedDurationDays: null,
     contactPersonName: '',
@@ -66,7 +67,7 @@ function TabButton({ active, icon, label, onClick }) {
   );
 }
 
-function Node({ index, total, isSelected, label, code, isTerminal, onClick }) {
+function Node({ index, total, isSelected, label, code, isTerminal, isFirstResponse, onClick }) {
   const shade = getBlueShade(index, total);
   return (
     <button
@@ -83,7 +84,13 @@ function Node({ index, total, isSelected, label, code, isTerminal, onClick }) {
             : `${shade.bg} ${shade.border}`,
         ].join(' ')}
       >
-        {isTerminal ? <Icon name="Flag" size={18} className={shade.text} /> : <div className={`w-3 h-3 rounded-full ${shade.bg}`} />}
+        {isTerminal ? (
+          <Icon name="Flag" size={18} className={shade.text} />
+        ) : isFirstResponse ? (
+          <Icon name="MessageCircle" size={16} className={shade.text} />
+        ) : (
+          <div className={`w-3 h-3 rounded-full ${shade.bg}`} />
+        )}
       </div>
       <div className="mt-2 text-center max-w-[110px]">
         <div className={['text-xs truncate', isSelected ? 'font-semibold text-foreground' : 'text-muted-foreground'].join(' ')}>
@@ -134,6 +141,7 @@ export default function EditWorkflowStatusesModal({
           color: s.color ?? '',
           sortOrder: Number(s.sort_order ?? 0),
           isTerminal: !!s.is_terminal,
+          isFirstResponse: !!s.is_first_response,
           nextCodes: Array.isArray(s.next_codes) ? s.next_codes : [],
           expectedDurationDays: s.expected_duration_days ? Number(s.expected_duration_days) : null,
           contactPersonName: s.contact_person_name ?? '',
@@ -182,6 +190,15 @@ export default function EditWorkflowStatusesModal({
       .map((r) => r.label || r.code)
       .filter(Boolean);
   }, [activeRows]);
+
+  const firstResponseLabels = useMemo(
+    () =>
+      activeRows
+        .filter((r) => !!r.isFirstResponse)
+        .map((r) => r.label || r.code)
+        .filter(Boolean),
+    [activeRows]
+  );
 
   useEffect(() => {
     // If selected gets deleted, auto-select first
@@ -279,6 +296,7 @@ export default function EditWorkflowStatusesModal({
         color: safeTrim(r.color) || null,
         sort_order: Number(r.sortOrder ?? 0),
         is_terminal: !!r.isTerminal,
+        is_first_response: !!r.isFirstResponse,
         next_codes: Array.isArray(r.nextCodes) ? r.nextCodes.map(safeTrim).filter(Boolean) : [],
         expected_duration_days: r.expectedDurationDays ? Number(r.expectedDurationDays) : null,
         contact_person_name: safeTrim(r.contactPersonName) || null,
@@ -394,6 +412,7 @@ export default function EditWorkflowStatusesModal({
                             label={r.label}
                             code={r.code}
                             isTerminal={!!r.isTerminal}
+                            isFirstResponse={!!r.isFirstResponse}
                             onClick={() => {
                               setSelectedId(r.id);
                               setTab('basics');
@@ -427,6 +446,18 @@ export default function EditWorkflowStatusesModal({
                   <div className="text-xs text-amber-900 mt-2">
                     {missingDurationLabels.slice(0, 6).join(', ')}
                     {missingDurationLabels.length > 6 ? '…' : ''}
+                  </div>
+                </div>
+              )}
+
+              {firstResponseLabels.length === 0 && (
+                <div className="mt-3 p-3 rounded-xl border border-blue-200/60 bg-blue-50/80 text-sm text-blue-900">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <Icon name="Info" size={16} />
+                    Eerste reactie is nog niet ingesteld
+                  </div>
+                  <div className="text-xs text-blue-900/80 mt-1">
+                    Vink bij minimaal 1 stap <span className="font-mono">Eerste reactie (SLA)</span> aan.
                   </div>
                 </div>
               )}
@@ -469,7 +500,12 @@ export default function EditWorkflowStatusesModal({
                                   {r.label || '—'}
                                   {r.isTerminal ? (
                                     <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                                      Laatste stap
+                                      Eindoplossing
+                                    </span>
+                                  ) : null}
+                                  {r.isFirstResponse ? (
+                                    <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                                      Eerste reactie
                                     </span>
                                   ) : null}
                                 </div>
@@ -537,15 +573,26 @@ export default function EditWorkflowStatusesModal({
                     </div>
 
                     {selected ? (
-                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <input
-                          type="checkbox"
-                          checked={!!selected.isTerminal}
-                          onChange={(e) => patchRow(selected.id, { isTerminal: e.target.checked })}
-                          disabled={saving}
-                        />
-                        Terminal
-                      </label>
+                      <div className="flex flex-col items-start gap-1.5 text-xs text-muted-foreground">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={!!selected.isFirstResponse}
+                            onChange={(e) => patchRow(selected.id, { isFirstResponse: e.target.checked })}
+                            disabled={saving}
+                          />
+                          Eerste reactie (SLA)
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={!!selected.isTerminal}
+                            onChange={(e) => patchRow(selected.id, { isTerminal: e.target.checked })}
+                            disabled={saving}
+                          />
+                          Eindoplossing (ticket afgerond)
+                        </label>
+                      </div>
                     ) : null}
                   </div>
 
@@ -686,7 +733,7 @@ export default function EditWorkflowStatusesModal({
                                           : 'bg-card text-muted-foreground border-border hover:bg-muted/40',
                                       ].join(' ')}
                                       disabled={saving || selected.isTerminal}
-                                      title={selected.isTerminal ? 'Terminal stap' : ''}
+                                      title={selected.isTerminal ? 'Eindoplossing' : ''}
                                     >
                                       {x.label || x.code}
                                     </button>
@@ -696,7 +743,7 @@ export default function EditWorkflowStatusesModal({
 
                             {selected.isTerminal && (
                               <div className="mt-3 p-3 rounded-xl border border-border bg-muted/10 text-xs text-muted-foreground">
-                                Terminal stap: <span className="font-mono">next_codes</span> is meestal leeg.
+                                Eindoplossing: <span className="font-mono">next_codes</span> is meestal leeg.
                               </div>
                             )}
                           </div>

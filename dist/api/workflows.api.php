@@ -880,6 +880,7 @@ try {
             'color' => $status['color'] ?? null,
             'sort_order' => (int)($status['sort_order'] ?? 0),
             'is_terminal' => !empty($status['is_terminal']),
+            'is_first_response' => !empty($status['is_first_response']),
             'next_codes' => array_values(array_filter(array_map(static fn($x) => trim((string)$x), is_array($status['next_codes'] ?? null) ? $status['next_codes'] : []), static fn($x) => $x !== '')),
             'expected_duration_days' => $status['expected_duration_days'] ?? null,
             'contact_person_name' => $status['contact_person_name'] ?? null,
@@ -904,7 +905,7 @@ try {
         if (!wf_uuid($statusId) || !$patch) throw new Exception('Invalid status update payload');
 
         $allowed = [
-            'code', 'label', 'description', 'color', 'sort_order', 'is_terminal', 'next_codes',
+            'code', 'label', 'description', 'color', 'sort_order', 'is_terminal', 'is_first_response', 'next_codes',
             'expected_duration_days', 'contact_person_name', 'contact_person_email', 'contact_person_phone', 'contact_notes'
         ];
         $payload = [];
@@ -982,6 +983,7 @@ try {
                 'color' => $s['color'] ?? null,
                 'sort_order' => (int)($s['sort_order'] ?? $i),
                 'is_terminal' => !empty($s['is_terminal']),
+                'is_first_response' => !empty($s['is_first_response']),
                 'next_codes' => array_values(array_filter(array_map(static fn($x) => trim((string)$x), is_array($s['next_codes'] ?? null) ? $s['next_codes'] : []), static fn($x) => $x !== '')),
                 'expected_duration_days' => $s['expected_duration_days'] ?? null,
                 'contact_person_name' => $s['contact_person_name'] ?? null,
@@ -1010,6 +1012,7 @@ try {
                 'color' => $r['color'],
                 'sort_order' => $r['sort_order'],
                 'is_terminal' => $r['is_terminal'],
+                'is_first_response' => $r['is_first_response'],
                 'next_codes' => [],
                 'expected_duration_days' => $r['expected_duration_days'],
                 'contact_person_name' => $r['contact_person_name'],
