@@ -912,7 +912,7 @@ const insertTicketActionSafe = async (payload, context = 'ticket action') => {
           action: 'handler_log_action',
           ticket_id: payload?.ticket_id,
           action_type: payload?.action_type,
-          action: payload?.action,
+          action_label: payload?.action,
           description: payload?.description || null,
           handler_name: payload?.handler_name || null,
         },

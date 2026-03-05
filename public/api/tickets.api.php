@@ -1491,7 +1491,7 @@ function handle_handler_log_action(array $data): void {
     ticket_enforce_handler_mutation_rate_limit('log_action', $handler, $ticketId);
 
     $actionType = trim((string)($data['action_type'] ?? ''));
-    $action = trim((string)($data['action'] ?? ''));
+    $action = trim((string)($data['action_label'] ?? $data['log_action'] ?? $data['action_text'] ?? $data['action'] ?? ''));
     $description = trim((string)($data['description'] ?? ''));
 
     if ($actionType === '' || api_strlen($actionType) > 80) {
