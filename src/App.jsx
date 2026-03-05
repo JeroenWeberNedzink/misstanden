@@ -10,6 +10,7 @@ import { ticketService } from "./services/ticketService";
 import { permissionService } from "./services/permissionService";
 import { auditLogService } from "./services/auditLogService";
 import { locationService } from "./services/locationService";
+import { accessRequestService } from "./services/accessRequestService";
 import { getApiAccessToken, getApiAudience, getApiScope } from "./lib/auth0ApiToken";
 import "./styles/tailwind.css";
 import "./styles/index.css";
@@ -57,6 +58,7 @@ function ServiceTokenBridge() {
     permissionService.setTokenProvider(provider);
     auditLogService.setTokenProvider(provider);
     locationService.setTokenProvider(provider);
+    accessRequestService.setTokenProvider(provider);
   }, [getAccessTokenSilently]);
 
   return null;

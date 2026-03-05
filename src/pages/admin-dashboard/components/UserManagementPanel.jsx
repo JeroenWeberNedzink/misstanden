@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
 import UserModal from '../../../pages/user-management-admin/components/UserModal';
 import { ticketService } from '../../../services/ticketService';
+import { accessRequestService } from '../../../services/accessRequestService';
 
 const toUpperRoles = (roles = []) => (Array.isArray(roles) ? roles.map((r) => String(r).toUpperCase()) : []);
 
@@ -52,9 +53,89 @@ const formatLastLogin = (value) => {
   });
 };
 
+const formatDateTime = (value) => {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleString('nl-NL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
 const countEnabledPermissions = (permissions) => {
   if (!permissions || typeof permissions !== 'object') return 0;
   return Object.values(permissions).filter(Boolean).length;
+};
+
+const AccessRequestCard = ({ request, onApprove, onApproveAdmin, onReject, disabled = false }) => {
+  const requestId = String(request?.id || '');
+  const name = String(request?.name || '').trim() || 'Onbekende naam';
+  const email = String(request?.email || '').trim() || '-';
+  const userId = String(request?.userId || request?.user_id || '').trim() || '-';
+  const message = String(request?.requestMessage || request?.request_message || '').trim();
+  const requestedAt = request?.createdAt || request?.created_at || null;
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-foreground">{name}</span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-100 text-amber-800 px-2 py-0.5 text-[11px] font-semibold">
+              PENDING
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1 break-all">{email}</p>
+          <p className="text-xs text-muted-foreground mt-1 break-all">user_id: {userId}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Aangevraagd op: {formatDateTime(requestedAt)}
+          </p>
+          {message && (
+            <div className="mt-2 rounded-lg border border-amber-200 bg-white px-3 py-2">
+              <p className="text-xs text-foreground whitespace-pre-wrap">{message}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="success"
+            size="sm"
+            iconName="UserCheck"
+            iconPosition="left"
+            onClick={() => onApprove(request)}
+            disabled={disabled || !requestId}
+          >
+            Goedkeuren
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            iconName="ShieldCheck"
+            iconPosition="left"
+            onClick={() => onApproveAdmin(request)}
+            disabled={disabled || !requestId}
+          >
+            Als admin
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            iconName="X"
+            iconPosition="left"
+            onClick={() => onReject(request)}
+            disabled={disabled || !requestId}
+          >
+            Afwijzen
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const UserCard = ({ user, onEdit, onDelete, disabled = false }) => {
@@ -175,10 +256,31 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
   const [selectedUser, setSelectedUser] = useState(null);
   const [showUserModal, setShowUserModal] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  const [isRequestActionBusy, setIsRequestActionBusy] = useState(false);
+  const [accessRequests, setAccessRequests] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [deleteRetry, setDeleteRetry] = useState(null);
+
+  const loadAccessRequests = async () => {
+    try {
+      setIsLoadingRequests(true);
+      const result = await accessRequestService.listRequests({ status: 'pending', limit: 200 });
+      setAccessRequests(Array.isArray(result?.rows) ? result.rows : []);
+    } catch (err) {
+      console.error('Access requests load error:', err);
+      onShowToast?.(err?.message || 'Fout bij laden van toegangsaanvragen', true);
+    } finally {
+      setIsLoadingRequests(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAccessRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filteredUsers = useMemo(() => {
     return (users || []).filter((user) => {
@@ -303,14 +405,95 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
     }
   };
 
+  const handleApproveRequest = async (request, asAdmin = false) => {
+    const requestId = String(request?.id || '');
+    if (!requestId) return;
+
+    try {
+      setIsRequestActionBusy(true);
+      const result = await accessRequestService.approveRequest(requestId, {
+        roles: asAdmin ? ['HANDLER', 'ADMIN'] : ['HANDLER'],
+      });
+
+      setAccessRequests((prev) => prev.filter((item) => String(item?.id || '') !== requestId));
+      const warningText = Array.isArray(result?.warnings) && result.warnings.length > 0
+        ? ` Let op: ${result.warnings.join(' ')}`
+        : '';
+      onShowToast?.(
+        `Toegang goedgekeurd voor ${request?.email || request?.name || 'gebruiker'}.${warningText}`,
+        false
+      );
+
+      onRefresh?.().catch((err) => {
+        console.error('Refresh error after access approval:', err);
+      });
+    } catch (err) {
+      console.error('Approve access request error:', err);
+      onShowToast?.(err?.message || 'Goedkeuren van aanvraag mislukt', true);
+    } finally {
+      setIsRequestActionBusy(false);
+    }
+  };
+
+  const handleRejectRequest = async (request) => {
+    const requestId = String(request?.id || '');
+    if (!requestId) return;
+
+    const note = window.prompt('Optionele reden voor afwijzing (zichtbaar voor admins):', '') ?? '';
+
+    try {
+      setIsRequestActionBusy(true);
+      await accessRequestService.rejectRequest(requestId, { note });
+      setAccessRequests((prev) => prev.filter((item) => String(item?.id || '') !== requestId));
+      onShowToast?.(`Aanvraag afgewezen voor ${request?.email || request?.name || 'gebruiker'}.`, false);
+    } catch (err) {
+      console.error('Reject access request error:', err);
+      onShowToast?.(err?.message || 'Afwijzen van aanvraag mislukt', true);
+    } finally {
+      setIsRequestActionBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-sky-100 bg-sky-50/40 p-3 flex items-start gap-2">
         <Icon name="Info" size={16} className="text-sky-700 mt-0.5" />
         <p className="text-sm text-sky-800">
-          Gebruikers worden automatisch aangemaakt bij eerste OAuth-login. Gebruik dit scherm voor beheer van
-          status, rollen en workflowtoegang.
+          OAuth-login geeft niet automatisch toegang. Gebruikers zonder handler-account kunnen toegang aanvragen.
+          Keur aanvragen hieronder goed of wijs ze af. Gebruik dit scherm ook voor beheer van status, rollen en
+          workflowtoegang.
         </p>
+      </div>
+
+      <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Icon name="UserPlus" size={16} className="text-amber-700" />
+            <p className="text-sm font-semibold text-amber-900">
+              Toegangsaanvragen ({accessRequests.length})
+            </p>
+          </div>
+          {isLoadingRequests && (
+            <span className="text-xs text-amber-800">Laden...</span>
+          )}
+        </div>
+
+        {accessRequests.length === 0 ? (
+          <p className="text-xs text-amber-800">Geen openstaande aanvragen.</p>
+        ) : (
+          <div className="space-y-3">
+            {accessRequests.map((request) => (
+              <AccessRequestCard
+                key={request?.id}
+                request={request}
+                onApprove={(item) => handleApproveRequest(item, false)}
+                onApproveAdmin={(item) => handleApproveRequest(item, true)}
+                onReject={handleRejectRequest}
+                disabled={isBusy || isRequestActionBusy}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-center justify-between">
@@ -349,8 +532,13 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
           variant="outline"
           iconName="RefreshCw"
           iconPosition="left"
-          onClick={() => onRefresh?.()}
-          disabled={isBusy}
+          onClick={async () => {
+            await Promise.allSettled([
+              onRefresh?.(),
+              loadAccessRequests(),
+            ]);
+          }}
+          disabled={isBusy || isRequestActionBusy}
         >
           Synchroniseer
         </Button>

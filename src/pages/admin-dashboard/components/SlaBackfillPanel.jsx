@@ -66,17 +66,17 @@ export default function SlaBackfillPanel({ onShowToast }) {
             <Icon name="Clock" size={22} className="text-sky-700" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-semibold text-foreground">SLA Backfill</h3>
+            <h3 className="text-lg font-semibold text-foreground">SLA-herberekening</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Zet <span className="font-mono">next_step_due</span> voor bestaande tickets op basis van
+              Herbereken <span className="font-mono">next_step_due</span> voor bestaande tickets op basis van
               <span className="font-mono"> workflow_statuses.expected_duration_days</span>.
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Gebruik dit handmatig voor onderhoud; in productie hoort dit via een geplande taak te lopen.
+              Gebruik dit alleen voor handmatig onderhoud. In productie draait dit via een geplande taak.
             </p>
             <div className="mt-3 flex flex-wrap gap-2 text-xs">
               <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 text-sky-800 px-3 py-1 font-semibold">
-                Laatst uitgevoerd: {formatDateTime(lastRunAt)}
+                Laatste run: {formatDateTime(lastRunAt)}
               </span>
               {result && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 px-3 py-1 font-semibold">
@@ -84,6 +84,10 @@ export default function SlaBackfillPanel({ onShowToast }) {
                 </span>
               )}
             </div>
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+              Let op: "Laatste run" toont alleen wanneer deze actie voor het laatst in deze browser is gestart.
+              Dit is niet automatisch een systeem-brede datum voor alle beheerders.
+            </p>
           </div>
         </div>
 
@@ -102,7 +106,7 @@ export default function SlaBackfillPanel({ onShowToast }) {
             disabled={isRunning}
             onClick={() => runBackfill({})}
           >
-            {isRunning ? 'Bezig...' : 'Backfill uitvoeren'}
+            {isRunning ? 'Bezig...' : 'Herberekening starten'}
           </Button>
           <Button
             variant="outline"
@@ -112,7 +116,7 @@ export default function SlaBackfillPanel({ onShowToast }) {
             disabled={isRunning}
             onClick={() => runBackfill({ force: true })}
           >
-            Forceer opnieuw
+            Opnieuw forceren
           </Button>
         </div>
       </div>

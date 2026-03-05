@@ -1,13 +1,99 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import Icon from '../AppIcon';
 import Button from '../ui/Button';
+import { accessRequestService } from '../../services/accessRequestService';
+
+const formatDateTime = (value) => {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleString('nl-NL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
 
 const NoAccessPage = () => {
   const { user, logout } = useAuth0();
+  const [request, setRequest] = useState(null);
+  const [message, setMessage] = useState('');
+  const [isLoadingRequest, setIsLoadingRequest] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    const loadRequest = async () => {
+      if (!user?.sub) {
+        setIsLoadingRequest(false);
+        return;
+      }
+
+      try {
+        setIsLoadingRequest(true);
+        const row = await accessRequestService.getMyRequest();
+        if (!active) return;
+        setRequest(row);
+        setError('');
+      } catch (err) {
+        if (!active) return;
+        setError(err?.message || 'Kon aanvraagstatus niet laden.');
+      } finally {
+        if (active) setIsLoadingRequest(false);
+      }
+    };
+
+    loadRequest();
+    return () => {
+      active = false;
+    };
+  }, [user?.sub]);
 
   const handleLogout = () => {
     logout({ returnTo: window.location.origin });
+  };
+
+  const requestStatus = String(request?.status || '').toLowerCase();
+  const hasPendingRequest = requestStatus === 'pending';
+  const hasApprovedRequest = requestStatus === 'approved';
+  const canSubmitRequest = !request || requestStatus === 'rejected' || requestStatus === 'cancelled';
+
+  const requestStatusText = useMemo(() => {
+    if (!request) return 'Nog geen aanvraag';
+    if (hasPendingRequest) return `In behandeling sinds ${formatDateTime(request?.createdAt || request?.created_at)}`;
+    if (hasApprovedRequest) return `Goedgekeurd op ${formatDateTime(request?.reviewedAt || request?.reviewed_at)}`;
+    if (requestStatus === 'rejected') return `Afgewezen op ${formatDateTime(request?.reviewedAt || request?.reviewed_at)}`;
+    if (requestStatus === 'cancelled') return 'Geannuleerd';
+    return requestStatus || 'Onbekend';
+  }, [request, hasPendingRequest, hasApprovedRequest, requestStatus]);
+
+  const handleSubmitRequest = async () => {
+    if (!canSubmitRequest || isSubmitting) return;
+
+    setIsSubmitting(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const result = await accessRequestService.requestAccess({ message });
+      setRequest(result?.request || null);
+      setSuccess(result?.pendingExists
+        ? 'Er staat al een aanvraag in behandeling.'
+        : 'Toegangsaanvraag verzonden. Een beheerder beoordeelt deze zo snel mogelijk.');
+      if (!result?.pendingExists) {
+        setMessage('');
+      }
+    } catch (err) {
+      setError(err?.message || 'Aanvraag verzenden mislukt.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -52,6 +138,74 @@ const NoAccessPage = () => {
                   voor deze applicatie. Neem contact op met uw systeembeheerder om toegang
                   aan te vragen.
                 </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-sky-50 border border-sky-200 rounded-lg p-4">
+            <div className="flex items-start gap-2">
+              <Icon name="Send" size={16} className="text-sky-700 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-sky-900 mb-1">Toegangsaanvraag</p>
+                <p className="text-xs text-sky-800 mb-2">{requestStatusText}</p>
+
+                {isLoadingRequest ? (
+                  <p className="text-xs text-sky-800">Status laden...</p>
+                ) : (
+                  <>
+                    {hasPendingRequest && (
+                      <p className="text-xs text-sky-800">
+                        Uw aanvraag staat in behandeling. U ontvangt toegang zodra een beheerder deze goedkeurt.
+                      </p>
+                    )}
+                    {hasApprovedRequest && (
+                      <div className="space-y-2">
+                        <p className="text-xs text-emerald-700">
+                          Uw aanvraag is goedgekeurd. Ververs de pagina of log opnieuw in om door te gaan.
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          iconName="RefreshCw"
+                          iconPosition="left"
+                          onClick={() => window.location.reload()}
+                        >
+                          Pagina verversen
+                        </Button>
+                      </div>
+                    )}
+
+                    {canSubmitRequest && !hasApprovedRequest && (
+                      <div className="space-y-2">
+                        <textarea
+                          value={message}
+                          onChange={(e) => setMessage(e.target.value)}
+                          rows={3}
+                          maxLength={1000}
+                          placeholder="Optioneel: korte toelichting voor de beheerder"
+                          className="w-full rounded-lg border border-sky-200 bg-white px-3 py-2 text-xs text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-sky-300/40"
+                        />
+                        <Button
+                          variant="default"
+                          size="sm"
+                          iconName="Send"
+                          iconPosition="left"
+                          onClick={handleSubmitRequest}
+                          disabled={isSubmitting}
+                        >
+                          {isSubmitting ? 'Verzenden...' : 'Toegang aanvragen'}
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {success && (
+                  <p className="text-xs text-emerald-700 mt-2">{success}</p>
+                )}
+                {error && (
+                  <p className="text-xs text-rose-700 mt-2">{error}</p>
+                )}
               </div>
             </div>
           </div>
