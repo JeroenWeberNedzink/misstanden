@@ -443,9 +443,12 @@ const UserManagementPanel = ({ users, roles, workflows, onRefresh, onShowToast }
 
     try {
       setIsRequestActionBusy(true);
-      await accessRequestService.rejectRequest(requestId, { note });
+      const result = await accessRequestService.rejectRequest(requestId, { note });
       setAccessRequests((prev) => prev.filter((item) => String(item?.id || '') !== requestId));
-      onShowToast?.(`Aanvraag afgewezen voor ${request?.email || request?.name || 'gebruiker'}.`, false);
+      const warningText = Array.isArray(result?.warnings) && result.warnings.length > 0
+        ? ` Let op: ${result.warnings.join(' ')}`
+        : '';
+      onShowToast?.(`Aanvraag afgewezen voor ${request?.email || request?.name || 'gebruiker'}.${warningText}`, false);
     } catch (err) {
       console.error('Reject access request error:', err);
       onShowToast?.(err?.message || 'Afwijzen van aanvraag mislukt', true);

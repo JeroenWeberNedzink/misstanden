@@ -85,6 +85,7 @@ export const accessRequestService = {
     return {
       request: payload?.row || null,
       pendingExists: Boolean(payload?.pendingExists),
+      warnings: Array.isArray(payload?.warnings) ? payload.warnings : [],
     };
   },
 
@@ -165,6 +166,7 @@ export const accessRequestService = {
 
     return {
       request: payload?.request || null,
+      warnings: Array.isArray(payload?.warnings) ? payload.warnings : [],
     };
   },
 };

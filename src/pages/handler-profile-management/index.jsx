@@ -917,7 +917,7 @@ const EmailPreferencesPanel = ({ handlerId, contactInfo, emailEnabled, setEmailE
         <div className="mb-4 p-3 rounded-lg border border-warning/30 bg-warning/10 text-warning flex items-start gap-2">
           <Icon name="AlertTriangle" size={16} className="mt-0.5" />
           <div className="flex-1 text-sm">
-            Fallback actief: standaard e-mailtypes worden gebruikt omdat database eventtypes niet geconfigureerd of niet toegankelijk zijn.
+            Standaard e-mailvoorkeuren worden gebruikt. Geavanceerde e-mailinstellingen zijn momenteel tijdelijk niet beschikbaar.
           </div>
         </div>
       )}

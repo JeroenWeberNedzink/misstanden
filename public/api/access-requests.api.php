@@ -61,8 +61,125 @@ function ar_env_required(string $key): string {
     return $value;
 }
 
+function ar_env_optional(string $key, string $default = ''): string {
+    $value = trim((string)(getenv($key) ?: ''));
+    return $value !== '' ? $value : $default;
+}
+
+function ar_escape_html(string $value): string {
+    return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+}
+
+function ar_valid_email(string $email): bool {
+    return filter_var(trim($email), FILTER_VALIDATE_EMAIL) !== false;
+}
+
+function ar_parse_email_list(string $raw): array {
+    $raw = str_replace([',', "\n", "\r", "\t"], ';', $raw);
+    $parts = array_filter(array_map('trim', explode(';', $raw)));
+    $out = [];
+    foreach ($parts as $item) {
+        $email = ar_normalize_email($item);
+        if ($email !== '' && ar_valid_email($email)) {
+            $out[] = $email;
+        }
+    }
+    return array_values(array_unique($out));
+}
+
 function ar_normalize_email(?string $email): string {
     return strtolower(trim((string)$email));
+}
+
+function ar_server_base_url(): string {
+    $configured = ar_env_optional('PORTAL_BASE_URL', '');
+    if ($configured !== '') {
+        return rtrim($configured, '/');
+    }
+
+    $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+    if ($host === '') {
+        return '';
+    }
+
+    $isHttps = (
+        (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
+        || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
+        || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https'
+    );
+    $scheme = $isHttps ? 'https' : 'http';
+    return $scheme . '://' . $host;
+}
+
+function ar_mail_api_url(): string {
+    $configured = ar_env_optional('MAIL_API_INTERNAL_URL', '');
+    if ($configured !== '') {
+        return $configured;
+    }
+    $base = ar_server_base_url();
+    if ($base === '') {
+        return '';
+    }
+    return $base . '/api/mail.api.php';
+}
+
+function ar_send_mail(array $to, string $subject, string $html, string $text = '', array $bcc = []): array {
+    $to = array_values(array_unique(array_filter(array_map(
+        static fn($email) => ar_normalize_email((string)$email),
+        $to
+    ))));
+    $bcc = array_values(array_unique(array_filter(array_map(
+        static fn($email) => ar_normalize_email((string)$email),
+        $bcc
+    ))));
+
+    $to = array_values(array_filter($to, 'ar_valid_email'));
+    $bcc = array_values(array_filter($bcc, 'ar_valid_email'));
+
+    if (!$to) {
+        return ['success' => false, 'message' => 'No valid recipient email'];
+    }
+
+    $mailApiUrl = ar_mail_api_url();
+    if ($mailApiUrl === '') {
+        return ['success' => false, 'message' => 'Could not resolve mail.api endpoint'];
+    }
+
+    $payload = [
+        'to' => $to,
+        'bcc' => $bcc,
+        'subject' => trim($subject),
+        'html' => $html,
+        'text' => $text !== '' ? $text : strip_tags(str_replace(['<br>', '<br/>', '<br />'], "\n", $html)),
+    ];
+
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL => $mailApiUrl,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+        CURLOPT_TIMEOUT => 20,
+    ]);
+
+    $resp = curl_exec($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+
+    if ($resp === false) {
+        return ['success' => false, 'message' => 'mail.api call failed: ' . $err];
+    }
+
+    $decoded = json_decode($resp, true);
+    $ok = ($code >= 200 && $code < 300 && is_array($decoded) && !empty($decoded['success']));
+    if (!$ok) {
+        $msg = is_array($decoded) ? (string)($decoded['message'] ?? 'mail.api error') : ('mail.api error HTTP ' . $code);
+        return ['success' => false, 'message' => $msg, 'http_code' => $code];
+    }
+
+    return ['success' => true];
 }
 
 function ar_uuid(string $value): bool {
@@ -219,6 +336,113 @@ function ar_require_admin_context(array $scopes = []): array {
 
 function ar_request_select_fields(): string {
     return rawurlencode('id,user_id,email,name,picture,status,request_message,review_notes,created_handler_id,reviewed_by,reviewed_at,created_at,updated_at,metadata');
+}
+
+function ar_get_admin_notification_recipients(string $baseUrl, string $serviceKey): array {
+    $recipients = ar_parse_email_list(ar_env_optional('ACCESS_REQUEST_ADMIN_EMAILS', ''));
+
+    [$code, $decoded, $raw] = ar_supabase_request(
+        'GET',
+        $baseUrl . '/rest/v1/handlers?select=id,name,email,active,roles,permissions&active=eq.true&order=name.asc',
+        $serviceKey
+    );
+    ar_assert_success($code, $decoded, $raw, 'Load admin recipients');
+
+    foreach (ar_rows($decoded) as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        if (!api_authz_is_admin($row)) {
+            continue;
+        }
+        $email = ar_normalize_email((string)($row['email'] ?? ''));
+        if ($email !== '' && ar_valid_email($email)) {
+            $recipients[] = $email;
+        }
+    }
+
+    return array_values(array_unique($recipients));
+}
+
+function ar_notify_admins_about_new_request(string $baseUrl, string $serviceKey, array $requestRow): array {
+    $recipients = ar_get_admin_notification_recipients($baseUrl, $serviceKey);
+    if (!$recipients) {
+        return ['success' => false, 'message' => 'No admin email recipients configured'];
+    }
+
+    $portalBase = ar_server_base_url();
+    $adminUrl = $portalBase !== '' ? ($portalBase . '/settings?mode=admin') : '';
+    $name = trim((string)($requestRow['name'] ?? '')) ?: 'Onbekend';
+    $email = trim((string)($requestRow['email'] ?? '')) ?: '-';
+    $userId = trim((string)($requestRow['user_id'] ?? '')) ?: '-';
+    $requestedAt = trim((string)($requestRow['created_at'] ?? '')) ?: (new DateTimeImmutable('now'))->format(DateTime::ATOM);
+    $message = trim((string)($requestRow['request_message'] ?? ''));
+
+    $subject = 'Nieuwe toegangsaanvraag - Misstanden Portal';
+    $html = '<h2>Nieuwe toegangsaanvraag</h2>'
+        . '<p>Er is een nieuwe aanvraag voor portal-toegang ingediend.</p>'
+        . '<ul>'
+        . '<li><strong>Naam:</strong> ' . ar_escape_html($name) . '</li>'
+        . '<li><strong>E-mail:</strong> ' . ar_escape_html($email) . '</li>'
+        . '<li><strong>User ID:</strong> <code>' . ar_escape_html($userId) . '</code></li>'
+        . '<li><strong>Aangevraagd op:</strong> ' . ar_escape_html($requestedAt) . '</li>'
+        . '</ul>';
+
+    if ($message !== '') {
+        $html .= '<p><strong>Toelichting van gebruiker:</strong></p>'
+            . '<blockquote style="border-left:3px solid #d1d5db;padding-left:10px;margin:0;">'
+            . nl2br(ar_escape_html($message))
+            . '</blockquote>';
+    }
+
+    if ($adminUrl !== '') {
+        $html .= '<p><a href="' . ar_escape_html($adminUrl) . '">Open beheercentrum om aanvraag te beoordelen</a></p>';
+    }
+
+    $to = [array_shift($recipients)];
+    $bcc = $recipients;
+    return ar_send_mail($to, $subject, $html, '', $bcc);
+}
+
+function ar_notify_requester_decision(array $requestRow, string $decision): array {
+    $email = ar_normalize_email((string)($requestRow['email'] ?? ''));
+    if ($email === '' || !ar_valid_email($email)) {
+        return ['success' => false, 'message' => 'Requester email not available'];
+    }
+
+    $name = trim((string)($requestRow['name'] ?? '')) ?: 'gebruiker';
+    $reviewNotes = trim((string)($requestRow['review_notes'] ?? ''));
+    $portalBase = ar_server_base_url();
+    $loginUrl = $portalBase !== '' ? ($portalBase . '/handler-dashboard') : '';
+
+    if ($decision === 'approved') {
+        $subject = 'Uw toegangsaanvraag is goedgekeurd';
+        $html = '<h2>Toegang goedgekeurd</h2>'
+            . '<p>Beste ' . ar_escape_html($name) . ',</p>'
+            . '<p>Uw aanvraag voor toegang tot Misstanden Portal is goedgekeurd.</p>'
+            . '<p>U kunt nu inloggen met uw bestaande OAuth-account.</p>';
+        if ($reviewNotes !== '') {
+            $html .= '<p><strong>Opmerking beheerder:</strong><br>' . nl2br(ar_escape_html($reviewNotes)) . '</p>';
+        }
+        if ($loginUrl !== '') {
+            $html .= '<p><a href="' . ar_escape_html($loginUrl) . '">Open Misstanden Portal</a></p>';
+        }
+        return ar_send_mail([$email], $subject, $html);
+    }
+
+    if ($decision === 'rejected') {
+        $subject = 'Uw toegangsaanvraag is afgewezen';
+        $html = '<h2>Toegang afgewezen</h2>'
+            . '<p>Beste ' . ar_escape_html($name) . ',</p>'
+            . '<p>Uw aanvraag voor toegang tot Misstanden Portal is afgewezen.</p>'
+            . '<p>Neem contact op met uw systeembeheerder voor meer informatie.</p>';
+        if ($reviewNotes !== '') {
+            $html .= '<p><strong>Opmerking beheerder:</strong><br>' . nl2br(ar_escape_html($reviewNotes)) . '</p>';
+        }
+        return ar_send_mail([$email], $subject, $html);
+    }
+
+    return ['success' => false, 'message' => 'Unknown decision'];
 }
 
 function ar_load_latest_request_for_identity(string $baseUrl, string $serviceKey, string $sub, string $email): ?array {
@@ -733,9 +957,21 @@ try {
             throw new Exception('Create access request failed: no row returned');
         }
 
+        $warnings = [];
+        try {
+            $mailResult = ar_notify_admins_about_new_request($baseUrl, $serviceKey, $created);
+            if (empty($mailResult['success'])) {
+                $warnings[] = 'Aanvraag opgeslagen, maar admin e-mailmelding is niet verstuurd: '
+                    . (string)($mailResult['message'] ?? 'unknown');
+            }
+        } catch (Throwable $mailErr) {
+            $warnings[] = 'Aanvraag opgeslagen, maar admin e-mailmelding is mislukt.';
+        }
+
         ar_json(200, true, 'Access request submitted', [
             'row' => $created,
             'pending_exists' => false,
+            'warnings' => $warnings,
         ]);
     }
 
@@ -781,7 +1017,20 @@ try {
 
         if ($action === 'reject') {
             $updated = ar_reject_request($baseUrl, $serviceKey, $pendingRow, $reviewNotes, $handlerId);
-            ar_json(200, true, 'Access request rejected', ['request' => $updated]);
+            $warnings = [];
+            try {
+                $mailResult = ar_notify_requester_decision($updated, 'rejected');
+                if (empty($mailResult['success'])) {
+                    $warnings[] = 'Aanvraag afgewezen, maar e-mail aan gebruiker is niet verstuurd: '
+                        . (string)($mailResult['message'] ?? 'unknown');
+                }
+            } catch (Throwable $mailErr) {
+                $warnings[] = 'Aanvraag afgewezen, maar e-mail aan gebruiker is mislukt.';
+            }
+            ar_json(200, true, 'Access request rejected', [
+                'request' => $updated,
+                'warnings' => $warnings,
+            ]);
         }
 
         $roles = ar_role_list($body['roles'] ?? ['HANDLER']);
@@ -798,6 +1047,16 @@ try {
             $reviewNotes,
             $handlerId
         );
+
+        try {
+            $mailResult = ar_notify_requester_decision($result['request'] ?? $pendingRow, 'approved');
+            if (empty($mailResult['success'])) {
+                $result['warnings'][] = 'Aanvraag goedgekeurd, maar e-mail aan gebruiker is niet verstuurd: '
+                    . (string)($mailResult['message'] ?? 'unknown');
+            }
+        } catch (Throwable $mailErr) {
+            $result['warnings'][] = 'Aanvraag goedgekeurd, maar e-mail aan gebruiker is mislukt.';
+        }
 
         ar_json(200, true, 'Access request approved', $result);
     }
