@@ -998,7 +998,6 @@ export default function CaseManagementDetail() {
     try {
       const backendPayload = {};
 
-      if (patch?.description !== undefined) backendPayload.description = patch.description;
       if (patch?.location !== undefined) backendPayload.location = patch.location;
 
       if (patch?.reporterDetails) {

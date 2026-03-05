@@ -90,14 +90,12 @@ const CaseDetailsPanel = ({
     Boolean((reporter?.phone || '').trim());
 
   // local editable state
-  const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
   const [reporterName, setReporterName] = useState('');
   const [reporterEmail, setReporterEmail] = useState('');
   const [reporterPhone, setReporterPhone] = useState('');
 
   useEffect(() => {
-    setDescription(caseData?.description ?? '');
     setLocation(caseData?.location ?? '');
     setReporterName(reporter?.name ?? '');
     setReporterEmail(reporter?.email ?? '');
@@ -106,17 +104,15 @@ const CaseDetailsPanel = ({
 
   const hasChanges = useMemo(() => {
     return (
-      (description ?? '') !== (caseData?.description ?? '') ||
       (location ?? '') !== (caseData?.location ?? '') ||
       (reporterName ?? '') !== (reporter?.name ?? '') ||
       (reporterEmail ?? '') !== (reporter?.email ?? '') ||
       (reporterPhone ?? '') !== (reporter?.phone ?? '')
     );
-  }, [caseData, description, location, reporterName, reporterEmail, reporterPhone, reporter]);
+  }, [caseData, location, reporterName, reporterEmail, reporterPhone, reporter]);
 
   const handleCancel = () => {
     setIsEditing(false);
-    setDescription(caseData?.description ?? '');
     setLocation(caseData?.location ?? '');
     setReporterName(reporter?.name ?? '');
     setReporterEmail(reporter?.email ?? '');
@@ -131,7 +127,6 @@ const CaseDetailsPanel = ({
     }
 
     const patch = {
-      description,
       location: location || null,
       reporterDetails: {
         name: reporterName || null,
@@ -257,23 +252,11 @@ const CaseDetailsPanel = ({
               </PermissionGuard>
             </div>
 
-            {!isEditing ? (
-              <div className="p-4 md:p-5">
-                <p className="text-xs md:text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-                  {caseData?.description || '-'}
-                </p>
-              </div>
-            ) : (
-              <div className="p-4 md:p-5">
-                <textarea
-                  className="w-full rounded border border-border bg-background/60 p-4 outline-none text-xs md:text-sm text-foreground leading-relaxed min-h-[140px] focus:ring-1 focus:ring-primary/20"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder={t('caseManagementDetail.details.descriptionPlaceholder')}
-                  disabled={isSaving}
-                />
-              </div>
-            )}
+            <div className="p-4 md:p-5">
+              <p className="text-xs md:text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                {caseData?.description || '-'}
+              </p>
+            </div>
 
             {/* subtle footer hint only when editing */}
             {isEditing && hasChanges && (
