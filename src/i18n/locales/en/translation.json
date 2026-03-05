@@ -820,6 +820,57 @@
         "empty": {
             "noSettingsFound": "No settings found",
             "tryAdjustSearch": "Try adjusting your search query"
+        },
+        "adminModules": {
+            "loading": "Loading admin data...",
+            "actions": {
+                "backToOverview": "Back to overview"
+            },
+            "messages": {
+                "partialLoad": "Could not load all admin data ({{failed}}/{{total}} failed).",
+                "loadError": "Error loading admin data"
+            },
+            "empty": {
+                "noModulesFound": "No modules found",
+                "tryAdjustFilter": "Try adjusting your filter"
+            },
+            "modules": {
+                "users": {
+                    "title": "Users",
+                    "description": "Manage user accounts, roles and access rights",
+                    "meta": "{{count}} users"
+                },
+                "permissions": {
+                    "title": "Permissions & Roles",
+                    "description": "Configure permissions and manage role-based access",
+                    "meta": "{{count}} roles"
+                },
+                "workflows": {
+                    "title": "Workflows",
+                    "description": "View and manage ticket workflows and process metrics",
+                    "meta": "{{count}} workflows"
+                },
+                "translations": {
+                    "title": "Translations",
+                    "description": "Manage multilingual content and i18n translations",
+                    "meta": "{{count}} languages"
+                },
+                "locations": {
+                    "title": "Locations",
+                    "description": "Manage countries available for incident reporting",
+                    "meta": "Click to configure"
+                },
+                "logging": {
+                    "title": "Audit Logs",
+                    "description": "View database changes and audit trails",
+                    "meta": "Database logs"
+                },
+                "slaTools": {
+                    "title": "SLA Management",
+                    "description": "Maintenance and recovery actions for SLA data",
+                    "meta": "Recalculate next_step_due"
+                }
+            }
         }
     },
     "legalGuidance": {

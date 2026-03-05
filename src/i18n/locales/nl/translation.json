@@ -836,6 +836,57 @@
         "empty": {
             "noSettingsFound": "Geen instellingen gevonden",
             "tryAdjustSearch": "Pas je zoekopdracht aan"
+        },
+        "adminModules": {
+            "loading": "Admin gegevens laden...",
+            "actions": {
+                "backToOverview": "Terug naar overzicht"
+            },
+            "messages": {
+                "partialLoad": "Niet alle admin-gegevens konden geladen worden ({{failed}}/{{total}} mislukt).",
+                "loadError": "Fout bij laden van admin-gegevens"
+            },
+            "empty": {
+                "noModulesFound": "Geen modules gevonden",
+                "tryAdjustFilter": "Probeer de filter aan te passen"
+            },
+            "modules": {
+                "users": {
+                    "title": "Gebruikers",
+                    "description": "Beheer gebruikersaccounts, rollen en toegangsrechten",
+                    "meta": "{{count}} gebruikers"
+                },
+                "permissions": {
+                    "title": "Rechten & Rollen",
+                    "description": "Configureer permissies en beheer rol-gebaseerde toegang",
+                    "meta": "{{count}} rollen"
+                },
+                "workflows": {
+                    "title": "Workflows",
+                    "description": "Bekijk en beheer ticket workflows en processtatistieken",
+                    "meta": "{{count}} workflows"
+                },
+                "translations": {
+                    "title": "Vertalingen",
+                    "description": "Beheer meertalige content en i18n vertalingen",
+                    "meta": "{{count}} talen"
+                },
+                "locations": {
+                    "title": "Locaties",
+                    "description": "Beheer landen die beschikbaar zijn voor meldingen",
+                    "meta": "Klik om te configureren"
+                },
+                "logging": {
+                    "title": "Audit Logs",
+                    "description": "Bekijk database wijzigingen en audit trails",
+                    "meta": "Database logs"
+                },
+                "slaTools": {
+                    "title": "SLA Beheer",
+                    "description": "Onderhoud en herstelacties voor SLA-gegevens",
+                    "meta": "Herbereken next_step_due"
+                }
+            }
         }
     },
     "adminDashboard": {

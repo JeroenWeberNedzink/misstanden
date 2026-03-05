@@ -1,23 +1,39 @@
 # NZ Misstanden Portal
 
-Internal whistleblower/case-management portal built with React, Supabase, Auth0, and PHP API helpers.
+Internal whistleblower and case-management portal built with React, Supabase, Auth0, and PHP API helpers.
 
 ## At A Glance
 
 This repository contains:
-- A reporter-facing portal for anonymous/known incident submission
-- A secure ticket access portal for reporters
-- A handler/admin case-management interface
-- Workflow + SLA orchestration
-- Localized UI + localized mail notifications
-
-It supports:
-- Anonymous incident reporting
-- Secure ticket access for reporters
-- Handler/admin case management
-- Workflow + SLA tracking
-- Role/permission management
+- Reporter-facing anonymous or known incident intake
+- Reporter ticket-access portal
+- Handler and admin case-management UI
+- Workflow and SLA orchestration
+- Role and permission management
 - Localized UI and localized email notifications
+
+## Recent Highlights (2026-03)
+
+- Access-request flow for OAuth users without handler access
+  - New API: `/api/access-requests.api.php`
+  - New migration: `20260305_create_access_requests_table.sql`
+  - Admin approval and rejection flow added in user/admin UI
+  - Optional admin and requester email notifications on request and decision
+- Workflow first-response marker
+  - New migration: `20260305_add_workflow_status_first_response_flag.sql`
+  - Workflow status model now supports explicit `is_first_response`
+- Ticket handlers relation fix for production
+  - New migration: `20260305_fix_ticket_handlers_api_access.sql`
+  - Ensures `public.ticket_handlers` exists, grants are in place, and PostgREST cache is reloaded
+- Settings API IIS hardening
+  - Runtime env discovery improved for different deploy layouts
+  - Settings endpoint supports HTTP fallback if cURL is unavailable
+  - Optional `?debug=1` on settings endpoint returns redacted error detail
+  - Server env aliases added (example: `SUPABASE_URL` can populate `VITE_SUPABASE_URL` in PHP runtime)
+- Settings admin module i18n cleanup
+  - Module cards in Settings > Admin Center are now fully translation-key driven across locales
+- Case management update
+  - Case description editing is now read-only for handlers in case detail screens
 
 ## Tech Stack
 
@@ -29,86 +45,98 @@ Frontend:
 - i18next + react-i18next
 - Auth0 React SDK
 
-Data/Auth:
+Data and auth:
 - Supabase (PostgREST + Storage)
-- Auth0 (login + MFA-related flows)
+- Auth0 (login and MFA-related flows)
 
 Backend helpers:
 - PHP API endpoints under `public/api`
 - PHPMailer for SMTP sending
-- Optional dev outbox sink for emails
-
-## Architecture
-
-Main app flow:
-- `src/index.jsx` bootstraps React and i18n.
-- `src/App.jsx` wraps the app in `Auth0Provider` and `SettingsProvider`, then renders routes.
-- `src/Routes.jsx` defines public vs protected routes.
-
-Data layer:
-- Frontend services in `src/services` handle domain logic and Supabase I/O.
-- Shared Supabase client: `src/lib/supabase.js`.
-
-API layer:
-- Vite dev proxy forwards `/api/*` to PHP server (`vite.config.js`).
-- PHP APIs:
-  - `/api/tickets.api.php`
-  - `/api/settings.api.php`
-  - `/api/workflows.api.php`
-  - `/api/mail.api.php`
-  - `/api/mfa.api.php`
-  - `/api/translations.api.php`
-  - `/api/sla-backfill.api.php`
-  - `/api/security-self-test.api.php` (admin diagnostics)
-
-## Core Functional Areas
-
-Public/reporter side:
-- Multi-step anonymous report form with attachments (`src/pages/anonymous-report-form`)
-- Report confirmation page with ticket/access code (`src/pages/report-confirmation`)
-- Ticket access portal (`src/pages/ticket-access-portal`)
-- Reporter ticket details + secure communication (`src/pages/ticket-details-view`)
-
-Handler/admin side:
-- Handler dashboard and ticket list (`src/pages/handler-dashboard`)
-- Case detail management (status, assignment, notes, comms, SLA) (`src/pages/case-management-detail`)
-- Workflow configuration (`src/pages/workflow-configuration-admin`)
-- User/role/permission management (`src/pages/admin-dashboard`, `src/pages/user-management-admin`, `src/pages/permissions-admin`)
-- System settings + modules (`src/pages/settings`)
-- Notification log monitoring (`src/pages/logging`)
-
-Cross-cutting:
-- Notification and email orchestration (`src/services/notificationService.js`, `src/services/emailService.js`)
-- RBAC/permissions checks (`src/hooks/usePermissions.js`, `src/components/auth/ProtectedRoute.jsx`)
-- Dynamic settings context (`src/contexts/SettingsContext.jsx`)
-- i18n locales (`src/i18n/locales`)
+- Optional outbox sink for dev email testing
 
 ## Repository Layout
 
 ```txt
+docs/                     Operational and security docs
 src/
-  components/      Shared UI and navigation/auth guards
-  contexts/        Global settings context
-  hooks/           Permission and utility hooks
-  i18n/            i18next config + locale JSON files
-  lib/             Supabase client
-  pages/           Route-level pages
-  services/        Business logic + data access
-  styles/          Tailwind and global CSS
-public/api/        PHP API endpoints + PHPMailer + email templates/outbox
-supabase/migrations/ SQL migrations
-scripts/           Helper scripts (e.g. SLA backfill)
-nz-startup.ps1     Local dev orchestrator (PHP + Vite)
+  components/             Shared UI and auth/navigation guards
+  contexts/               Global settings context
+  hooks/                  Permission and utility hooks
+  i18n/                   i18next config + locale JSON files
+  lib/                    Shared clients (Supabase/Auth helpers)
+  pages/                  Route-level pages
+  services/               Domain logic + data access
+  styles/                 Tailwind and global styles
+public/api/               PHP API endpoints + PHPMailer + templates
+backups/translations/     Translation API backups
+supabase/migrations/      SQL migrations
+scripts/                  Helper scripts (including SLA backfill runner)
+run/                      Runtime cache and rate-limit state (local)
+logs/                     Local runtime logs
+private/keys/             Local encryption keys (not committed)
+nz-startup.ps1            Local dev orchestrator (PHP + Vite)
 ```
+
+## Application Architecture
+
+Main flow:
+- `src/index.jsx` bootstraps React and i18n
+- `src/App.jsx` wires Auth0, SettingsProvider, and token bridge for services
+- `src/Routes.jsx` defines public and protected routes
+
+Data layer:
+- Frontend domain services in `src/services`
+- Shared Supabase client in `src/lib/supabase.js`
+
+API layer:
+- Vite proxy forwards `/api/*` to local PHP server in development
+- Production uses PHP API scripts under `public/api`
+
+### Main PHP Endpoints
+
+- `/api/me.api.php`
+- `/api/email-verification.api.php`
+- `/api/access-requests.api.php`
+- `/api/tickets.api.php`
+- `/api/settings.api.php`
+- `/api/workflows.api.php`
+- `/api/translations.api.php`
+- `/api/sla-backfill.api.php`
+- `/api/security-self-test.api.php`
+- `/api/mfa.api.php`
+- `/api/mail.api.php`
+
+## Core Functional Areas
+
+Public and reporter:
+- Anonymous incident submission with attachments
+- Report confirmation with ticket and access-code flow
+- Reporter ticket access and secure communication
+
+Handler and admin:
+- Handler dashboard and ticket handling
+- Case detail management (status, assignment, notes, communications, SLA)
+- Workflow and workflow-status administration
+- Users, roles, and permissions management
+- Access-request review and decision workflow
+- Handler profile, MFA, and notification preferences
+- System settings and admin modules
+- Notification and audit/logging tooling
+
+Cross-cutting:
+- RBAC and protected routes
+- Dynamic runtime settings
+- Email orchestration and templates
+- i18n locale management and translation import/export
 
 ## Local Development
 
 Prerequisites:
 - Node.js 18+
 - npm
-- PHP 8+
-- Supabase project (URL + anon key)
-- Auth0 app configuration
+- PHP 8+ (recommended)
+- Supabase project
+- Auth0 application and API configuration
 
 Install:
 
@@ -116,31 +144,17 @@ Install:
 npm install
 ```
 
-Create `.env` (or `.env.local`) with at least:
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
-- `VITE_AUTH0_DOMAIN`
-- `VITE_AUTH0_CLIENT_ID`
-- `VITE_AUTH0_AUDIENCE` (required for API access-token flow; no fallback is used)
-- `SUPABASE_SERVICE_ROLE_KEY` (required for server-side settings/workflow/ticket APIs)
-
-Recommended start (Windows PowerShell):
+Start (recommended on Windows PowerShell):
 
 ```powershell
 .\nz-startup.ps1
 ```
 
-Optional strict startup guard:
+Optional strict audience check:
 
 ```powershell
 .\nz-startup.ps1 -RequireAuth0Audience
 ```
-
-Or set `NZ_REQUIRE_AUTH0_AUDIENCE=true` to make missing `VITE_AUTH0_AUDIENCE` fail startup automatically.
-
-This starts:
-- PHP API server on `http://127.0.0.1:8081`
-- Vite dev server on `http://127.0.0.1:3000`
 
 Manual start:
 
@@ -149,160 +163,155 @@ php -S 127.0.0.1:8081 -t public
 npm run dev
 ```
 
+Default local URLs:
+- Frontend: `http://127.0.0.1:3000`
+- PHP API: `http://127.0.0.1:8081`
+
 ## Environment Variables
 
-Frontend-required:
+Use `.env.local` and/or `.env`.
+
+Frontend-required (`VITE_*`):
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 - `VITE_AUTH0_DOMAIN`
 - `VITE_AUTH0_CLIENT_ID`
-- `VITE_AUTH0_AUDIENCE` (required Auth0 API audience used to request access tokens for PHP APIs; no `https://<domain>/mfa/` fallback)
-- `VITE_AUTH0_API_SCOPE` (space-separated API scopes for admin API calls)
+- `VITE_AUTH0_AUDIENCE`
+- `VITE_AUTH0_API_SCOPE`
+
+Server-required (non-`VITE_*`):
+- `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SERVICE_KEY`)
+
+Common server-side optional:
+- `SLA_BACKFILL_CRON_KEY`
+- `EMAIL_ENC_KEY_PATH`
+- `MAIL_DEV_SINK`
+- `MAIL_OUTBOX_DIR`
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_AUTH`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`
+- `MAIL_DEFAULT_FROM`, `MAIL_DEFAULT_FROM_NAME`
+- `PORTAL_BASE_URL`
+- `MAIL_API_INTERNAL_URL`
+- `ACCESS_REQUEST_ADMIN_EMAILS`
 
 Important:
-- Never put secrets in `VITE_*` variables. Vite injects all `VITE_*` values into browser code.
-- Use non-`VITE_` names for server-only secrets (for example `AUTH0_CLIENT_SECRET`).
-
-API/mail/security (optional or environment-specific):
-- `EMAIL_ENC_KEY_PATH` (path to base64 32-byte email encryption key)
-- `MAIL_DEV_SINK` (`true` writes mails to outbox instead of SMTP)
-- `MAIL_OUTBOX_DIR`
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_AUTH`, `SMTP_USER`, `SMTP_PASS`
-- `MAIL_DEFAULT_FROM`, `MAIL_DEFAULT_FROM_NAME`
-- `SUPABASE_SERVICE_ROLE_KEY` (required for secure server-side settings/workflow/ticket APIs; also used by SLA tooling)
-- `SLA_BACKFILL_CRON_KEY` (optional but recommended; enables non-interactive scheduled calls to `/api/sla-backfill.api.php` via `X-SLA-CRON-KEY`)
-
-Recommended Auth0 API scopes:
-- `admin:settings:read`, `admin:settings:write`
-- `admin:workflows:read`, `admin:workflows:write`
-- `admin:translations:read`, `admin:translations:write`
-- `admin:sla:write`
-- `admin:security:read`
-- `admin:all` (optional compatibility umbrella)
+- Never put secrets in `VITE_*` variables. They are exposed to browser code.
+- PHP runtime includes env aliases for deployment compatibility:
+  - `SUPABASE_URL` -> `VITE_SUPABASE_URL`
+  - `AUTH0_DOMAIN` -> `VITE_AUTH0_DOMAIN`
+  - `AUTH0_CLIENT_ID` -> `VITE_AUTH0_CLIENT_ID`
+  - `AUTH0_AUDIENCE` -> `VITE_AUTH0_AUDIENCE`
 
 ## Automated SLA Backfill (Windows/IIS)
 
-Manual backfill in UI is a fallback tool. For production, schedule it.
+Use scheduled execution in production.
 
-1. Set a strong `SLA_BACKFILL_CRON_KEY` in the IIS/PHP environment.
-2. Use the provided script:
+Run manually:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\run-sla-backfill.ps1 -ApiUrl "https://your-domain/api/sla-backfill.api.php"
 ```
 
-3. Create a Windows Scheduled Task (example: every hour):
+Example scheduled task (hourly):
 
 ```powershell
 schtasks /Create /TN "NZ-SLA-Backfill" /SC HOURLY /MO 1 /TR "powershell -ExecutionPolicy Bypass -File C:\Projects\nz-misstanden\scripts\run-sla-backfill.ps1 -ApiUrl https://your-domain/api/sla-backfill.api.php" /RU "SYSTEM"
 ```
 
-Notes:
-- Scheduled mode authenticates with `X-SLA-CRON-KEY` and does not require Auth0 interactive login.
-- Admin-authenticated manual runs from the UI remain supported.
-
 ## Database and Migrations
 
-SQL migration files live in `supabase/migrations`.
+Migrations live in `supabase/migrations`.
 
-Important migrations include:
-- System settings
-- Locations
-- Email notification system
-- Translation audit log
-- Reporter email crypto columns
-- Status email notify flags
-- Policy baseline snapshot (`20260219_capture_policy_baseline.sql`)
-- System settings hardening (`20260219_harden_system_settings_access.sql`)
+Recent key migrations:
+- `20260219_create_handlers_table.sql`
+- `20260219_create_ticket_handlers.sql`
+- `20260219_capture_policy_baseline.sql`
+- `20260219_harden_system_settings_access.sql`
+- `20260219_harden_workflow_write_access.sql`
+- `20260219_restore_workflow_read_access.sql`
+- `20260305_create_access_requests_table.sql`
+- `20260305_add_workflow_status_first_response_flag.sql`
+- `20260305_fix_ticket_handlers_api_access.sql`
 
-Note:
-- `src/services/migrationService.js` performs a startup check for email notification structures and reports when manual SQL setup is still needed.
+If production shows `ticket_handlers ... 404 Not Found`, run:
+- `20260305_fix_ticket_handlers_api_access.sql`
 
-## i18n and Translation Management
+## IIS Deployment
 
-Locale files:
+Build:
+
+```bash
+npm run build
+```
+
+Deploy:
+1. Copy the contents of `dist/` to IIS site root.
+2. Keep `api/` directory from build output (contains PHP endpoints and `api/web.config`).
+3. Place `.env` in IIS site root (same level as `index.html` and `api`), or in parent root if your layout requires it.
+4. Ensure app pool identity can read `.env` and API files.
+
+Notes:
+- `api/web.config` includes PHP handler mapping and request filtering defaults. Validate `scriptProcessor` path for your server.
+- For SPA deep links, ensure IIS rewrite routes unknown paths to `/index.html`.
+
+## Troubleshooting
+
+`/api/settings.api.php` returns 500 with `Missing required environment variable: VITE_SUPABASE_URL`:
+- Ensure `.env` exists on IIS host in the deployed root
+- Ensure file permissions allow IIS to read it
+- You may also set `SUPABASE_URL` (env alias support is available)
+
+`/rest/v1/ticket_handlers ... 404 Not Found` from frontend:
+- Table or PostgREST grants/schema cache are not aligned in target Supabase environment
+- Apply `20260305_fix_ticket_handlers_api_access.sql`
+
+Need deeper settings error diagnostics:
+- Call `/api/settings.api.php?debug=1` to receive redacted error detail and `error_id`
+
+## Security Notes
+
+- API endpoints use Auth0 access tokens for server authorization
+- ID tokens are rejected by admin APIs
+- Sensitive failures return `error_id` and redact internal detail in normal mode
+- Rate limiting and security headers are applied in PHP API layer
+- Attachment access is signed and time-limited
+- Browser-side anon key is expected; real access control must be enforced by DB policies and API authorization
+
+Security runbooks:
+- `SECURITY.md`
+- `SECURITY_TESTING.md`
+- `SECURITY_ROTATION_CHECKLIST.md`
+
+## i18n and Translations
+
+Locales:
 - `src/i18n/locales/en/translation.json`
 - `src/i18n/locales/nl/translation.json`
 - `src/i18n/locales/fr/translation.json`
 - `src/i18n/locales/de/translation.json`
 - `src/i18n/locales/pt/translation.json`
 
-`public/api/translations.api.php` supports translation CRUD/import/export and creates file backups in `backups/translations`.
+Translation API:
+- `public/api/translations.api.php`
+- Supports list/export/import/update/delete and backup creation in `backups/translations`
 
-## Recent Changes (2026-02)
+## Build and Validation
 
-- Removed Rocket scaffolding; do not reintroduce.
-- Auth0 token model updated:
-  - Frontend API calls now request access tokens with `getAccessTokenSilently(...)` using `VITE_AUTH0_AUDIENCE`.
-  - API endpoints no longer accept ID tokens; ID tokens are UI-only.
-- PHP Auth0 verification hardened:
-  - Access tokens are validated against JWKS signature, issuer, audience, and time-based claims.
-  - ID-token-shaped claims are explicitly rejected.
-- Server-side admin authorization expanded:
-  - `translations.api.php` and `sla-backfill.api.php` now require authenticated admin context.
-- Supabase key safety tightened:
-  - Server APIs require a valid `service_role` key and do not fall back to anon keys for privileged operations.
-- Ticket portal hardening:
-  - Added server-side rate limiting and failed-attempt lockouts for reporter ticket access/message actions.
-- Attachment access hardening:
-  - Reporter/handler attachment links use short-lived signed URLs; storage paths are treated as private.
-- Error/PII handling improved:
-  - Internal exception details are no longer exposed to clients; responses include an `error_id` and logs are redacted.
-- UX/performance loading flow improved:
-  - Case detail now renders header/core data first and lazy-loads messages/actions/attachments/notes after.
-  - Handler dashboard startup was simplified to a single visible skeleton state (removed stacked loading screens).
-- Priority inference expanded:
-  - New report severity inference now uses richer urgency/impact signals, deadline parsing, user/location-count parsing, and conservative dampeners to reduce false high alerts.
-
-## Security and Privacy Notes
-
-- Token model:
-  - Access token (`getAccessTokenSilently`) is used for all API authorization.
-  - ID token is only used for UI identity and must not be sent to API endpoints.
-  - API access-token flows require `VITE_AUTH0_AUDIENCE`; fallback audience derivation is disabled.
-- Reporter email can be encrypted/hashed via `public/api/tickets.api.php` and `public/api/_crypto.php`.
-- Anonymous reporting is supported.
-- Assignment logic blocks inactive handlers from being assigned.
-- Route access is guarded with Auth0 + permission checks.
-- Maintenance mode is controlled via dynamic settings.
-- Browser-visible `VITE_SUPABASE_ANON_KEY` is expected for Supabase frontends; real protection comes from strict RLS/policies.
-- Admin settings writes now go through `public/api/settings.api.php` and require an Auth0 token + admin handler authorization.
-
-## Security Hardening
-
-- Server-side scope enforcement is active for admin APIs:
-  - `settings.api.php` (read/write split by method)
-  - `workflows.api.php` (read/write split by method)
-  - `translations.api.php` (read/write split by method)
-  - `sla-backfill.api.php` (admin-triggered runs)
-  - `security-self-test.api.php` (admin read scope)
-- API security headers are centralized in `public/api/_security_headers.php` and applied across API endpoints.
-- Admin-only deployment validation endpoint:
-  - `GET /api/security-self-test.api.php`
-  - Requires admin authorization + `admin:security:read` (or configured compatible admin scope)
-  - Returns redacted boolean checks only (no secret values)
-
-## Troubleshooting
-
-- `GET /api/settings.api.php ... 500 Missing Supabase service key configuration`
-  - Cause: missing `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SERVICE_KEY`) in runtime environment
-  - Fix: add service key to `.env` and restart PHP + Vite
-
-- Reporter/admin screens show fallback defaults unexpectedly
-  - Check PHP logs in `php-errors.log` and `logs/php`
-  - Verify `.env` is loaded and contains required Auth0 + Supabase server-side vars
-
-## Build
+Build:
 
 ```bash
 npm run build
 ```
 
-Output is generated in `dist/`.
+Quick checks before release:
+- Build succeeds
+- Settings API responds in target environment
+- Access-request approval flow works end-to-end
+- Workflow admin reflects first-response status flag behavior
+- Ticket handler relation reads succeed in target Supabase project
 
 ## Developer Notes
 
-- Add new pages under `src/pages` and register routes in `src/Routes.jsx`.
-- Keep translation keys namespaced (for example `caseManagement.*`, `settings.*`).
-- Business/domain logic should stay in `src/services`, not inside page components.
-- There is currently no dedicated test suite configured in `package.json`; validate changes with focused manual checks and `npm run build`.
+- Register new pages in `src/Routes.jsx`
+- Keep domain logic in `src/services`, not in page components
+- Keep translation keys namespaced (for example `settings.*`, `caseManagement.*`)
+- There is no dedicated automated test suite configured in `package.json`; validate with focused manual checks and `npm run build`

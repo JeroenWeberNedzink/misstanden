@@ -63,6 +63,91 @@ function settings_api_json(int $status, bool $success, string $message, $data = 
     exit;
 }
 
+function settings_is_list_array($value): bool {
+    if (!is_array($value)) {
+        return false;
+    }
+    if (function_exists('array_is_list')) {
+        return array_is_list($value);
+    }
+    $i = 0;
+    foreach (array_keys($value) as $key) {
+        if ($key !== $i++) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function settings_http_request(
+    string $method,
+    string $url,
+    array $headers,
+    $payload = null,
+    int $timeout = 20
+): array {
+    $payloadJson = $payload !== null ? json_encode($payload, JSON_UNESCAPED_UNICODE) : null;
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_TIMEOUT => $timeout,
+        ]);
+        if ($payloadJson !== null) {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $payloadJson);
+        }
+
+        $resp = curl_exec($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        if ($resp === false) {
+            $err = curl_error($ch);
+            curl_close($ch);
+            throw new Exception('HTTP request failed: ' . $err);
+        }
+        curl_close($ch);
+        return [$code, (string)$resp];
+    }
+
+    if (!filter_var((string)ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOLEAN)) {
+        throw new Exception('HTTP client unavailable: enable curl or allow_url_fopen');
+    }
+
+    $opts = [
+        'http' => [
+            'method' => $method,
+            'header' => implode("\r\n", $headers),
+            'ignore_errors' => true,
+            'timeout' => $timeout,
+        ],
+    ];
+    if ($payloadJson !== null) {
+        $opts['http']['content'] = $payloadJson;
+    }
+
+    $ctx = stream_context_create($opts);
+    $resp = @file_get_contents($url, false, $ctx);
+
+    $code = 0;
+    if (isset($http_response_header) && is_array($http_response_header)) {
+        foreach ($http_response_header as $h) {
+            if (preg_match('#HTTP/\S+\s+(\d+)#', (string)$h, $m)) {
+                $code = (int)$m[1];
+                break;
+            }
+        }
+    }
+
+    if ($resp === false && $code === 0) {
+        throw new Exception('HTTP request failed via file_get_contents');
+    }
+
+    return [$code, is_string($resp) ? $resp : ''];
+}
+
 function settings_supabase_request(
     string $method,
     string $url,
@@ -79,34 +164,13 @@ function settings_supabase_request(
         $headers[] = 'Prefer: resolution=merge-duplicates,return=representation';
     }
 
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL => $url,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_CUSTOMREQUEST => $method,
-        CURLOPT_HTTPHEADER => $headers,
-        CURLOPT_TIMEOUT => 20,
-    ]);
-
-    if ($payload !== null) {
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_UNESCAPED_UNICODE));
-    }
-
-    $resp = curl_exec($ch);
-    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    if ($resp === false) {
-        $err = curl_error($ch);
-        curl_close($ch);
-        throw new Exception('Supabase request failed: ' . $err);
-    }
-    curl_close($ch);
-
+    [$code, $resp] = settings_http_request($method, $url, $headers, $payload, 20);
     $decoded = json_decode($resp, true);
     return [$code, $decoded, $resp];
 }
 
 function settings_get_first_row($decoded) {
-    if (is_array($decoded) && array_is_list($decoded)) {
+    if (settings_is_list_array($decoded)) {
         return count($decoded) > 0 ? $decoded[0] : null;
     }
     return is_array($decoded) ? $decoded : null;
@@ -118,6 +182,31 @@ function settings_get_env_required(string $key): string {
         throw new Exception('Missing required environment variable: ' . $key);
     }
     return $value;
+}
+
+function settings_candidate_roots(): array {
+    $roots = [];
+    foreach ([__DIR__ . '/..', __DIR__ . '/../..'] as $candidate) {
+        $resolved = realpath($candidate);
+        if ($resolved === false || !is_dir($resolved)) {
+            continue;
+        }
+        if (!in_array($resolved, $roots, true)) {
+            $roots[] = $resolved;
+        }
+    }
+    if (!$roots) {
+        $roots[] = dirname(__DIR__);
+    }
+    return $roots;
+}
+
+function settings_load_runtime_env(): void {
+    // Load broader root first, nearest root last.
+    foreach (array_reverse(settings_candidate_roots()) as $root) {
+        load_env_file($root . '/.env', false);
+        load_env_file($root . '/.env.local', true);
+    }
 }
 
 function settings_get_supabase_url(): string {
@@ -402,8 +491,7 @@ function settings_handle_post(): void {
 }
 
 try {
-    load_env_file(__DIR__ . '/../../.env.local', true);
-    load_env_file(__DIR__ . '/../../.env', false);
+    settings_load_runtime_env();
 
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         settings_handle_get();
@@ -416,5 +504,9 @@ try {
     settings_api_json(405, false, 'Method not allowed');
 } catch (Throwable $e) {
     $errorId = api_log_exception('settings.api', $e);
-    settings_api_json(500, false, 'Internal server error', ['error_id' => $errorId]);
+    $data = ['error_id' => $errorId];
+    if (isset($_GET['debug']) && (string)$_GET['debug'] === '1') {
+        $data['error'] = api_redact_sensitive($e->getMessage());
+    }
+    settings_api_json(500, false, 'Internal server error', $data);
 }

@@ -1,26 +1,51 @@
 <?php
 declare(strict_types=1);
 
-function load_env_file(string $file, bool $override = true): void {
-    if (!is_file($file)) return;
-    foreach (file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
-        // Strip UTF-8 BOM if present (common on Windows-edited .env files).
-        $line = preg_replace('/^\xEF\xBB\xBF/', '', (string)$line);
-        $line = trim((string)$line);
-        if ($line === '' || str_starts_with($line, '#') || !str_contains($line, '=')) continue;
-        [$key, $val] = explode('=', $line, 2);
-        $key = trim((string)$key);
-        $key = ltrim($key, "\xEF\xBB\xBF");
-        $val = trim($val);
-        if ($key === '') continue;
-        if ((str_starts_with($val, '"') && str_ends_with($val, '"')) || (str_starts_with($val, "'") && str_ends_with($val, "'"))) {
-            $val = substr($val, 1, -1);
+function apply_env_aliases(): void {
+    $aliases = [
+        'VITE_SUPABASE_URL' => 'SUPABASE_URL',
+        'VITE_AUTH0_DOMAIN' => 'AUTH0_DOMAIN',
+        'VITE_AUTH0_CLIENT_ID' => 'AUTH0_CLIENT_ID',
+        'VITE_AUTH0_AUDIENCE' => 'AUTH0_AUDIENCE',
+    ];
+
+    foreach ($aliases as $target => $source) {
+        $targetVal = trim((string)(getenv($target) ?: ''));
+        if ($targetVal !== '') {
+            continue;
         }
-        if ($override || getenv($key) === false) {
-            putenv("$key=$val");
-            $_ENV[$key] = $val;
+        $sourceVal = trim((string)(getenv($source) ?: ''));
+        if ($sourceVal === '') {
+            continue;
+        }
+        putenv($target . '=' . $sourceVal);
+        $_ENV[$target] = $sourceVal;
+    }
+}
+
+function load_env_file(string $file, bool $override = true): void {
+    if (is_file($file)) {
+        foreach (file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+            // Strip UTF-8 BOM if present (common on Windows-edited .env files).
+            $line = preg_replace('/^\xEF\xBB\xBF/', '', (string)$line);
+            $line = trim((string)$line);
+            if ($line === '' || str_starts_with($line, '#') || !str_contains($line, '=')) continue;
+            [$key, $val] = explode('=', $line, 2);
+            $key = trim((string)$key);
+            $key = ltrim($key, "\xEF\xBB\xBF");
+            $val = trim($val);
+            if ($key === '') continue;
+            if ((str_starts_with($val, '"') && str_ends_with($val, '"')) || (str_starts_with($val, "'") && str_ends_with($val, "'"))) {
+                $val = substr($val, 1, -1);
+            }
+            if ($override || getenv($key) === false) {
+                putenv("$key=$val");
+                $_ENV[$key] = $val;
+            }
         }
     }
+
+    apply_env_aliases();
 }
 
 function get_email_crypto_key(): string {

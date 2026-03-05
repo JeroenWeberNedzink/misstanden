@@ -48,6 +48,40 @@ function api_authz_first_row($decoded): ?array {
     return is_array($decoded) ? $decoded : null;
 }
 
+function api_authz_normalize_handler(array $row): array {
+    $rolesRaw = $row['roles'] ?? [];
+    if (is_string($rolesRaw)) {
+        $decodedRoles = json_decode($rolesRaw, true);
+        $rolesRaw = is_array($decodedRoles) ? $decodedRoles : [$rolesRaw];
+    }
+    if (!is_array($rolesRaw)) {
+        $rolesRaw = [];
+    }
+    $row['roles'] = array_values(array_filter($rolesRaw, static fn($value) => trim((string)$value) !== ''));
+
+    $permissionsRaw = $row['permissions'] ?? [];
+    if (is_string($permissionsRaw)) {
+        $decodedPermissions = json_decode($permissionsRaw, true);
+        $permissionsRaw = is_array($decodedPermissions) ? $decodedPermissions : [];
+    }
+    if (!is_array($permissionsRaw)) {
+        $permissionsRaw = [];
+    }
+
+    // Guard against malformed payloads where a JSON string was spread into char-index keys.
+    $cleanPermissions = [];
+    foreach ($permissionsRaw as $key => $value) {
+        $normalizedKey = trim((string)$key);
+        if ($normalizedKey === '' || ctype_digit($normalizedKey)) {
+            continue;
+        }
+        $cleanPermissions[$normalizedKey] = $value;
+    }
+    $row['permissions'] = $cleanPermissions;
+
+    return $row;
+}
+
 function api_authz_is_admin(array $handler): bool {
     $rolesRaw = $handler['roles'] ?? [];
     if (is_string($rolesRaw)) {
@@ -92,7 +126,7 @@ function api_authz_fetch_handler(string $baseUrl, string $serviceKey, array $cla
         if ($code >= 200 && $code < 300) {
             $row = api_authz_first_row($decoded);
             if (is_array($row)) {
-                return $row;
+                return api_authz_normalize_handler($row);
             }
         } else {
             $msg = is_array($decoded) ? json_encode($decoded, JSON_UNESCAPED_UNICODE) : (string)$raw;
@@ -108,7 +142,7 @@ function api_authz_fetch_handler(string $baseUrl, string $serviceKey, array $cla
         [$code, $decoded, $raw] = api_authz_supabase_request('GET', $urlByEmail, $serviceKey);
         if ($code >= 200 && $code < 300) {
             $row = api_authz_first_row($decoded);
-            return is_array($row) ? $row : null;
+            return is_array($row) ? api_authz_normalize_handler($row) : null;
         }
         $msg = is_array($decoded) ? json_encode($decoded, JSON_UNESCAPED_UNICODE) : (string)$raw;
         throw new Exception('Failed to load handler profile by email: ' . $msg);

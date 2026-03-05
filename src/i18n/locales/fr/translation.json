@@ -681,6 +681,57 @@
         "empty": {
             "noSettingsFound": "Aucun parametre trouve",
             "tryAdjustSearch": "Essayez d ajuster votre recherche"
+        },
+        "adminModules": {
+            "loading": "Chargement des donnees admin...",
+            "actions": {
+                "backToOverview": "Retour a la vue d'ensemble"
+            },
+            "messages": {
+                "partialLoad": "Toutes les donnees admin n'ont pas pu etre chargees ({{failed}}/{{total}} en echec).",
+                "loadError": "Erreur lors du chargement des donnees admin"
+            },
+            "empty": {
+                "noModulesFound": "Aucun module trouve",
+                "tryAdjustFilter": "Essayez d'ajuster le filtre"
+            },
+            "modules": {
+                "users": {
+                    "title": "Utilisateurs",
+                    "description": "Gerer les comptes utilisateurs, roles et droits d'acces",
+                    "meta": "{{count}} utilisateurs"
+                },
+                "permissions": {
+                    "title": "Droits & Roles",
+                    "description": "Configurer les permissions et gerer l'acces base sur les roles",
+                    "meta": "{{count}} roles"
+                },
+                "workflows": {
+                    "title": "Workflows",
+                    "description": "Afficher et gerer les workflows de tickets et les metriques de processus",
+                    "meta": "{{count}} workflows"
+                },
+                "translations": {
+                    "title": "Traductions",
+                    "description": "Gerer le contenu multilingue et les traductions i18n",
+                    "meta": "{{count}} langues"
+                },
+                "locations": {
+                    "title": "Lieux",
+                    "description": "Gerer les pays disponibles pour les signalements",
+                    "meta": "Cliquer pour configurer"
+                },
+                "logging": {
+                    "title": "Journaux d'audit",
+                    "description": "Afficher les changements de base de donnees et les pistes d'audit",
+                    "meta": "Journaux de base de donnees"
+                },
+                "slaTools": {
+                    "title": "Gestion SLA",
+                    "description": "Actions de maintenance et de recuperation pour les donnees SLA",
+                    "meta": "Recalculer next_step_due"
+                }
+            }
         }
     },
     "legalGuidance": {

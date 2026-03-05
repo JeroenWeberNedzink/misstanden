@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 
@@ -26,59 +27,60 @@ const withModuleAccent = (meta) => ({
   ...MODULE_ACCENT_STYLES,
 });
 
-const getModuleMeta = (usersCount, rolesCount, workflowsCount) => ({
+const getModuleMeta = (t, usersCount, rolesCount, workflowsCount) => ({
   users: withModuleAccent({
-    label: 'Gebruikers',
+    label: t('settings.adminModules.modules.users.title'),
     icon: 'Users',
     priority: 1,
-    description: 'Beheer gebruikersaccounts, rollen en toegangsrechten',
-    meta: `${usersCount} gebruikers`,
+    description: t('settings.adminModules.modules.users.description'),
+    meta: t('settings.adminModules.modules.users.meta', { count: usersCount }),
   }),
   permissions: withModuleAccent({
-    label: 'Rechten & Rollen',
+    label: t('settings.adminModules.modules.permissions.title'),
     icon: 'Key',
     priority: 2,
-    description: 'Configureer permissies en beheer rol-gebaseerde toegang',
-    meta: `${rolesCount} rollen`,
+    description: t('settings.adminModules.modules.permissions.description'),
+    meta: t('settings.adminModules.modules.permissions.meta', { count: rolesCount }),
   }),
   workflows: withModuleAccent({
-    label: 'Workflows',
+    label: t('settings.adminModules.modules.workflows.title'),
     icon: 'GitBranch',
     priority: 3,
-    description: 'Bekijk en beheer ticket workflows en processtatistieken',
-    meta: `${workflowsCount} workflows`,
+    description: t('settings.adminModules.modules.workflows.description'),
+    meta: t('settings.adminModules.modules.workflows.meta', { count: workflowsCount }),
   }),
   translations: withModuleAccent({
-    label: 'Vertalingen',
+    label: t('settings.adminModules.modules.translations.title'),
     icon: 'Languages',
     priority: 4,
-    description: 'Beheer meertalige content en i18n vertalingen',
-    meta: '4 talen',
+    description: t('settings.adminModules.modules.translations.description'),
+    meta: t('settings.adminModules.modules.translations.meta', { count: 4 }),
   }),
   locations: withModuleAccent({
-    label: 'Locaties',
+    label: t('settings.adminModules.modules.locations.title'),
     icon: 'MapPin',
     priority: 5,
-    description: 'Beheer landen die beschikbaar zijn voor meldingen',
-    meta: 'Klik om te configureren',
+    description: t('settings.adminModules.modules.locations.description'),
+    meta: t('settings.adminModules.modules.locations.meta'),
   }),
   logging: withModuleAccent({
-    label: 'Audit Logs',
+    label: t('settings.adminModules.modules.logging.title'),
     icon: 'ScrollText',
     priority: 6,
-    description: 'Bekijk database wijzigingen en audit trails',
-    meta: 'Database logs',
+    description: t('settings.adminModules.modules.logging.description'),
+    meta: t('settings.adminModules.modules.logging.meta'),
   }),
   slaTools: withModuleAccent({
-    label: 'SLA Tools',
+    label: t('settings.adminModules.modules.slaTools.title'),
     icon: 'Clock',
     priority: 7,
-    description: 'Eenmalige SLA acties en onderhoud',
-    meta: 'Backfill next_step_due',
+    description: t('settings.adminModules.modules.slaTools.description'),
+    meta: t('settings.adminModules.modules.slaTools.meta'),
   }),
 });
 
 const AdminModulesPanel = () => {
+  const { t } = useTranslation();
   const [activeModule, setActiveModule] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -109,15 +111,15 @@ const AdminModulesPanel = () => {
 
       const failed = [usersResult, permsResult, rolesResult, workflowsResult].filter((r) => r.status === 'rejected');
       if (failed.length > 0) {
-        setError(`Niet alle admin-gegevens konden geladen worden (${failed.length}/4 mislukt).`);
+        setError(t('settings.adminModules.messages.partialLoad', { failed: failed.length, total: 4 }));
       }
     } catch (err) {
       console.error('Error loading admin data:', err);
-      setError('Fout bij laden van gegevens');
+      setError(t('settings.adminModules.messages.loadError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     // Lazy-load admin datasets only when a module is opened.
@@ -136,8 +138,8 @@ const AdminModulesPanel = () => {
   }, []);
 
   const moduleMeta = useMemo(
-    () => getModuleMeta(users.length, roles.length, workflows.length),
-    [users.length, roles.length, workflows.length]
+    () => getModuleMeta(t, users.length, roles.length, workflows.length),
+    [t, users.length, roles.length, workflows.length]
   );
 
   const modules = useMemo(
@@ -178,7 +180,7 @@ const AdminModulesPanel = () => {
               </div>
             ))}
           </div>
-          <p className="mt-6 text-muted-foreground">Admin gegevens laden...</p>
+          <p className="mt-6 text-muted-foreground">{t('settings.adminModules.loading')}</p>
         </div>
       ) : activeModule ? (
         <div className="space-y-4">
@@ -189,7 +191,7 @@ const AdminModulesPanel = () => {
             onClick={() => setActiveModule(null)}
             size="sm"
           >
-            Terug naar Modules
+            {t('settings.adminModules.actions.backToOverview')}
           </Button>
 
           <div className={`rounded-2xl border border-border ${activeModuleMeta?.bgColor || 'bg-card'} shadow-sm`}>
@@ -310,9 +312,9 @@ const AdminModulesPanel = () => {
           {modules.length === 0 && (
             <div className="rounded-2xl border border-border bg-card p-16 flex flex-col items-center justify-center gap-3">
               <Icon name="Search" size={48} className="text-muted-foreground/30" />
-              <div className="text-sm font-medium text-foreground">Geen modules gevonden</div>
+              <div className="text-sm font-medium text-foreground">{t('settings.adminModules.empty.noModulesFound')}</div>
               <div className="text-xs text-muted-foreground">
-                Probeer de zoekfilter aan te passen
+                {t('settings.adminModules.empty.tryAdjustFilter')}
               </div>
             </div>
           )}

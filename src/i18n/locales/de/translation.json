@@ -681,6 +681,57 @@
         "empty": {
             "noSettingsFound": "Keine Einstellungen gefunden",
             "tryAdjustSearch": "Passen Sie Ihre Suchanfrage an"
+        },
+        "adminModules": {
+            "loading": "Admin-Daten werden geladen...",
+            "actions": {
+                "backToOverview": "Zurueck zur Uebersicht"
+            },
+            "messages": {
+                "partialLoad": "Nicht alle Admin-Daten konnten geladen werden ({{failed}}/{{total}} fehlgeschlagen).",
+                "loadError": "Fehler beim Laden der Admin-Daten"
+            },
+            "empty": {
+                "noModulesFound": "Keine Module gefunden",
+                "tryAdjustFilter": "Versuchen Sie, den Filter anzupassen"
+            },
+            "modules": {
+                "users": {
+                    "title": "Benutzer",
+                    "description": "Verwalten Sie Benutzerkonten, Rollen und Zugriffsrechte",
+                    "meta": "{{count}} Benutzer"
+                },
+                "permissions": {
+                    "title": "Rechte & Rollen",
+                    "description": "Berechtigungen konfigurieren und rollenbasierten Zugriff verwalten",
+                    "meta": "{{count}} Rollen"
+                },
+                "workflows": {
+                    "title": "Workflows",
+                    "description": "Ticket-Workflows und Prozessmetriken anzeigen und verwalten",
+                    "meta": "{{count}} Workflows"
+                },
+                "translations": {
+                    "title": "Uebersetzungen",
+                    "description": "Mehrsprachige Inhalte und i18n-Uebersetzungen verwalten",
+                    "meta": "{{count}} Sprachen"
+                },
+                "locations": {
+                    "title": "Standorte",
+                    "description": "Laender verwalten, die fuer Meldungen verfuegbar sind",
+                    "meta": "Zum Konfigurieren klicken"
+                },
+                "logging": {
+                    "title": "Audit-Protokolle",
+                    "description": "Datenbankaenderungen und Audit-Trails anzeigen",
+                    "meta": "Datenbank-Protokolle"
+                },
+                "slaTools": {
+                    "title": "SLA-Verwaltung",
+                    "description": "Wartungs- und Wiederherstellungsaktionen fuer SLA-Daten",
+                    "meta": "next_step_due neu berechnen"
+                }
+            }
         }
     },
     "legalGuidance": {
