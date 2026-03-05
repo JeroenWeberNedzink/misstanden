@@ -1078,6 +1078,8 @@ function handle_handler_update_ticket(array $data): void {
         'next_step_due',
         'metadata',
         'description',
+        'email_notify',
+        'status_email_notify',
     ];
 
     $payload = [];
@@ -1092,6 +1094,13 @@ function handle_handler_update_ticket(array $data): void {
         if ($handlerId !== null && !ticket_is_uuid(trim((string)$handlerId))) {
             api_json(400, false, 'handler_id must be a UUID or null');
         }
+    }
+
+    if (array_key_exists('email_notify', $payload)) {
+        $payload['email_notify'] = !empty($payload['email_notify']);
+    }
+    if (array_key_exists('status_email_notify', $payload)) {
+        $payload['status_email_notify'] = !empty($payload['status_email_notify']);
     }
 
     if (count($payload) === 0) {
