@@ -14,6 +14,15 @@ This repository contains:
 
 ## Recent Highlights (2026-03)
 
+- Advanced case-management and analytics expansion
+  - New secure reporter reply channel with tokenized links (`/reply/{token}`)
+  - Handler message delay anonymizer (`messages.visible_at`) for reporter-facing timing protection
+  - Multi-handler assignment roles (`primary`, `secondary`, `legal`, `observer`)
+  - Scheduled first-response SLA escalation engine with optional compliance/admin email notifications
+  - Admin analytics dashboard with volume/category/location/SLA metrics and heatmap-style location chart
+  - Case PDF export endpoint for investigation reports (`/api/report.api.php`)
+  - Temporary guest access links for external investigators (`/guest/{token}`) with internal-note shielding
+
 - Access-request flow for OAuth users without handler access
   - New API: `/api/access-requests.api.php`
   - New migration: `20260305_create_access_requests_table.sql`
@@ -98,6 +107,11 @@ API layer:
 - `/api/email-verification.api.php`
 - `/api/access-requests.api.php`
 - `/api/tickets.api.php`
+- `/api/reporter-reply.api.php`
+- `/api/guest-access.api.php`
+- `/api/analytics.api.php`
+- `/api/sla-escalation.api.php`
+- `/api/report.api.php`
 - `/api/settings.api.php`
 - `/api/workflows.api.php`
 - `/api/translations.api.php`
@@ -112,16 +126,22 @@ Public and reporter:
 - Anonymous incident submission with attachments
 - Report confirmation with ticket and access-code flow
 - Reporter ticket access and secure communication
+- Token-based secure reply threads via `/reply/{token}`
+- Reporter-visible handler messages filtered by `visible_at` delay
 
 Handler and admin:
 - Handler dashboard and ticket handling
 - Case detail management (status, assignment, notes, communications, SLA)
+- Multi-handler case roles and role switching in case detail
 - Workflow and workflow-status administration
 - Users, roles, and permissions management
 - Access-request review and decision workflow
 - Handler profile, MFA, and notification preferences
 - System settings and admin modules
 - Notification and audit/logging tooling
+- Analytics dashboard and location heatmap
+- PDF investigation report generation
+- Guest access link generation for external investigators
 
 Cross-cutting:
 - RBAC and protected routes
@@ -142,6 +162,12 @@ Install:
 
 ```bash
 npm install
+```
+
+Install PHP dependency for PDF export:
+
+```bash
+composer install
 ```
 
 Start (recommended on Windows PowerShell):
@@ -184,6 +210,8 @@ Server-required (non-`VITE_*`):
 
 Common server-side optional:
 - `SLA_BACKFILL_CRON_KEY`
+- `SLA_ESCALATION_CRON_KEY`
+- `SLA_ESCALATION_EMAILS`
 - `EMAIL_ENC_KEY_PATH`
 - `MAIL_DEV_SINK`
 - `MAIL_OUTBOX_DIR`
@@ -192,6 +220,7 @@ Common server-side optional:
 - `PORTAL_BASE_URL`
 - `MAIL_API_INTERNAL_URL`
 - `ACCESS_REQUEST_ADMIN_EMAILS`
+- `REPORTER_REPLY_TOKEN_TTL_DAYS`
 
 Important:
 - Never put secrets in `VITE_*` variables. They are exposed to browser code.
@@ -201,7 +230,7 @@ Important:
   - `AUTH0_CLIENT_ID` -> `VITE_AUTH0_CLIENT_ID`
   - `AUTH0_AUDIENCE` -> `VITE_AUTH0_AUDIENCE`
 
-## Automated SLA Backfill (Windows/IIS)
+## Automated SLA Jobs (Windows/IIS)
 
 Use scheduled execution in production.
 
@@ -215,6 +244,12 @@ Example scheduled task (hourly):
 
 ```powershell
 schtasks /Create /TN "NZ-SLA-Backfill" /SC HOURLY /MO 1 /TR "powershell -ExecutionPolicy Bypass -File C:\Projects\nz-misstanden\scripts\run-sla-backfill.ps1 -ApiUrl https://your-domain/api/sla-backfill.api.php" /RU "SYSTEM"
+```
+
+SLA escalation endpoint trigger example:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri "https://your-domain/api/sla-escalation.api.php" -Headers @{ "X-SLA-ESCALATION-KEY" = "<your-key>" } -ContentType "application/json" -Body "{}"
 ```
 
 ## Database and Migrations
@@ -231,6 +266,11 @@ Recent key migrations:
 - `20260305_create_access_requests_table.sql`
 - `20260305_add_workflow_status_first_response_flag.sql`
 - `20260305_fix_ticket_handlers_api_access.sql`
+- `20260306_create_ticket_reply_tokens.sql`
+- `20260306_add_messages_visible_at.sql`
+- `20260306_extend_ticket_handlers_roles.sql`
+- `20260306_create_sla_escalations.sql`
+- `20260306_create_guest_access.sql`
 
 If production shows `ticket_handlers ... 404 Not Found`, run:
 - `20260305_fix_ticket_handlers_api_access.sql`
@@ -266,6 +306,15 @@ Notes:
 
 Need deeper settings error diagnostics:
 - Call `/api/settings.api.php?debug=1` to receive redacted error detail and `error_id`
+
+`/api/report.api.php` returns JSON error about missing dompdf:
+- Run `composer install` in project root
+- Ensure `vendor/` is deployed to IIS alongside `public/api`
+
+Reporter secure reply link fails with token errors:
+- Check `ticket_reply_tokens` migration is applied
+- Validate token expiry (`REPORTER_REPLY_TOKEN_TTL_DAYS`)
+- Ensure `VITE_SUPABASE_URL` and service key are present for PHP runtime
 
 ## Security Notes
 
@@ -308,6 +357,11 @@ Quick checks before release:
 - Access-request approval flow works end-to-end
 - Workflow admin reflects first-response status flag behavior
 - Ticket handler relation reads succeed in target Supabase project
+- Reporter secure reply route (`/reply/{token}`) can read/send/upload
+- Guest route (`/guest/{token}`) loads read-only ticket without internal notes
+- SLA escalation endpoint can run with cron key and records `sla_escalations`
+- Analytics dashboard loads metrics and charts
+- PDF report generation works (`composer install` + `/api/report.api.php`)
 
 ## Developer Notes
 

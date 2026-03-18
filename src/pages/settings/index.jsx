@@ -8,13 +8,11 @@ import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import { settingsService } from '../../services/SettingsService';
 import { useSettings } from '../../contexts/SettingsContext';
+import { usePermissions } from '../../hooks/usePermissions';
+import { isSuperAdminIdentity } from '../../utils/superAdmin';
 import EmailNotificationSettings from './components/EmailNotificationSettings';
 import SettingCard from './components/SettingCard';
 import AdminModulesPanel from './components/AdminModulesPanel';
-
-function useCurrentHandler() {
-  return { id: 'handler_123', name: 'Jeroen', email: 'jeroen@example.com' };
-}
 
 const isEqualJson = (a, b) => {
   try {
@@ -238,8 +236,18 @@ const getCategoryMeta = (t) => ({
 export default function SystemSettingsAdmin() {
   const { t } = useTranslation();
   const location = useLocation();
-  const currentHandler = useCurrentHandler();
+  const { handlerProfile, roles, loading: permissionsLoading } = usePermissions();
+  const currentHandler = handlerProfile || null;
   const { reload: reloadGlobalSettings } = useSettings();
+  const canAccessAdvancedSettings = useMemo(
+    () =>
+      isSuperAdminIdentity({
+        roles: handlerProfile?.roles || roles,
+        email: handlerProfile?.email,
+        sub: handlerProfile?.userId || handlerProfile?.user_id,
+      }),
+    [handlerProfile?.email, handlerProfile?.roles, handlerProfile?.userId, handlerProfile?.user_id, roles]
+  );
   const categoryMeta = useMemo(() => getCategoryMeta(t), [t]);
   const categoryBundles = useMemo(
   () => ([
@@ -348,7 +356,10 @@ export default function SystemSettingsAdmin() {
     setIsLoading(true);
     setError('');
     try {
-      const { rows: dataRows, warning } = await settingsService.getSettings();
+      const { rows: dataRows, warning } = await settingsService.getSettings({
+        includeSensitive: true,
+        requireSuperAdmin: true,
+      });
       const allRows = dataRows || [];
       const visibleRows = allRows.filter(isVisibleSettingRow);
       setRows(visibleRows);
@@ -384,17 +395,23 @@ export default function SystemSettingsAdmin() {
 
   useEffect(() => {
     const modeParam = new URLSearchParams(location.search).get('mode');
-    if (modeParam === 'settings') {
+    if (modeParam === 'settings' && canAccessAdvancedSettings) {
       setPageMode('settings');
       return;
     }
     setPageMode('admin');
-  }, [location.search]);
+  }, [canAccessAdvancedSettings, location.search]);
 
   useEffect(() => {
-    if (pageMode !== 'settings' || hasLoadedSettings) return;
+    if (!canAccessAdvancedSettings || pageMode !== 'settings' || hasLoadedSettings) return;
     load();
-  }, [pageMode, hasLoadedSettings]);
+  }, [canAccessAdvancedSettings, pageMode, hasLoadedSettings]);
+
+  useEffect(() => {
+    if (canAccessAdvancedSettings || pageMode !== 'settings') return;
+    setPageMode('admin');
+    setSelectedCategory(null);
+  }, [canAccessAdvancedSettings, pageMode]);
 
   const save = async () => {
     if (!dirtyKeys.length) return;
@@ -417,6 +434,7 @@ export default function SystemSettingsAdmin() {
 
       await settingsService.upsertSettings(changedItems, {
         updatedBy: currentHandler?.id || currentHandler?.email || currentHandler?.name || null,
+        requireSuperAdmin: true,
       });
 
       await load();
@@ -586,14 +604,16 @@ export default function SystemSettingsAdmin() {
                   >
                     {t('settings.tabs.adminCenter')}
                   </button>
-                  <button
-                    onClick={() => setPageMode('settings')}
-                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
-                      pageMode === 'settings' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {t('settings.tabs.settings')}
-                  </button>
+                  {canAccessAdvancedSettings && (
+                    <button
+                      onClick={() => setPageMode('settings')}
+                      className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                        pageMode === 'settings' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {t('settings.tabs.settings')}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -646,7 +666,7 @@ export default function SystemSettingsAdmin() {
               </div>
             </div> */}
 
-            {pageMode === 'admin' ? (
+            {(!canAccessAdvancedSettings && !permissionsLoading) || pageMode === 'admin' ? (
               <AdminModulesPanel />
             ) : (
               <div>

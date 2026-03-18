@@ -4,7 +4,16 @@ import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import StatusFlowBar from './StatusFlowBar';
 
-const CaseHeader = ({ caseData, onBack, onStatusUpdate, canUpdateStatus = true }) => {
+const CaseHeader = ({
+  caseData,
+  onBack,
+  onStatusUpdate,
+  canUpdateStatus = true,
+  onGenerateReport,
+  generatingReport = false,
+  onShare,
+  sharing = false,
+}) => {
   const { t } = useTranslation();
 
   const getPriorityStyles = (priorityCode) => {
@@ -65,7 +74,26 @@ const CaseHeader = ({ caseData, onBack, onStatusUpdate, canUpdateStatus = true }
         </div>
 
         <div className="flex gap-2 lg:items-center">
-          <Button variant="outline" size="sm" iconName="Share2" iconPosition="left">
+          {onGenerateReport && (
+            <Button
+              variant="outline"
+              size="sm"
+              iconName="FileDown"
+              iconPosition="left"
+              onClick={onGenerateReport}
+              loading={generatingReport}
+            >
+              {t('caseManagementDetail.header.generateReport', { defaultValue: 'Generate report' })}
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            iconName="Share2"
+            iconPosition="left"
+            onClick={onShare}
+            loading={sharing}
+          >
             {t('caseManagementDetail.header.share')}
           </Button>
         </div>
@@ -76,6 +104,7 @@ const CaseHeader = ({ caseData, onBack, onStatusUpdate, canUpdateStatus = true }
           workflowType={caseData?.workflowType}
           currentStatus={caseData?.status}
           currentStage={caseData?.currentStage}
+          statusChangedAt={caseData?.sla?.statusChangedAt}
           onStatusUpdate={onStatusUpdate}
           disabled={!canUpdateStatus}
         />

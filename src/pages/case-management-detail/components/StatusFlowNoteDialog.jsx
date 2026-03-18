@@ -89,14 +89,6 @@ export default function StatusFlowNoteDialog({
                 </div>
               )}
 
-              {selectedStatus?.contactPersonName && (
-                <div className="mt-2 pt-2 border-t border-border/50">
-                  <div className="text-xs font-medium text-foreground mb-1">{t('caseManagementDetail.sla.contactPerson')}</div>
-                  <div className="text-xs text-muted-foreground">{selectedStatus.contactPersonName}</div>
-                  {selectedStatus.contactPersonEmail && <div className="text-xs text-primary mt-0.5">{selectedStatus.contactPersonEmail}</div>}
-                  {selectedStatus.contactPersonPhone && <div className="text-xs text-primary mt-0.5">{selectedStatus.contactPersonPhone}</div>}
-                </div>
-              )}
             </div>
 
             <Input

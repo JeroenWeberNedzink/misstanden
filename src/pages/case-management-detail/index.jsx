@@ -14,6 +14,8 @@ import CaseManagementPanel from './components/CaseManagementPanel';
 import SLACompactCard from './components/SLACompactCard';
 import Icon from '../../components/AppIcon';
 import { ticketService } from '../../services/ticketService';
+import { reportService } from '../../services/reportService';
+import { guestAccessService } from '../../services/guestAccessService';
 import { supabase } from '../../lib/supabase';
 import { getApiAccessToken } from '../../lib/auth0ApiToken';
 import { addHours, getFirstResponseAt, getFirstResponseHoursForTicket, toDateSafe } from '../../utils/slaUtils';
@@ -50,18 +52,32 @@ const resolveAssignedHandler = (ticket, handlers = [], fallbackLabel = '-') => {
     const email = String(handler?.email || '').trim();
     const key = id || email || name;
     if (!key) return;
-    if (!map.has(key)) map.set(key, { id: id || null, name: name || null, email: email || null });
+    const role = String(handler?.role || '').trim().toLowerCase() || null;
+    const assignedAt = handler?.assignedAt || handler?.assigned_at || handler?.createdAt || handler?.created_at || null;
+    if (!map.has(key)) {
+      map.set(key, { id: id || null, name: name || null, email: email || null, role, assignedAt });
+      return;
+    }
+    const existing = map.get(key);
+    if (!existing.role) {
+      existing.role = role;
+    } else if (role === 'primary') {
+      existing.role = 'primary';
+    }
+    existing.assignedAt = existing.assignedAt || assignedAt;
   };
 
   for (const entry of ticketHandlerEntries) {
-    put(entry?.handler);
+    const entryRole = String(entry?.role || '').trim().toLowerCase() || null;
+    const entryAssignedAt = entry?.assignedAt || entry?.assigned_at || entry?.createdAt || entry?.created_at || null;
+    put({ ...(entry?.handler || {}), role: entryRole, assignedAt: entryAssignedAt });
     if (!entry?.handler && entry?.handlerId) {
       const match = (handlers || []).find((h) => idsEqual(h?.id, entry?.handlerId));
-      if (match) put(match);
+      if (match) put({ ...match, role: entryRole, assignedAt: entryAssignedAt });
     }
   }
 
-  put(ticket?.handlers);
+  put({ ...(ticket?.handlers || {}), role: primaryAssignedToId ? 'primary' : null });
 
   if (map.size === 0 && primaryAssignedToId) {
     const match = (handlers || []).find((h) => idsEqual(h?.id, primaryAssignedToId));
@@ -72,7 +88,14 @@ const resolveAssignedHandler = (ticket, handlers = [], fallbackLabel = '-') => {
     }
   }
 
-  const assignedHandlers = Array.from(map.values());
+  const assignedHandlers = Array.from(map.values()).sort((a, b) => {
+    const ar = String(a?.role || '').toLowerCase();
+    const br = String(b?.role || '').toLowerCase();
+    if (ar === br) return 0;
+    if (ar === 'primary') return -1;
+    if (br === 'primary') return 1;
+    return 0;
+  });
   const assignedToIds = assignedHandlers.map((handler) => handler?.id).filter(Boolean);
   const assignedToNames = assignedHandlers
     .map((handler) => String(handler?.name || '').trim())
@@ -93,14 +116,15 @@ const resolveAssignedHandler = (ticket, handlers = [], fallbackLabel = '-') => {
   };
 };
 
-const toHandlerOption = (handler, fallbackRole) => {
+const toHandlerOption = (handler, fallbackRole, assignmentRole = null, assignedAt = null) => {
   const id = String(handler?.id || '').trim();
   if (!id) return null;
   return {
     id,
     name: String(handler?.name || handler?.email || '').trim() || id,
     email: String(handler?.email || '').trim().toLowerCase() || null,
-    role: handler?.role || fallbackRole,
+    role: assignmentRole || handler?.assignmentRole || handler?.role || fallbackRole,
+    assignedAt: assignedAt || handler?.assignedAt || handler?.assigned_at || null,
     active: handler?.active !== false,
   };
 };
@@ -122,7 +146,12 @@ const mergeHandlerOptions = (baseHandlers = [], extraHandlers = []) => {
     }
     existing.name = existing.name || handler.name;
     existing.email = existing.email || handler.email || null;
-    existing.role = existing.role || handler.role;
+    if (!existing.role) {
+      existing.role = handler.role;
+    } else if (handler.role === 'primary') {
+      existing.role = 'primary';
+    }
+    existing.assignedAt = existing.assignedAt || handler.assignedAt || null;
     existing.active = existing.active !== false && handler.active !== false;
   };
 
@@ -189,6 +218,8 @@ export default function CaseManagementDetail() {
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [currentHandlerId, setCurrentHandlerId] = useState(null);
+  const [generatingReport, setGeneratingReport] = useState(false);
+  const [creatingGuestAccess, setCreatingGuestAccess] = useState(false);
 
   const navigate = useNavigate();
   const isMountedRef = useRef(true);
@@ -222,14 +253,26 @@ export default function CaseManagementDetail() {
         : [];
     if (assignedIds.length === 0) return;
 
+    const existingAssignedById = new Map(
+      (Array.isArray(caseData?.assignedHandlers) ? caseData.assignedHandlers : [])
+        .filter((item) => item?.id)
+        .map((item) => [String(item.id), item])
+    );
+
     const resolvedHandlers = assignedIds
       .map((id) => handlerPool.find((handler) => idsEqual(handler?.id, id)))
       .filter(Boolean)
-      .map((handler) => ({
-        id: handler.id,
-        name: handler.name || null,
-        email: handler.email || null,
-      }));
+      .map((handler, idx) => {
+        const existing = existingAssignedById.get(String(handler.id)) || null;
+        const fallbackRole = idx === 0 ? 'primary' : 'secondary';
+        return {
+          id: handler.id,
+          name: handler.name || existing?.name || null,
+          email: handler.email || existing?.email || null,
+          role: existing?.role || fallbackRole,
+          assignedAt: existing?.assignedAt || null,
+        };
+      });
 
     const resolvedNames = resolvedHandlers
       .map((handler) => String(handler?.name || '').trim())
@@ -377,10 +420,6 @@ export default function CaseManagementDetail() {
         closedAt: isClosed ? statusStartAt : null,
         statusChangedAt: statusStartAt,
         currentStatusDurationDays: statusMeta?.expectedDurationDays ?? null,
-        contactPersonName: statusMeta?.contactPersonName || null,
-        contactPersonEmail: statusMeta?.contactPersonEmail || null,
-        contactPersonPhone: statusMeta?.contactPersonPhone || null,
-        contactNotes: statusMeta?.contactNotes || null,
       },
 
       reporterDetails: {
@@ -460,7 +499,7 @@ export default function CaseManagementDetail() {
         }
 
         if (handler?.id) setCurrentHandlerId(handler.id);
-        const fallbackRole = t('caseManagement.handler');
+        const fallbackRole = 'secondary';
         const currentOption = toHandlerOption(handler, fallbackRole);
         if (currentOption && isMountedRef.current) {
           setAvailableHandlers((prev) => mergeHandlerOptions(prev, [currentOption]));
@@ -493,7 +532,7 @@ export default function CaseManagementDetail() {
         enrichPermissions: false,
       });
       if (!isMountedRef.current) return;
-      const fallbackRole = t('caseManagement.handler');
+      const fallbackRole = 'secondary';
       const mapped = (handlers ?? [])
         .map((h) => toHandlerOption(h, fallbackRole))
         .filter(Boolean);
@@ -530,12 +569,17 @@ export default function CaseManagementDetail() {
       const coreTicket = await ticketService.getTicketById(ticketId, { includeRelations: false });
       if (!isMountedRef.current || activeLoadRef.current !== loadId) return;
 
-      const fallbackRole = t('caseManagement.handler');
+      const fallbackRole = 'secondary';
       const ticketHandlers = [];
       const directHandler = toHandlerOption(coreTicket?.handlers, fallbackRole);
       if (directHandler) ticketHandlers.push(directHandler);
       for (const entry of coreTicket?.ticketHandlers || []) {
-        const fromRelation = toHandlerOption(entry?.handler, fallbackRole);
+        const fromRelation = toHandlerOption(
+          entry?.handler,
+          fallbackRole,
+          entry?.role || null,
+          entry?.assignedAt || entry?.assigned_at || entry?.createdAt || entry?.created_at || null
+        );
         if (fromRelation) ticketHandlers.push(fromRelation);
       }
       if (ticketHandlers.length > 0) {
@@ -737,7 +781,7 @@ export default function CaseManagementDetail() {
       showToast(t('caseManagement.statusUpdated'));
     } catch (err) {
       console.error('Error updating status:', err);
-      showToast(t('caseManagement.statusUpdateFailed'));
+      showToast(err?.message || t('caseManagement.statusUpdateFailed'));
     }
   };
 
@@ -935,8 +979,25 @@ export default function CaseManagementDetail() {
         : newHandlerIds
           ? [newHandlerIds]
           : [];
+      const existingRoles = {};
+      for (const row of caseData?.assignedHandlers || []) {
+        if (row?.id) {
+          existingRoles[row.id] = row.role || 'secondary';
+        }
+      }
+      const rolesByHandlerId = {};
+      normalizedHandlerIds.forEach((handlerId, index) => {
+        rolesByHandlerId[handlerId] = existingRoles[handlerId] || (index === 0 ? 'primary' : 'secondary');
+      });
+      const hasExplicitPrimary = Object.values(rolesByHandlerId).some((role) => role === 'primary');
+      if (!hasExplicitPrimary && normalizedHandlerIds[0]) {
+        rolesByHandlerId[normalizedHandlerIds[0]] = 'primary';
+      }
 
-      const updatedTicket = await ticketService.setTicketHandlers(ticketId, normalizedHandlerIds, null, { currentHandlerId });
+      const updatedTicket = await ticketService.setTicketHandlers(ticketId, normalizedHandlerIds, null, {
+        currentHandlerId,
+        rolesByHandlerId,
+      });
 
       // Update header and panel assignment immediately.
       setCaseData(formatCase(updatedTicket, null, availableHandlers));
@@ -954,6 +1015,94 @@ export default function CaseManagementDetail() {
     } catch (err) {
       console.error('Error assigning handler:', err);
       showToast(t('caseManagement.assignmentChangeFailed'));
+    }
+  };
+
+  const handleAssignmentRoleChange = async (handlerId, role) => {
+    const ticketId = getStoredTicketId();
+    if (!ticketId) return navigate('/handler-dashboard');
+
+    try {
+      const result = await ticketService.setTicketHandlerRole(ticketId, handlerId, role);
+      const updatedTicket = result?.ticket || result;
+      setCaseData(formatCase(updatedTicket, null, availableHandlers));
+      pushAction({
+        actionType: 'assignment_role_updated',
+        action: t('caseManagementDetail.management.roleUpdated', { defaultValue: 'Assignment role updated' }),
+        description: t('caseManagementDetail.management.roleUpdatedDescription', {
+          defaultValue: `Updated handler role to ${role}`,
+          role,
+        }),
+        performedBy: user?.name || user?.email || t('caseManagement.handler'),
+      });
+      showToast(t('caseManagementDetail.management.roleUpdatedToast', { defaultValue: 'Handler role updated' }));
+    } catch (err) {
+      console.error('Error updating assignment role:', err);
+      showToast(t('caseManagement.assignmentChangeFailed'));
+    }
+  };
+
+  const handleGenerateReport = async () => {
+    const ticketId = getStoredTicketId();
+    if (!ticketId) return navigate('/handler-dashboard');
+
+    try {
+      setGeneratingReport(true);
+      const { blob, fileName } = await reportService.generateTicketReport(ticketId);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = fileName || `investigation-report-${ticketId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+
+      pushAction({
+        actionType: 'report_generated',
+        action: t('caseManagementDetail.header.generateReport', { defaultValue: 'Generate report' }),
+        description: t('caseManagementDetail.header.reportGenerated', { defaultValue: 'Investigation PDF report generated' }),
+        performedBy: user?.name || user?.email || t('caseManagement.handler'),
+      });
+      showToast(t('caseManagementDetail.header.reportGenerated', { defaultValue: 'Report generated' }));
+    } catch (err) {
+      console.error('Error generating report:', err);
+      showToast(err?.message || t('caseManagementDetail.header.reportGenerationFailed', { defaultValue: 'Failed to generate report' }));
+    } finally {
+      setGeneratingReport(false);
+    }
+  };
+
+  const handleCreateGuestAccess = async () => {
+    const ticketId = getStoredTicketId();
+    if (!ticketId) return navigate('/handler-dashboard');
+
+    try {
+      setCreatingGuestAccess(true);
+      const data = await guestAccessService.createGuestAccess(ticketId, {
+        role: 'viewer',
+        expiresInHours: 72,
+      });
+      const url = data?.guest_url || data?.guest_url_path || '';
+      if (url && navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      }
+      showToast(
+        url
+          ? t('caseManagementDetail.header.guestLinkCreated', { defaultValue: 'Guest link created and copied to clipboard' })
+          : t('caseManagementDetail.header.guestLinkCreatedNoCopy', { defaultValue: 'Guest link created' })
+      );
+      pushAction({
+        actionType: 'guest_access_created',
+        action: t('caseManagementDetail.header.share', { defaultValue: 'Share' }),
+        description: t('caseManagementDetail.header.guestLinkAction', { defaultValue: 'Created temporary guest access link' }),
+        performedBy: user?.name || user?.email || t('caseManagement.handler'),
+      });
+    } catch (err) {
+      console.error('Error creating guest access link:', err);
+      showToast(err?.message || t('caseManagementDetail.header.guestLinkFailed', { defaultValue: 'Failed to create guest link' }));
+    } finally {
+      setCreatingGuestAccess(false);
     }
   };
 
@@ -1100,6 +1249,10 @@ export default function CaseManagementDetail() {
             onStatusChange={() => setShowStatusModal(true)}
             onStatusUpdate={handleStatusUpdate} // FlowBar uses this.
             canUpdateStatus={hasAssignedHandlers(caseData)}
+            onGenerateReport={handleGenerateReport}
+            generatingReport={generatingReport}
+            onShare={handleCreateGuestAccess}
+            sharing={creatingGuestAccess}
           />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4 lg:gap-5 mt-3 md:mt-4 lg:mt-5">
@@ -1139,6 +1292,7 @@ export default function CaseManagementDetail() {
               <CaseManagementPanel
                 caseData={caseData}
                 onAssignmentChange={handleAssignmentChange}
+                onAssignmentRoleChange={handleAssignmentRoleChange}
                 onPriorityChange={handlePriorityChange}
                 onStatusChange={() => setShowStatusModal(true)}
                 onStatusEmailNotifyChange={handleStatusEmailNotifyChange}
@@ -1156,6 +1310,7 @@ export default function CaseManagementDetail() {
             workflowType={caseData?.workflowType}
             currentStatus={caseData?.status}
             currentStage={caseData?.currentStage}
+            statusChangedAt={caseData?.sla?.statusChangedAt}
             onClose={() => setShowStatusModal(false)}
             onUpdate={handleStatusUpdate}
           />

@@ -8,6 +8,14 @@ import { ticketService } from '../../../services/ticketService';
 
 const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
+const STATUS_ROLLBACK_WINDOW_MS = 60 * 60 * 1000;
+
+const isRollbackWindowOpen = (value) => {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  return Date.now() - date.getTime() <= STATUS_ROLLBACK_WINDOW_MS;
+};
 
 function colorDotClass(color) {
   const c = safeLower(color);
@@ -29,13 +37,13 @@ export default function StatusUpdateModal({
   workflowType,
   currentStatus,
   currentStage,
+  statusChangedAt = null,
   onClose,
   onUpdate,
 }) {
   const { t } = useTranslation();
   const [workflow, setWorkflow] = useState(null);
   const [workflowRuntimeSettings, setWorkflowRuntimeSettings] = useState({
-    allowStatusRollback: false,
     requireCommentOnStatusChange: true,
   });
   const [isLoadingWorkflow, setIsLoadingWorkflow] = useState(false);
@@ -63,7 +71,6 @@ export default function StatusUpdateModal({
         if (!cancelled) setWorkflow({ ...wf, statusesArray: statuses });
         if (!cancelled) {
           setWorkflowRuntimeSettings({
-            allowStatusRollback: runtime?.allowStatusRollback === true,
             requireCommentOnStatusChange: runtime?.requireCommentOnStatusChange !== false,
           });
         }
@@ -91,10 +98,6 @@ export default function StatusUpdateModal({
         color: s.color || null,
         order: s.sortOrder ?? 999,
         expectedDurationDays: s.expectedDurationDays || null,
-        contactPersonName: s.contactPersonName || '',
-        contactPersonEmail: s.contactPersonEmail || '',
-        contactPersonPhone: s.contactPersonPhone || '',
-        contactNotes: s.contactNotes || '',
       }))
       .sort((a, b) => a.order - b.order);
   }, [workflow?.statusesArray]);
@@ -116,6 +119,7 @@ export default function StatusUpdateModal({
   const selectedIndex = useMemo(() => options.findIndex((o) => o.value === selectedValue), [options, selectedValue]);
   const selectedOption = useMemo(() => options.find((o) => o.value === selectedValue) || null, [options, selectedValue]);
   const nextOption = useMemo(() => (selectedIndex < 0 ? null : options[selectedIndex + 1] || null), [options, selectedIndex]);
+  const rollbackWindowOpen = useMemo(() => isRollbackWindowOpen(statusChangedAt), [statusChangedAt]);
 
   const currentComparable = useMemo(() => {
     const findByCode = (val) => options.find((o) => safeLower(o.value) === safeLower(val))?.value;
@@ -128,6 +132,10 @@ export default function StatusUpdateModal({
       null
     );
   }, [options, currentStage, currentStatus]);
+  const currentComparableIndex = useMemo(
+    () => options.findIndex((o) => safeLower(o.value) === safeLower(currentComparable)),
+    [options, currentComparable]
+  );
 
   const isUnchanged = useMemo(() => {
     if (!selectedValue) return true;
@@ -144,9 +152,9 @@ export default function StatusUpdateModal({
       return;
     }
 
-    const currentIdx = options.findIndex((o) => safeLower(o.value) === safeLower(currentComparable));
+    const currentIdx = currentComparableIndex;
     const newIdx = options.findIndex((o) => o.value === selectedValue);
-    if (currentIdx >= 0 && newIdx >= 0 && newIdx < currentIdx && !workflowRuntimeSettings?.allowStatusRollback) {
+    if (currentIdx >= 0 && newIdx >= 0 && newIdx < currentIdx && !rollbackWindowOpen) {
       alert(t('caseManagementDetail.statusModal.rollbackNotAllowedAlert'));
       return;
     }
@@ -221,14 +229,17 @@ export default function StatusUpdateModal({
                   <div className="space-y-2">
                     {options.map((opt, idx) => {
                       const isSelected = opt.value === selectedValue;
+                      const isRollbackLocked = currentComparableIndex >= 0 && idx < currentComparableIndex && !rollbackWindowOpen;
                       return (
                         <button
                           key={opt.value}
                           type="button"
-                          onClick={() => setSelectedValue(opt.value)}
+                          onClick={() => !isRollbackLocked && setSelectedValue(opt.value)}
+                          disabled={isRollbackLocked}
                           className={[
                             'w-full text-left rounded-xl border p-4 transition-smooth',
                             isSelected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40',
+                            isRollbackLocked ? 'opacity-60 cursor-not-allowed' : '',
                           ].join(' ')}
                         >
                           <div className="flex items-start gap-3">
@@ -261,25 +272,6 @@ export default function StatusUpdateModal({
                                 </div>
                               )}
 
-                              {(opt.contactPersonName || opt.contactPersonEmail || opt.contactPersonPhone) && (
-                                <div className="mt-2 p-2 bg-muted/40 rounded-lg border border-border/50">
-                                  <div className="text-xs font-medium text-foreground mb-1">{t('caseManagementDetail.sla.contact')}:</div>
-                                  {opt.contactPersonName && <div className="text-xs text-foreground">{opt.contactPersonName}</div>}
-                                  {opt.contactPersonEmail && (
-                                    <div className="text-xs text-primary mt-0.5">
-                                      <Icon name="Mail" size={10} className="inline mr-1" />
-                                      {opt.contactPersonEmail}
-                                    </div>
-                                  )}
-                                  {opt.contactPersonPhone && (
-                                    <div className="text-xs text-primary mt-0.5">
-                                      <Icon name="Phone" size={10} className="inline mr-1" />
-                                      {opt.contactPersonPhone}
-                                    </div>
-                                  )}
-                                  {opt.contactNotes && <div className="text-xs text-muted-foreground mt-1 pt-1 border-t border-border/30">{opt.contactNotes}</div>}
-                                </div>
-                              )}
                             </div>
                           </div>
                         </button>
@@ -305,30 +297,6 @@ export default function StatusUpdateModal({
                                 {selectedOption.expectedDurationDays} {t('caseManagementDetail.sla.days')}
                               </span>
                             </div>
-                          </div>
-                        )}
-
-                        {(selectedOption.contactPersonName || selectedOption.contactPersonEmail || selectedOption.contactPersonPhone) && (
-                          <div className="mt-3 pt-3 border-t border-border">
-                            <div className="text-xs text-muted-foreground mb-2">{t('caseManagementDetail.sla.contactPerson')}</div>
-                            {selectedOption.contactPersonName && <div className="text-sm font-medium text-foreground mb-1">{selectedOption.contactPersonName}</div>}
-                            {selectedOption.contactPersonEmail && (
-                              <a href={`mailto:${selectedOption.contactPersonEmail}`} className="text-xs text-primary hover:underline flex items-center gap-1 mb-1">
-                                <Icon name="Mail" size={12} />
-                                {selectedOption.contactPersonEmail}
-                              </a>
-                            )}
-                            {selectedOption.contactPersonPhone && (
-                              <a href={`tel:${selectedOption.contactPersonPhone}`} className="text-xs text-primary hover:underline flex items-center gap-1">
-                                <Icon name="Phone" size={12} />
-                                {selectedOption.contactPersonPhone}
-                              </a>
-                            )}
-                            {selectedOption.contactNotes && (
-                              <div className="text-xs text-muted-foreground mt-2 pt-2 border-t border-border/50">
-                                {selectedOption.contactNotes}
-                              </div>
-                            )}
                           </div>
                         )}
 

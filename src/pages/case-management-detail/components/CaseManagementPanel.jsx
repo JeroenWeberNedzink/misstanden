@@ -9,6 +9,7 @@ import { PERMISSIONS } from '../../../utils/permissions';
 const CaseManagementPanel = ({
   caseData,
   onAssignmentChange,
+  onAssignmentRoleChange,
   onPriorityChange,
   onStatusChange,
   onEscalate,
@@ -27,6 +28,15 @@ const CaseManagementPanel = ({
       { value: 'medium', label: t('caseManagement.medium'), description: t('caseManagementDetail.management.priorityMediumDesc') },
       { value: 'high', label: t('caseManagement.high'), description: t('caseManagementDetail.management.priorityHighDesc') },
       { value: 'critical', label: t('caseManagement.critical'), description: t('caseManagementDetail.management.priorityCriticalDesc') },
+    ],
+    [t]
+  );
+  const assignmentRoleOptions = useMemo(
+    () => [
+      { value: 'primary', label: t('caseManagementDetail.management.rolePrimary', { defaultValue: 'Primary' }) },
+      { value: 'secondary', label: t('caseManagementDetail.management.roleSecondary', { defaultValue: 'Secondary' }) },
+      { value: 'legal', label: t('caseManagementDetail.management.roleLegal', { defaultValue: 'Legal' }) },
+      { value: 'observer', label: t('caseManagementDetail.management.roleObserver', { defaultValue: 'Observer' }) },
     ],
     [t]
   );
@@ -52,6 +62,21 @@ const CaseManagementPanel = ({
     }
     return caseData?.assignedToId ? [caseData.assignedToId] : [];
   }, [caseData?.assignedToId, caseData?.assignedToIds]);
+
+  const assignedHandlers = useMemo(() => {
+    const pool = Array.isArray(caseData?.assignedHandlers) ? caseData.assignedHandlers : [];
+    const byId = new Map((handlers || []).map((handler) => [String(handler?.id || ''), handler]));
+    return assignedToIds.map((handlerId, index) => {
+      const assigned = pool.find((item) => String(item?.id || '') === String(handlerId));
+      const fallback = byId.get(String(handlerId)) || {};
+      return {
+        id: handlerId,
+        name: assigned?.name || fallback?.name || `#${String(handlerId).slice(0, 8)}`,
+        email: assigned?.email || fallback?.email || '',
+        role: assigned?.role || (index === 0 ? 'primary' : 'secondary'),
+      };
+    });
+  }, [assignedToIds, caseData?.assignedHandlers, handlers]);
 
   const isBusy = savingAssignment || savingPriority || savingStatusEmail;
   const hasAssignedHandlers = assignedToIds.length > 0;
@@ -108,6 +133,33 @@ const CaseManagementPanel = ({
     [onStatusEmailNotifyChange]
   );
 
+  const handleRoleSelect = useCallback(
+    async (handlerId, role) => {
+      if (!handlerId || !role) return;
+      try {
+        setSavingAssignment(true);
+        await onAssignmentRoleChange?.(handlerId, role);
+      } finally {
+        setSavingAssignment(false);
+      }
+    },
+    [onAssignmentRoleChange]
+  );
+
+  const handleRemoveAssignedHandler = useCallback(
+    async (handlerId) => {
+      if (!handlerId) return;
+      const nextIds = assignedToIds.filter((id) => id !== handlerId);
+      try {
+        setSavingAssignment(true);
+        await onAssignmentChange?.(nextIds);
+      } finally {
+        setSavingAssignment(false);
+      }
+    },
+    [assignedToIds, onAssignmentChange]
+  );
+
   return (
     <div className="bg-card rounded-xl border border-border overflow-visible isolate">
       <div className="p-4 md:p-6 space-y-4">
@@ -157,6 +209,43 @@ const CaseManagementPanel = ({
               />
             </div>
           </PermissionGuard>
+
+          {assignedHandlers.length > 0 && (
+            <PermissionGuard permission={PERMISSIONS.EDIT_TICKETS}>
+              <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+                <p className="text-sm font-medium text-foreground">
+                  {t('caseManagementDetail.management.assignedHandlersRoles', { defaultValue: 'Assigned handlers and roles' })}
+                </p>
+                {assignedHandlers.map((handler) => (
+                  <div key={handler.id} className="rounded-md border border-border bg-card p-2">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{handler.name}</p>
+                        {handler.email && (
+                          <p className="text-xs text-muted-foreground truncate">{handler.email}</p>
+                        )}
+                      </div>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        iconName="Trash2"
+                        onClick={() => handleRemoveAssignedHandler(handler.id)}
+                        disabled={savingAssignment}
+                      >
+                        {t('common.remove', { defaultValue: 'Remove' })}
+                      </Button>
+                    </div>
+                    <Select
+                      options={assignmentRoleOptions}
+                      value={handler.role}
+                      onChange={(value) => handleRoleSelect(handler.id, value)}
+                      disabled={savingAssignment}
+                    />
+                  </div>
+                ))}
+              </div>
+            </PermissionGuard>
+          )}
 
           <PermissionGuard permission={PERMISSIONS.EDIT_TICKETS}>
             <div className="relative z-[70]">

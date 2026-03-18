@@ -181,3 +181,30 @@ function api_authz_require_admin(callable $deny, array $requiredScopes = []): ar
         'service_key' => $serviceKey,
     ];
 }
+
+function api_authz_require_active_handler(callable $deny): array {
+    $token = auth0_get_bearer_token();
+    if ($token === '') {
+        $deny(401, 'Authorization token required');
+    }
+
+    $auth0Domain = api_authz_env_required('VITE_AUTH0_DOMAIN');
+    $auth0Audience = auth0_expected_api_audience();
+    $auth0ClientId = api_authz_env_required('VITE_AUTH0_CLIENT_ID');
+    $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
+
+    $baseUrl = rtrim(api_authz_env_required('VITE_SUPABASE_URL'), '/');
+    $serviceKey = supabase_get_service_role_key();
+
+    $handler = api_authz_fetch_handler($baseUrl, $serviceKey, $claims);
+    if (!$handler || empty($handler['active'])) {
+        $deny(403, 'Handler account not active or not found');
+    }
+
+    return [
+        'claims' => $claims,
+        'handler' => $handler,
+        'base_url' => $baseUrl,
+        'service_key' => $serviceKey,
+    ];
+}

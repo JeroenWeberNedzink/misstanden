@@ -141,6 +141,7 @@ const normalizeTicketPrefix = (value, fallback = 'NZ') => {
     .replace(/^-|-$/g, '');
   return normalized || fallback;
 };
+const STATUS_ROLLBACK_WINDOW_MS = 60 * 60 * 1000;
 
 const readSettingByAliases = (normalizedByKey, aliases = [], fallback = undefined) => {
   for (const key of aliases) {
@@ -285,7 +286,7 @@ const getNormalizedTicketSettingsByKey = async () => {
   }
 
   try {
-    const { rows } = await settingsService.getSettings();
+    const { rows } = await settingsService.getSettings({ includeSensitive: false });
     const normalizedByKey = {};
     (rows || []).forEach((row) => {
       const key = String(row?.setting_key || '').trim();
@@ -625,6 +626,34 @@ const throwIfError = (error, context = '') => {
   throw e;
 };
 
+const loadHandlerContactById = async (handlerId, context = 'handler lookup') => {
+  const normalizedId = String(handlerId || '').trim();
+  if (!normalizedId) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('handlers')
+      .select('id, name, email')
+      .eq('id', normalizedId)
+      .limit(1);
+
+    if (error) {
+      if (isAuthOrRlsError(error)) {
+        console.warn(`[ticketService] ${context} blocked by policy, continuing`, error);
+      } else {
+        console.warn(`[ticketService] ${context} failed, continuing`, error);
+      }
+      return null;
+    }
+
+    const row = Array.isArray(data) ? data[0] : null;
+    return row || null;
+  } catch (err) {
+    console.warn(`[ticketService] ${context} failed unexpectedly, continuing`, err);
+    return null;
+  }
+};
+
 function getClientMeta() {
   try {
     return {
@@ -763,6 +792,25 @@ const normalizeHandlerIds = (handlerIds) => {
   return out;
 };
 
+const normalizeAssignmentRole = (value, fallback = 'secondary') => {
+  const role = String(value || '').trim().toLowerCase();
+  if (['primary', 'secondary', 'legal', 'observer'].includes(role)) {
+    return role;
+  }
+  return fallback;
+};
+
+const buildAssignmentRolesMap = (handlerIds = [], explicitRoles = {}) => {
+  const ids = normalizeHandlerIds(handlerIds);
+  const out = {};
+  ids.forEach((handlerId, index) => {
+    const explicit = explicitRoles?.[handlerId];
+    const fallback = index === 0 ? 'primary' : 'secondary';
+    out[handlerId] = normalizeAssignmentRole(explicit, fallback);
+  });
+  return out;
+};
+
 const loadHandlersByIdsWithFallback = async (handlerIds = []) => {
   const normalizedIds = normalizeHandlerIds(handlerIds);
   if (normalizedIds.length === 0) return [];
@@ -843,8 +891,9 @@ const getTicketHandlersMap = async (ticketIds = []) => {
 
   const { data, error } = await supabase
     .from('ticket_handlers')
-    .select('id, ticket_id, handler_id, created_at, handlers:handler_id ( id, name, email, roles, active )')
+    .select('id, ticket_id, handler_id, role, assigned_at, created_at, handlers:handler_id ( id, name, email, roles, active )')
     .in('ticket_id', ids)
+    .order('assigned_at', { ascending: true, nullsFirst: true })
     .order('created_at', { ascending: true });
 
   if (error) {
@@ -871,6 +920,8 @@ const getTicketHandlersMap = async (ticketIds = []) => {
       id: row?.id,
       ticketId: row?.ticket_id,
       handlerId: row?.handler_id,
+      role: normalizeAssignmentRole(row?.role, 'secondary'),
+      assignedAt: row?.assigned_at || row?.created_at || null,
       createdAt: row?.created_at,
       handler: toCamelCase(row?.handlers || null),
     };
@@ -945,8 +996,9 @@ const insertTicketActionSafe = async (payload, context = 'ticket action') => {
   return { skipped: true, reason: 'unknown', error };
 };
 
-const syncTicketHandlers = async (ticketId, nextHandlerIds = []) => {
+const syncTicketHandlers = async (ticketId, nextHandlerIds = [], rolesByHandlerId = {}) => {
   const normalized = normalizeHandlerIds(nextHandlerIds);
+  const normalizedRoles = buildAssignmentRolesMap(normalized, rolesByHandlerId);
 
   if (!shouldProbeTicketHandlersRelation()) {
     return { available: false, restricted: false, addedIds: [], removedIds: [], previousIds: [], nextIds: normalized };
@@ -954,7 +1006,7 @@ const syncTicketHandlers = async (ticketId, nextHandlerIds = []) => {
 
   const { data: existingRows, error: existingError } = await supabase
     .from('ticket_handlers')
-    .select('handler_id')
+    .select('handler_id, role')
     .eq('ticket_id', ticketId);
 
   if (existingError) {
@@ -972,6 +1024,12 @@ const syncTicketHandlers = async (ticketId, nextHandlerIds = []) => {
   markTicketHandlersRelationState(true);
 
   const existingIds = (existingRows || []).map((row) => row?.handler_id).filter(Boolean);
+  const existingRoleMap = {};
+  for (const row of existingRows || []) {
+    const handlerId = String(row?.handler_id || '').trim();
+    if (!handlerId) continue;
+    existingRoleMap[handlerId] = normalizeAssignmentRole(row?.role, 'secondary');
+  }
   const toAdd = normalized.filter((id) => !existingIds.includes(id));
   const toRemove = existingIds.filter((id) => !normalized.includes(id));
 
@@ -994,10 +1052,34 @@ const syncTicketHandlers = async (ticketId, nextHandlerIds = []) => {
     }
   }
 
+  const roleUpdates = normalized
+    .filter((handlerId) => !toAdd.includes(handlerId))
+    .filter((handlerId) => normalizeAssignmentRole(existingRoleMap[handlerId], 'secondary') !== normalizedRoles[handlerId]);
+  for (const handlerId of roleUpdates) {
+    const { error: roleError } = await supabase
+      .from('ticket_handlers')
+      .update({ role: normalizedRoles[handlerId] })
+      .eq('ticket_id', ticketId)
+      .eq('handler_id', handlerId);
+    if (roleError) {
+      if (isMissingTicketHandlersRelation(roleError) || isMissingRelation(roleError)) {
+        markTicketHandlersRelationState(false);
+        return { available: false, restricted: false, addedIds: [], removedIds: [], previousIds: existingIds, nextIds: normalized };
+      }
+      if (isAuthOrRlsError(roleError)) {
+        console.warn('[ticketService] ticket_handlers sync blocked by policy (role update), continuing with primary handler only', roleError);
+        return { available: false, restricted: true, addedIds: [], removedIds: [], previousIds: existingIds, nextIds: normalized };
+      }
+      throwIfError(roleError, 'syncTicketHandlers(role update)');
+    }
+  }
+
   if (toAdd.length > 0) {
     const rows = toAdd.map((handlerId) => ({
       ticket_id: ticketId,
       handler_id: handlerId,
+      role: normalizedRoles[handlerId] || 'secondary',
+      assigned_at: new Date().toISOString(),
     }));
 
     const { error: addError } = await supabase
@@ -1136,6 +1218,28 @@ const findStatusByCodeOrLabel = (statuses, value) => {
   if (byLabel) return byLabel;
 
   return null;
+};
+
+const findStatusIndexByCodeOrLabel = (statuses, value) => {
+  const status = findStatusByCodeOrLabel(statuses, value);
+  if (!status) return -1;
+  return statuses.findIndex((item) => safeLower(item?.code) === safeLower(status.code));
+};
+
+const resolveStatusChangedAt = (ticket = {}) =>
+  ticket?.metadata?.workflow_status_changed_at ||
+  ticket?.metadata?.workflowStatusChangedAt ||
+  ticket?.last_update_at ||
+  ticket?.lastUpdateAt ||
+  ticket?.submitted_at ||
+  ticket?.submittedAt ||
+  null;
+
+const isRollbackWindowOpen = (value) => {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  return Date.now() - date.getTime() <= STATUS_ROLLBACK_WINDOW_MS;
 };
 
 const pickDefaultStatus = (statuses) => statuses?.[0] || null;
@@ -1497,6 +1601,9 @@ export const ticketService = {
       metadata: {
         ...(ticketData.metadata || {}),
         status_label: def.label,
+        workflow_status_changed_at: nowIso,
+        workflow_status_previous_code: null,
+        workflow_status_previous_stage: null,
         reporter_language: reporterLanguage || null,
         sla_response_hours: slaResponseHours,
         sla_resolution_hours: slaResolutionHours,
@@ -1588,7 +1695,7 @@ export const ticketService = {
     // Fetch current ticket data (for metadata and old status)
     const { data: cur, error: curErr } = await supabase
       .from('tickets')
-      .select('metadata, status_code, handler_id')
+      .select('metadata, status_code, current_stage, handler_id, last_update_at, submitted_at')
       .eq('id', ticketId)
       .single();
     throwIfError(curErr, 'updateTicketProgress(fetch metadata)');
@@ -1616,6 +1723,16 @@ export const ticketService = {
       throw e;
     }
 
+    const currentStatusComparable = cur?.current_stage || cur?.status_code || null;
+    const currentIdx = findStatusIndexByCodeOrLabel(statuses, currentStatusComparable);
+    const newIdx = findStatusIndexByCodeOrLabel(statuses, resolved.code);
+    const isRollback = currentIdx >= 0 && newIdx >= 0 && newIdx < currentIdx;
+    if (isRollback && !isRollbackWindowOpen(resolveStatusChangedAt(cur))) {
+      const e = new Error('Status terugzetten is alleen binnen 1 uur na de laatste statuswijziging toegestaan.');
+      e.code = 'STATUS_ROLLBACK_WINDOW_EXPIRED';
+      throw e;
+    }
+
     // Get old status label for notification
     const oldStatusObj = findStatusByCodeOrLabel(statuses, cur?.status_code);
     const oldStatusLabel = oldStatusObj?.label || cur?.status_code || 'Unknown';
@@ -1638,10 +1755,13 @@ export const ticketService = {
       ...(cur?.metadata || {}),
       status_label: resolved.label,
       workflow_status_code: resolved.code,
-      status_contact_person_name: resolved?.contactPersonName || null,
-      status_contact_person_email: resolved?.contactPersonEmail || null,
-      status_contact_person_phone: resolved?.contactPersonPhone || null,
-      status_contact_notes: resolved?.contactNotes || null,
+      workflow_status_changed_at: nowIso,
+      workflow_status_previous_code: cur?.status_code || null,
+      workflow_status_previous_stage: cur?.current_stage || null,
+      status_contact_person_name: null,
+      status_contact_person_email: null,
+      status_contact_person_phone: null,
+      status_contact_notes: null,
       ...(shouldStampFirstResponseAt
         ? {
             first_response_at: nowIso,
@@ -1964,7 +2084,9 @@ async deleteHandler(handlerId, options = {}) {
     const nowIso = new Date().toISOString();
     const normalizedHandlerIds = normalizeHandlerIds(handlerIds);
     const trustedHandlerIds = new Set(normalizeHandlerIds(options?.currentHandlerId));
-    const primaryHandlerId = normalizedHandlerIds[0] || null;
+    const assignmentRoles = buildAssignmentRolesMap(normalizedHandlerIds, options?.rolesByHandlerId || {});
+    const explicitPrimary = normalizedHandlerIds.find((id) => assignmentRoles[id] === 'primary') || null;
+    const primaryHandlerId = explicitPrimary || normalizedHandlerIds[0] || null;
     const handlerMap = new Map();
     let ticketBefore = null;
     const { data: ticketBeforeData, error: ticketBeforeError } = await supabase
@@ -2030,7 +2152,7 @@ async deleteHandler(handlerId, options = {}) {
       }
     }
 
-    const syncResult = await syncTicketHandlers(ticketId, normalizedHandlerIds);
+    const syncResult = await syncTicketHandlers(ticketId, normalizedHandlerIds, assignmentRoles);
     if (!syncResult.available && normalizedHandlerIds.length > 1) {
       const blockedByPolicy = Boolean(syncResult.restricted);
       const e = new Error(
@@ -2053,20 +2175,10 @@ async deleteHandler(handlerId, options = {}) {
     // Get handler info for logging
     let handlerInfo = null;
     if (options.currentHandlerId) {
-      const { data: handler, error: handlerInfoError } = await supabase
-        .from('handlers')
-        .select('id, name, email')
-        .eq('id', options.currentHandlerId)
-        .maybeSingle();
-      if (handlerInfoError) {
-        if (isAuthOrRlsError(handlerInfoError)) {
-          console.warn('[ticketService] Could not read current handler info due to policy, continuing', handlerInfoError);
-        } else {
-          console.warn('[ticketService] Failed to read current handler info for assignment log, continuing', handlerInfoError);
-        }
-      } else {
-        handlerInfo = handler;
-      }
+      handlerInfo = await loadHandlerContactById(
+        options.currentHandlerId,
+        'read current handler info for assignment log'
+      );
     }
 
     // Log assignment action
@@ -2127,6 +2239,42 @@ async deleteHandler(handlerId, options = {}) {
     return this.setTicketHandlers(ticketId, normalized, note, options);
   },
 
+  async setTicketHandlerRole(ticketId, handlerId, role) {
+    if (!ticketId) throw new Error('ticketId is required');
+    if (!handlerId) throw new Error('handlerId is required');
+    const normalizedRole = normalizeAssignmentRole(role, '');
+    if (!normalizedRole) throw new Error('role is required');
+
+    let apiResult = null;
+    if (ticketTokenProvider) {
+      apiResult = await ticketApiPost(
+        {
+          action: 'handler_set_ticket_handler_role',
+          ticket_id: ticketId,
+          handler_id: handlerId,
+          role: normalizedRole,
+        },
+        { requireAuth: true }
+      );
+    } else {
+      const { error } = await supabase
+        .from('ticket_handlers')
+        .update({ role: normalizedRole })
+        .eq('ticket_id', ticketId)
+        .eq('handler_id', handlerId);
+      throwIfError(error, 'setTicketHandlerRole(update)');
+      if (normalizedRole === 'primary') {
+        await this.updateTicket(ticketId, { handlerId });
+      }
+    }
+
+    const ticket = await this.getTicketById(ticketId, { includeRelations: false });
+    return {
+      ticketHandler: toCamelCase(apiResult?.ticket_handler || apiResult || null),
+      ticket,
+    };
+  },
+
   // ----- Comments & messages -----
   async addComment(ticketId, comment, authorName, options = {}) {
     if (!ticketId) throw new Error('ticketId is required');
@@ -2169,12 +2317,10 @@ async deleteHandler(handlerId, options = {}) {
     // Get handler info for logging
     let handlerInfo = null;
     if (options.currentHandlerId) {
-      const { data: handler } = await supabase
-        .from('handlers')
-        .select('id, name, email')
-        .eq('id', options.currentHandlerId)
-        .single();
-      handlerInfo = handler;
+      handlerInfo = await loadHandlerContactById(
+        options.currentHandlerId,
+        'read current handler info for comment log'
+      );
     }
 
     const { data, error } = await supabase
@@ -2276,12 +2422,10 @@ async deleteHandler(handlerId, options = {}) {
     // Get handler info for logging
     let handlerInfo = null;
     if (options.currentHandlerId) {
-      const { data: handler } = await supabase
-        .from('handlers')
-        .select('id, name, email')
-        .eq('id', options.currentHandlerId)
-        .single();
-      handlerInfo = handler;
+      handlerInfo = await loadHandlerContactById(
+        options.currentHandlerId,
+        'read current handler info for message log'
+      );
     }
 
     const handlerNameForReporter = isHandlerSender && discloseHandlerIdentity
@@ -2562,12 +2706,10 @@ async deleteHandler(handlerId, options = {}) {
     // Get handler info for logging
     let handlerInfo = null;
     if (currentHandlerId) {
-      const { data: handler } = await supabase
-        .from('handlers')
-        .select('id, name, email')
-        .eq('id', currentHandlerId)
-        .single();
-      handlerInfo = handler;
+      handlerInfo = await loadHandlerContactById(
+        currentHandlerId,
+        'read current handler info for attachment log'
+      );
     }
 
     const originalName = String(file.name || 'file');
@@ -2755,12 +2897,10 @@ async deleteHandler(handlerId, options = {}) {
     // Get handler info for logging
     let handlerInfo = null;
     if (currentHandlerId) {
-      const { data: handler } = await supabase
-        .from('handlers')
-        .select('id, name, email')
-        .eq('id', currentHandlerId)
-        .single();
-      handlerInfo = handler;
+      handlerInfo = await loadHandlerContactById(
+        currentHandlerId,
+        'read current handler info for action log'
+      );
     }
 
     const result = await insertTicketActionSafe({

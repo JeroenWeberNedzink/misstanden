@@ -1003,15 +1003,6 @@ export async function sendStatusChangeEmail(ticket, oldStatus, newStatus) {
   const statusMessage = localizedStatusMessage(language, newStatus);
   const safeSeverityLabel = severityLabel || severityLabelFromCode(severityCode, language);
   const statusLabel = getStatusLabel({ metadata, statusLabel: ticket.statusLabel, status: ticket.status, statusCode: ticket.statusCode });
-  const contactName =
-    metadata?.status_contact_person_name || metadata?.statusContactPersonName || null;
-  const contactEmail =
-    metadata?.status_contact_person_email || metadata?.statusContactPersonEmail || null;
-  const contactPhone =
-    metadata?.status_contact_person_phone || metadata?.statusContactPersonPhone || null;
-  const contactNotes =
-    metadata?.status_contact_notes || metadata?.statusContactNotes || null;
-  const hasContact = Boolean(contactName || contactEmail || contactPhone || contactNotes);
 
   const html = `
 ${baseStyles}
@@ -1042,18 +1033,6 @@ ${baseStyles}
   <div class="section-title" style="margin-top:12px;">${escapeHtml(copy.description)}</div>
   <div>${nl2br(description || '-')}</div>
 </div>
-
-${hasContact ? `
-<div class="card">
-  <h3 class="section-title">${escapeHtml(copy.contactPerson)}</h3>
-  ${buildMetaTable([
-    [copy.name, escapeHtml(contactName || '-')],
-    [copy.email, escapeHtml(contactEmail || '-')],
-    [copy.phone, escapeHtml(contactPhone || '-')],
-    [copy.note, escapeHtml(contactNotes || '-')]
-  ])}
-</div>
-` : ''}
 
 ${accessCode ? `
 <div class="callout">

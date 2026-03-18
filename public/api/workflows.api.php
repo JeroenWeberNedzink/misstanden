@@ -994,14 +994,9 @@ try {
         }
         foreach ($rows as $r) foreach ($r['next_codes'] as $nc) if (!isset($codeSet[strtolower($nc)])) throw new Exception('Invalid next_codes: "' . $nc . '" does not exist in workflow');
 
-        [$eCode, $eDecoded, $eRaw] = wf_req('GET', $baseUrl . '/rest/v1/workflow_statuses?select=id,code&workflow_id=eq.' . rawurlencode($workflowId), $serviceKey);
-        $existing = wf_or_fail('Load existing statuses', $eCode, $eDecoded, $eRaw);
-        $existingByCode = [];
-        foreach ($existing as $r) $existingByCode[strtolower((string)($r['code'] ?? ''))] = (string)($r['id'] ?? '');
-
         $upsert = [];
         foreach ($rows as $r) {
-            $rid = $r['id'] !== '' ? $r['id'] : ($existingByCode[strtolower($r['code'])] ?? wf_uuid4());
+            $rid = $r['id'] !== '' ? $r['id'] : wf_uuid4();
             if (!wf_uuid($rid)) $rid = wf_uuid4();
             $upsert[] = [
                 'id' => $rid,
@@ -1013,7 +1008,7 @@ try {
                 'sort_order' => $r['sort_order'],
                 'is_terminal' => $r['is_terminal'],
                 'is_first_response' => $r['is_first_response'],
-                'next_codes' => [],
+                'next_codes' => array_values($r['next_codes']),
                 'expected_duration_days' => $r['expected_duration_days'],
                 'contact_person_name' => $r['contact_person_name'],
                 'contact_person_email' => $r['contact_person_email'],
@@ -1026,10 +1021,7 @@ try {
             $inValues = '(' . implode(',', array_map(static fn($x) => '"' . $x . '"', $del)) . ')';
             wf_or_fail('Delete workflow statuses', ...wf_req('DELETE', $baseUrl . '/rest/v1/workflow_statuses?id=in.' . rawurlencode($inValues), $serviceKey));
         }
-        if ($upsert) wf_or_fail('Upsert workflow statuses', ...wf_req('POST', $baseUrl . '/rest/v1/workflow_statuses?on_conflict=workflow_id,code', $serviceKey, $upsert, true));
-        foreach ($rows as $r) {
-            wf_or_fail('Update next_codes', ...wf_req('PATCH', $baseUrl . '/rest/v1/workflow_statuses?workflow_id=eq.' . rawurlencode($workflowId) . '&code=eq.' . rawurlencode($r['code']), $serviceKey, ['next_codes' => array_values($r['next_codes'])]));
-        }
+        if ($upsert) wf_or_fail('Upsert workflow statuses', ...wf_req('POST', $baseUrl . '/rest/v1/workflow_statuses?on_conflict=id', $serviceKey, $upsert, true));
         wf_json(200, true, 'Statuses saved', wf_status_list($baseUrl, $serviceKey, $workflowId));
     }
 

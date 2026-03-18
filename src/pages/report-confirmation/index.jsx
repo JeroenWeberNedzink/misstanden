@@ -88,7 +88,13 @@ export default function ReportConfirmation() {
   }, [ticketInfo, t, i18n]);
 
   const handleCopyCredentials = async () => {
-    const text = `Ticket ID: ${ticketInfo?.ticketNumber}\nAccess Code: ${ticketInfo?.accessCode}`;
+    const replyPath = ticketInfo?.replyUrlPath || ticketInfo?.reply_url_path || '';
+    const replyUrl = replyPath ? `${window.location.origin}${replyPath}` : '';
+    const text = [
+      `Ticket ID: ${ticketInfo?.ticketNumber}`,
+      `Access Code: ${ticketInfo?.accessCode}`,
+      replyUrl ? `Secure Reply Link: ${replyUrl}` : null,
+    ].filter(Boolean).join('\n');
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -119,6 +125,8 @@ export default function ReportConfirmation() {
   const workflowLabel = ticketInfo?.workflow || ticketInfo?.workflowType || '—';
   const severityLabel = ticketInfo?.severity || ticketInfo?.severityCode || '—';
   const locationLabel = ticketInfo?.location || null;
+  const replyPath = ticketInfo?.replyUrlPath || ticketInfo?.reply_url_path || '';
+  const secureReplyUrl = replyPath ? `${window.location.origin}${replyPath}` : '';
 
   return (
     <>
@@ -218,6 +226,22 @@ export default function ReportConfirmation() {
                 >
                   {copied ? t('reportConfirmation.copied') : t('reportConfirmation.copyCredentials')}
                 </Button>
+
+                {/* {secureReplyUrl && (
+                  <div className="mt-4 rounded-xl border border-border bg-muted/20 p-4">
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground mb-2">
+                      {t('reportConfirmation.secureReplyLink', { defaultValue: 'Secure reply link' })}
+                    </p>
+                    <a
+                      href={secureReplyUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm font-mono break-all text-primary underline underline-offset-2"
+                    >
+                      {secureReplyUrl}
+                    </a>
+                  </div>
+                )} */}
               </div>
             </div>
           </div>

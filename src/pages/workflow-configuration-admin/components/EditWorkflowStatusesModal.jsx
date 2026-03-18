@@ -6,6 +6,7 @@ import { workflowService } from '../../../services/workflowService';
 
 const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
+const STATUS_CODE_FALLBACK = 'stap';
 
 function newRow(workflowId) {
   return {
@@ -14,19 +15,46 @@ function newRow(workflowId) {
     code: '',
     label: '',
     description: '',
-    color: '',
     sortOrder: 0,
     isTerminal: false,
     isFirstResponse: false,
     nextCodes: [],
     expectedDurationDays: null,
-    contactPersonName: '',
-    contactPersonEmail: '',
-    contactPersonPhone: '',
-    contactNotes: '',
     _isNew: true,
     _isDeleted: false,
   };
+}
+
+function slugifyStatusCode(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_+/g, '_');
+
+  return normalized || STATUS_CODE_FALLBACK;
+}
+
+function withResolvedCodes(rows = []) {
+  const seen = new Set();
+
+  return rows.map((row) => {
+    const preserveExistingCode = !row?._isNew && /^[a-z0-9_]+$/.test(safeTrim(row?.code));
+    const baseCode = preserveExistingCode ? safeTrim(row.code) : slugifyStatusCode(row?.label);
+    let nextCode = baseCode;
+    let suffix = 2;
+
+    while (seen.has(safeLower(nextCode))) {
+      nextCode = `${baseCode}_${suffix}`;
+      suffix += 1;
+    }
+
+    seen.add(safeLower(nextCode));
+    return { ...row, code: nextCode };
+  });
 }
 
 function getBlueShade(index, total) {
@@ -112,7 +140,7 @@ export default function EditWorkflowStatusesModal({
 
   const [rows, setRows] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
-  const [tab, setTab] = useState('basics'); // basics | sla | contact | next
+  const [tab, setTab] = useState('basics'); // basics | sla
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -138,16 +166,11 @@ export default function EditWorkflowStatusesModal({
           code: s.code ?? '',
           label: s.label ?? '',
           description: s.description ?? '',
-          color: s.color ?? '',
           sortOrder: Number(s.sort_order ?? 0),
           isTerminal: !!s.is_terminal,
           isFirstResponse: !!s.is_first_response,
           nextCodes: Array.isArray(s.next_codes) ? s.next_codes : [],
           expectedDurationDays: s.expected_duration_days ? Number(s.expected_duration_days) : null,
-          contactPersonName: s.contact_person_name ?? '',
-          contactPersonEmail: s.contact_person_email ?? '',
-          contactPersonPhone: s.contact_person_phone ?? '',
-          contactNotes: s.contact_notes ?? '',
           _isNew: false,
           _isDeleted: false,
         }));
@@ -172,10 +195,12 @@ export default function EditWorkflowStatusesModal({
 
   const activeRows = useMemo(
     () =>
-      rows
-        .filter((r) => !r._isDeleted)
-        .slice()
-        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+      withResolvedCodes(
+        rows
+          .filter((r) => !r._isDeleted)
+          .slice()
+          .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+      ),
     [rows]
   );
 
@@ -210,12 +235,6 @@ export default function EditWorkflowStatusesModal({
     }
   }, [selectedId, selected, activeRows]);
 
-  const codeIndex = useMemo(() => {
-    const idx = new Map();
-    activeRows.forEach((r) => idx.set(safeLower(r.code), r));
-    return idx;
-  }, [activeRows]);
-
   const patchRow = (id, patch) => {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   };
@@ -234,26 +253,31 @@ export default function EditWorkflowStatusesModal({
   };
 
   const moveRow = (id, dir) => {
-    const list = activeRows;
-    const idx = list.findIndex((r) => r.id === id);
-    if (idx < 0) return;
-    const swapWith = dir === 'up' ? idx - 1 : idx + 1;
-    if (swapWith < 0 || swapWith >= list.length) return;
+    setRows((prev) => {
+      const active = prev
+        .filter((r) => !r._isDeleted)
+        .slice()
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+      const idx = active.findIndex((r) => r.id === id);
+      if (idx < 0) return prev;
 
-    const a = list[idx];
-    const b = list[swapWith];
+      const swapWith = dir === 'up' ? idx - 1 : idx + 1;
+      if (swapWith < 0 || swapWith >= active.length) return prev;
 
-    patchRow(a.id, { sortOrder: b.sortOrder });
-    patchRow(b.id, { sortOrder: a.sortOrder });
-  };
+      const reordered = active.slice();
+      const [moved] = reordered.splice(idx, 1);
+      reordered.splice(swapWith, 0, moved);
 
-  const toggleNextCode = (rowId, nextCode) => {
-    const row = rows.find((r) => r.id === rowId);
-    if (!row) return;
-    const cur = Array.isArray(row.nextCodes) ? row.nextCodes : [];
-    const exists = cur.some((c) => safeLower(c) === safeLower(nextCode));
-    const next = exists ? cur.filter((c) => safeLower(c) !== safeLower(nextCode)) : [...cur, nextCode];
-    patchRow(rowId, { nextCodes: next });
+      const nextSortOrderById = new Map(
+        reordered.map((row, index) => [row.id, (index + 1) * 10])
+      );
+
+      return prev.map((row) =>
+        row._isDeleted || !nextSortOrderById.has(row.id)
+          ? row
+          : { ...row, sortOrder: nextSortOrderById.get(row.id) }
+      );
+    });
   };
 
   const validate = () => {
@@ -262,17 +286,11 @@ export default function EditWorkflowStatusesModal({
       const code = safeTrim(r.code);
       const label = safeTrim(r.label);
 
-      if (!code || !label) return 'Elke status moet een code en label hebben.';
+      if (!label) return 'Elke status moet een label hebben.';
       if (!/^[a-z0-9_]+$/.test(code)) return `Ongeldige code "${code}". Alleen a-z, 0-9 en _.`;
       const key = safeLower(code);
       if (seen.has(key)) return `Dubbele status code: "${code}".`;
       seen.add(key);
-
-      if (Array.isArray(r.nextCodes)) {
-        for (const nc of r.nextCodes) {
-          if (!codeIndex.has(safeLower(nc))) return `next_codes bevat onbekende code: "${nc}".`;
-        }
-      }
     }
     return '';
   };
@@ -288,21 +306,21 @@ export default function EditWorkflowStatusesModal({
     setSaving(true);
     try {
       const toDelete = rows.filter((r) => r._isDeleted && !r._isNew).map((r) => r.id);
-      const upsertPayload = activeRows.map((r) => ({
+      const upsertPayload = activeRows.map((r, index) => ({
         id: r._isNew ? null : r.id,
         code: safeTrim(r.code),
         label: safeTrim(r.label),
         description: safeTrim(r.description) || null,
-        color: safeTrim(r.color) || null,
+        color: null,
         sort_order: Number(r.sortOrder ?? 0),
         is_terminal: !!r.isTerminal,
         is_first_response: !!r.isFirstResponse,
-        next_codes: Array.isArray(r.nextCodes) ? r.nextCodes.map(safeTrim).filter(Boolean) : [],
+        next_codes: index < activeRows.length - 1 ? [safeTrim(activeRows[index + 1]?.code)].filter(Boolean) : [],
         expected_duration_days: r.expectedDurationDays ? Number(r.expectedDurationDays) : null,
-        contact_person_name: safeTrim(r.contactPersonName) || null,
-        contact_person_email: safeTrim(r.contactPersonEmail) || null,
-        contact_person_phone: safeTrim(r.contactPersonPhone) || null,
-        contact_notes: safeTrim(r.contactNotes) || null,
+        contact_person_name: null,
+        contact_person_email: null,
+        contact_person_phone: null,
+        contact_notes: null,
       }));
 
       await workflowService.saveWorkflowStatuses(workflowId, upsertPayload, toDelete);
@@ -314,19 +332,6 @@ export default function EditWorkflowStatusesModal({
     } finally {
       setSaving(false);
     }
-  };
-
-  const applyLinearNextCodes = () => {
-    // Quick helper: next_codes becomes [nextStatus.code], last becomes []
-    const list = activeRows;
-    setRows((prev) =>
-      prev.map((r) => {
-        const i = list.findIndex((x) => x.id === r.id);
-        if (i < 0) return r;
-        const next = i < list.length - 1 ? [safeTrim(list[i + 1].code)].filter(Boolean) : [];
-        return { ...r, nextCodes: next };
-      })
-    );
   };
 
   if (!open) return null;
@@ -373,17 +378,6 @@ export default function EditWorkflowStatusesModal({
                   {loading ? 'Laden…' : `${activeRows.length} stap(pen)`}
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    iconName="Wand2"
-                    iconPosition="left"
-                    onClick={applyLinearNextCodes}
-                    disabled={loading || saving || activeRows.length < 2}
-                    title="Zet next_codes automatisch lineair"
-                  >
-                    Lineair maken
-                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -520,7 +514,10 @@ export default function EditWorkflowStatusesModal({
                             <button
                               type="button"
                               className="p-2 rounded-lg hover:bg-muted"
-                              onClick={() => moveRow(r.id, 'up')}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                moveRow(r.id, 'up');
+                              }}
                               disabled={idx === 0 || saving}
                               title="Omhoog"
                             >
@@ -529,7 +526,10 @@ export default function EditWorkflowStatusesModal({
                             <button
                               type="button"
                               className="p-2 rounded-lg hover:bg-muted"
-                              onClick={() => moveRow(r.id, 'down')}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                moveRow(r.id, 'down');
+                              }}
                               disabled={idx === activeRows.length - 1 || saving}
                               title="Omlaag"
                             >
@@ -555,6 +555,9 @@ export default function EditWorkflowStatusesModal({
                         Nog geen statussen. Klik “Stap toevoegen”.
                       </div>
                     )}
+                  </div>
+                  <div className="px-3 py-2 border-t border-border bg-muted/10 text-xs text-muted-foreground">
+                    De volgende status volgt altijd de volgorde van deze lijst. Gebruik de pijlen om stappen te verplaatsen.
                   </div>
                 </div>
               </div>
@@ -600,8 +603,6 @@ export default function EditWorkflowStatusesModal({
                   <div className="p-3 border-b border-border bg-muted/10 flex flex-wrap gap-2">
                     <TabButton active={tab === 'basics'} icon="Pencil" label="Basis" onClick={() => setTab('basics')} />
                     <TabButton active={tab === 'sla'} icon="Clock" label="SLA" onClick={() => setTab('sla')} />
-                    <TabButton active={tab === 'contact'} icon="User" label="Contact" onClick={() => setTab('contact')} />
-                    <TabButton active={tab === 'next'} icon="GitBranch" label="Volgende" onClick={() => setTab('next')} />
                   </div>
 
                   <div className="p-4 md:p-5">
@@ -614,18 +615,21 @@ export default function EditWorkflowStatusesModal({
                         {tab === 'basics' && (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <Input
-                              label="Code"
-                              value={selected.code}
-                              onChange={(e) => patchRow(selected.id, { code: e.target.value })}
-                              disabled={saving}
-                              description="Alleen a-z, 0-9 en _"
-                            />
-                            <Input
                               label="Label"
                               value={selected.label}
                               onChange={(e) => patchRow(selected.id, { label: e.target.value })}
                               disabled={saving}
+                              description="De code wordt automatisch gemaakt op basis van deze naam."
                             />
+                            <div className="rounded-xl border border-border bg-muted/10 px-3 py-3">
+                              <div className="text-xs font-medium text-foreground">Code</div>
+                              <div className="mt-1 font-mono text-sm text-muted-foreground">
+                                {selected.code || STATUS_CODE_FALLBACK}
+                              </div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                Automatisch gegenereerd. Alleen a-z, 0-9 en _.
+                              </div>
+                            </div>
                             <div className="md:col-span-2">
                               <Input
                                 label="Omschrijving"
@@ -634,13 +638,6 @@ export default function EditWorkflowStatusesModal({
                                 disabled={saving}
                               />
                             </div>
-                            <Input
-                              label="Kleur (optioneel)"
-                              value={selected.color}
-                              onChange={(e) => patchRow(selected.id, { color: e.target.value })}
-                              disabled={saving}
-                              description="Bijv. blue / amber (voor badge mapping)"
-                            />
                           </div>
                         )}
 
@@ -668,84 +665,6 @@ export default function EditWorkflowStatusesModal({
                                 <span className="px-2 py-0.5 rounded bg-destructive/10 text-destructive">Over SLA</span>
                               </div>
                             </div>
-                          </div>
-                        )}
-
-                        {tab === 'contact' && (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <Input
-                              label="Contactpersoon"
-                              placeholder="Naam"
-                              value={selected.contactPersonName || ''}
-                              onChange={(e) => patchRow(selected.id, { contactPersonName: e.target.value })}
-                              disabled={saving}
-                            />
-                            <Input
-                              type="email"
-                              label="Email"
-                              placeholder="email@voorbeeld.nl"
-                              value={selected.contactPersonEmail || ''}
-                              onChange={(e) => patchRow(selected.id, { contactPersonEmail: e.target.value })}
-                              disabled={saving}
-                            />
-                            <Input
-                              type="tel"
-                              label="Telefoon"
-                              placeholder="+31 6 12345678"
-                              value={selected.contactPersonPhone || ''}
-                              onChange={(e) => patchRow(selected.id, { contactPersonPhone: e.target.value })}
-                              disabled={saving}
-                            />
-                            <div className="md:col-span-2">
-                              <Input
-                                label="Notities"
-                                placeholder="Extra contacten of notities"
-                                value={selected.contactNotes || ''}
-                                onChange={(e) => patchRow(selected.id, { contactNotes: e.target.value })}
-                                disabled={saving}
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {tab === 'next' && (
-                          <div>
-                            <div className="text-xs text-muted-foreground mb-3">
-                              Klik om “volgende stappen” te kiezen.
-                            </div>
-
-                            <div className="flex flex-wrap gap-2">
-                              {activeRows
-                                .filter((x) => safeLower(x.code) !== safeLower(selected.code))
-                                .map((x) => {
-                                  const checked = (selected.nextCodes || []).some(
-                                    (c) => safeLower(c) === safeLower(x.code)
-                                  );
-                                  return (
-                                    <button
-                                      key={x.id}
-                                      type="button"
-                                      onClick={() => toggleNextCode(selected.id, x.code)}
-                                      className={[
-                                        'text-xs px-2.5 py-1 rounded-full border transition',
-                                        checked
-                                          ? 'bg-primary/10 text-primary border-primary/25'
-                                          : 'bg-card text-muted-foreground border-border hover:bg-muted/40',
-                                      ].join(' ')}
-                                      disabled={saving || selected.isTerminal}
-                                      title={selected.isTerminal ? 'Eindoplossing' : ''}
-                                    >
-                                      {x.label || x.code}
-                                    </button>
-                                  );
-                                })}
-                            </div>
-
-                            {selected.isTerminal && (
-                              <div className="mt-3 p-3 rounded-xl border border-border bg-muted/10 text-xs text-muted-foreground">
-                                Eindoplossing: <span className="font-mono">next_codes</span> is meestal leeg.
-                              </div>
-                            )}
                           </div>
                         )}
                       </>

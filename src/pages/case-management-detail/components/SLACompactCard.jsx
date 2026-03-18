@@ -142,11 +142,6 @@ export default function SLACompactCard({ sla, statusLabel, currentStatusDuration
   const isClosed = Boolean(sla?.isClosed) || isTerminalStatusLabel(statusLabel);
   const hasOverdue = milestones.some((m) => m.state === 'overdue');
   const activeMilestone = milestones.find((m) => m.state === 'upcoming') || null;
-  const hasContact =
-    Boolean(sla?.contactPersonName) ||
-    Boolean(sla?.contactPersonEmail) ||
-    Boolean(sla?.contactPersonPhone) ||
-    Boolean(sla?.contactNotes);
 
   const stateMeta = (state, itemId) => {
     if (state === 'completed') {
@@ -223,18 +218,6 @@ export default function SLACompactCard({ sla, statusLabel, currentStatusDuration
           )}
         </div>
       </div>
-
-      {hasContact && (
-        <div className="px-4 py-3 border-b border-border bg-background">
-          <div className="text-[11px] font-semibold text-foreground mb-1">{t('caseManagementDetail.sla.contactPerson')}</div>
-          <div className="space-y-0.5 text-[11px] text-muted-foreground">
-            {sla?.contactPersonName && <div>{t('caseManagementDetail.sla.name')}: {sla.contactPersonName}</div>}
-            {sla?.contactPersonEmail && <div>{t('caseManagementDetail.sla.email')}: {sla.contactPersonEmail}</div>}
-            {sla?.contactPersonPhone && <div>{t('caseManagementDetail.sla.phone')}: {sla.contactPersonPhone}</div>}
-            {sla?.contactNotes && <div>{t('caseManagementDetail.sla.note')}: {sla.contactNotes}</div>}
-          </div>
-        </div>
-      )}
 
       <div className="p-4 space-y-2.5">
         {milestones.map((milestone) => {

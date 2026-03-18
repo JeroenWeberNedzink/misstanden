@@ -32,6 +32,10 @@ ini_set('display_errors', '0');
 error_reporting(E_ALL);
 
 const ATTACHMENT_SIGNED_URL_TTL_SECONDS = 120;
+const HANDLER_REPLY_DELAY_MIN_SECONDS = 120;
+const HANDLER_REPLY_DELAY_MAX_SECONDS = 600;
+const REPORTER_REPLY_TOKEN_BYTES = 32;
+const STATUS_ROLLBACK_WINDOW_SECONDS = 3600;
 
 function api_json(int $status, bool $success, string $message, $data = null): void {
     http_response_code($status);
@@ -484,6 +488,103 @@ function ticket_setting_bool_for_workflow(array $settings, string $workflowType,
     return ticket_setting_bool($settings, $orderedAliases, $default);
 }
 
+function ticket_workflow_status_rows(string $baseUrl, string $serviceKey, string $workflowType): array {
+    $workflowCode = trim($workflowType);
+    if ($workflowCode === '') {
+        return [];
+    }
+
+    [$wfCode, $wfDecoded, $wfRaw] = supabase_request(
+        'GET',
+        $baseUrl . '/rest/v1/workflows?select=id&code=eq.' . rawurlencode($workflowCode) . '&limit=1',
+        $serviceKey
+    );
+    if ($wfCode < 200 || $wfCode >= 300) {
+        $msg = is_array($wfDecoded) ? json_encode($wfDecoded, JSON_UNESCAPED_UNICODE) : (string)$wfRaw;
+        throw new Exception('Failed to load workflow for status validation: ' . $msg);
+    }
+
+    $workflowRow = get_first_row($wfDecoded);
+    $workflowId = trim((string)($workflowRow['id'] ?? ''));
+    if (!ticket_is_uuid($workflowId)) {
+        return [];
+    }
+
+    [$statusCode, $statusDecoded, $statusRaw] = supabase_request(
+        'GET',
+        $baseUrl . '/rest/v1/workflow_statuses?select=code,label,sort_order&workflow_id=eq.' . rawurlencode($workflowId) . '&order=sort_order.asc',
+        $serviceKey
+    );
+    if ($statusCode < 200 || $statusCode >= 300) {
+        $msg = is_array($statusDecoded) ? json_encode($statusDecoded, JSON_UNESCAPED_UNICODE) : (string)$statusRaw;
+        throw new Exception('Failed to load workflow statuses for validation: ' . $msg);
+    }
+
+    return is_array($statusDecoded) ? $statusDecoded : [];
+}
+
+function ticket_status_index(array $rows, string $value): int {
+    $needle = strtolower(trim($value));
+    if ($needle === '') {
+        return -1;
+    }
+
+    foreach ($rows as $index => $row) {
+        if (strtolower(trim((string)($row['code'] ?? ''))) === $needle) {
+            return (int)$index;
+        }
+    }
+    foreach ($rows as $index => $row) {
+        if (strtolower(trim((string)($row['label'] ?? ''))) === $needle) {
+            return (int)$index;
+        }
+    }
+
+    return -1;
+}
+
+function ticket_latest_status_action_at(string $baseUrl, string $serviceKey, string $ticketId): ?string {
+    if (!ticket_is_uuid($ticketId)) {
+        return null;
+    }
+
+    [$code, $decoded, $raw] = supabase_request(
+        'GET',
+        $baseUrl . '/rest/v1/ticket_actions?select=created_at&ticket_id=eq.' . rawurlencode($ticketId) . '&action_type=eq.status_update&order=created_at.desc&limit=1',
+        $serviceKey
+    );
+    if ($code < 200 || $code >= 300) {
+        $msg = is_array($decoded) ? json_encode($decoded, JSON_UNESCAPED_UNICODE) : (string)$raw;
+        error_log('[tickets.api] Could not load latest status_update action: ' . api_redact_sensitive($msg));
+        return null;
+    }
+
+    $row = get_first_row($decoded);
+    $createdAt = trim((string)($row['created_at'] ?? ''));
+    return $createdAt !== '' ? $createdAt : null;
+}
+
+function ticket_status_changed_at(array $ticketRow, string $baseUrl, string $serviceKey, string $ticketId): ?string {
+    $metadata = is_array($ticketRow['metadata'] ?? null) ? $ticketRow['metadata'] : [];
+    $metadataTime = trim((string)($metadata['workflow_status_changed_at'] ?? $metadata['workflowStatusChangedAt'] ?? ''));
+    if ($metadataTime !== '') {
+        return $metadataTime;
+    }
+
+    $actionTime = ticket_latest_status_action_at($baseUrl, $serviceKey, $ticketId);
+    if ($actionTime !== null) {
+        return $actionTime;
+    }
+
+    $lastUpdateAt = trim((string)($ticketRow['last_update_at'] ?? ''));
+    if ($lastUpdateAt !== '') {
+        return $lastUpdateAt;
+    }
+
+    $submittedAt = trim((string)($ticketRow['submitted_at'] ?? ''));
+    return $submittedAt !== '' ? $submittedAt : null;
+}
+
 function ticket_normalize_severity(string $value, string $fallback = 'low'): string {
     $normalized = strtolower(trim($value));
     if (in_array($normalized, ['low', 'medium', 'high', 'critical'], true)) {
@@ -508,6 +609,141 @@ function ticket_generate_ticket_number(string $prefix): string {
 
 function ticket_generate_access_code(): string {
     return str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+}
+
+function ticket_valid_email(string $email): bool {
+    return filter_var(trim($email), FILTER_VALIDATE_EMAIL) !== false;
+}
+
+function ticket_escape_html(string $value): string {
+    return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+function ticket_server_base_url(): string {
+    $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+    if ($host === '') {
+        return '';
+    }
+
+    $isHttps = (
+        (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
+        || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
+        || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https'
+    );
+    $scheme = $isHttps ? 'https' : 'http';
+    return $scheme . '://' . $host;
+}
+
+function ticket_mail_api_url(): string {
+    $configured = trim((string)(getenv('MAIL_API_INTERNAL_URL') ?: ''));
+    if ($configured !== '') {
+        return $configured;
+    }
+    $configured = trim((string)(getenv('PHP_MAIL_API_URL') ?: ''));
+    if ($configured !== '') {
+        return $configured;
+    }
+    $base = ticket_server_base_url();
+    if ($base !== '') {
+        return $base . '/api/mail.api.php';
+    }
+    return 'http://127.0.0.1:8081/api/mail.api.php';
+}
+
+function ticket_send_mail(array $to, string $subject, string $html, string $text = ''): bool {
+    $recipients = array_values(array_unique(array_filter(array_map(static function ($value): string {
+        return strtolower(trim((string)$value));
+    }, $to), 'ticket_valid_email')));
+
+    if (count($recipients) === 0) {
+        return false;
+    }
+
+    $payload = [
+        'to' => $recipients,
+        'subject' => trim($subject),
+        'html' => $html,
+        'text' => trim($text) !== '' ? $text : strip_tags(str_replace(['<br>', '<br/>', '<br />'], "\n", $html)),
+    ];
+
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL => ticket_mail_api_url(),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+        CURLOPT_TIMEOUT => 20,
+    ]);
+
+    $resp = curl_exec($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+
+    if ($resp === false) {
+        error_log('[tickets.api] Failed to call mail API for assignment email: ' . api_redact_sensitive($err));
+        return false;
+    }
+
+    $decoded = json_decode((string)$resp, true);
+    $ok = ($code >= 200 && $code < 300 && is_array($decoded) && !empty($decoded['success']));
+    if (!$ok) {
+        $msg = is_array($decoded)
+            ? (string)($decoded['message'] ?? ('mail.api error HTTP ' . $code))
+            : ('mail.api error HTTP ' . $code);
+        error_log('[tickets.api] Assignment email failed: ' . api_redact_sensitive($msg));
+        return false;
+    }
+
+    return true;
+}
+
+function ticket_send_auto_assignment_email(array $ticketRow, array $handler): void {
+    $handlerEmail = strtolower(trim((string)($handler['email'] ?? '')));
+    if (!ticket_valid_email($handlerEmail)) {
+        return;
+    }
+
+    $handlerName = trim((string)($handler['name'] ?? '')) ?: 'colleague';
+    $ticketNumber = trim((string)($ticketRow['ticket_number'] ?? $ticketRow['ticketNumber'] ?? '')) ?: '-';
+    $statusCode = trim((string)($ticketRow['status_code'] ?? $ticketRow['statusCode'] ?? '-')) ?: '-';
+    $severity = strtoupper(trim((string)($ticketRow['severity_code'] ?? $ticketRow['severityCode'] ?? 'medium')));
+    $workflowType = trim((string)($ticketRow['workflow_type'] ?? $ticketRow['workflowType'] ?? '-')) ?: '-';
+    $location = trim((string)($ticketRow['location'] ?? '')) ?: 'Not provided';
+    $description = trim((string)($ticketRow['description'] ?? ''));
+    $submittedAt = trim((string)($ticketRow['submitted_at'] ?? $ticketRow['submittedAt'] ?? ''));
+    $submittedLabel = $submittedAt !== '' ? $submittedAt : '-';
+
+    $subject = 'Nieuwe melding toegewezen: ' . $ticketNumber;
+    $html = ''
+        . '<h2>Nieuwe melding toegewezen</h2>'
+        . '<p>Hallo ' . ticket_escape_html($handlerName) . ',</p>'
+        . '<p>Er is automatisch een nieuwe melding aan u toegewezen.</p>'
+        . '<ul>'
+        . '<li><strong>Ticket:</strong> ' . ticket_escape_html($ticketNumber) . '</li>'
+        . '<li><strong>Status:</strong> ' . ticket_escape_html($statusCode) . '</li>'
+        . '<li><strong>Ernst:</strong> ' . ticket_escape_html($severity) . '</li>'
+        . '<li><strong>Workflow:</strong> ' . ticket_escape_html($workflowType) . '</li>'
+        . '<li><strong>Locatie:</strong> ' . ticket_escape_html($location) . '</li>'
+        . '<li><strong>Ingediend op:</strong> ' . ticket_escape_html($submittedLabel) . '</li>'
+        . '</ul>'
+        . '<p><strong>Omschrijving</strong><br>'
+        . nl2br(ticket_escape_html($description !== '' ? api_substr($description, 0, 3000) : '-'))
+        . '</p>'
+        . '<p>Log in op het portaal om de melding op te pakken.</p>';
+
+    $text = "Nieuwe melding toegewezen\n"
+        . "Ticket: {$ticketNumber}\n"
+        . "Status: {$statusCode}\n"
+        . "Ernst: {$severity}\n"
+        . "Workflow: {$workflowType}\n"
+        . "Locatie: {$location}\n"
+        . "Ingediend op: {$submittedLabel}\n\n"
+        . "Omschrijving:\n" . ($description !== '' ? api_substr($description, 0, 3000) : '-') . "\n\n"
+        . "Log in op het portaal om de melding op te pakken.";
+
+    ticket_send_mail([$handlerEmail], $subject, $html, $text);
 }
 
 function ticket_try_auto_assign_handler(string $baseUrl, string $serviceKey, string $ticketId, string $workflowType): ?array {
@@ -569,6 +805,34 @@ function ticket_try_auto_assign_handler(string $baseUrl, string $serviceKey, str
         );
         if ($uCode < 200 || $uCode >= 300) {
             continue;
+        }
+
+        // Keep assignment relation in sync when auto-assign is enabled.
+        // Best effort only: environments missing ticket_handlers should still work.
+        try {
+            [$thCode, $thDecoded, $thRaw] = supabase_request(
+                'POST',
+                $baseUrl . '/rest/v1/ticket_handlers',
+                $serviceKey,
+                [
+                    'ticket_id' => $ticketId,
+                    'handler_id' => $handler['id'],
+                    'role' => 'primary',
+                    'assigned_at' => gmdate('c'),
+                ],
+                false
+            );
+            if ($thCode < 200 || $thCode >= 300) {
+                $thMsg = strtolower((string)(is_array($thDecoded)
+                    ? json_encode($thDecoded, JSON_UNESCAPED_UNICODE)
+                    : $thRaw));
+                $isDuplicate = str_contains($thMsg, 'duplicate') || str_contains($thMsg, '23505');
+                if (!$isDuplicate) {
+                    error_log('[tickets.api] Auto-assign could not insert ticket_handlers relation: ' . api_redact_sensitive($thMsg));
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('[tickets.api] Auto-assign relation sync skipped: ' . api_redact_sensitive($e->getMessage()));
         }
 
         return $handler;
@@ -698,6 +962,31 @@ function ticket_is_uuid(string $value): bool {
     ) === 1;
 }
 
+function ticket_generate_secure_token(int $bytes = REPORTER_REPLY_TOKEN_BYTES): string {
+    return bin2hex(random_bytes($bytes));
+}
+
+function ticket_iso_now_plus_seconds(int $seconds): string {
+    $seconds = max(0, $seconds);
+    return gmdate('c', time() + $seconds);
+}
+
+function ticket_handler_message_visible_at(bool $isInternal, string $sender): string {
+    if ($isInternal || $sender !== 'handler') {
+        return gmdate('c');
+    }
+    $delay = random_int(HANDLER_REPLY_DELAY_MIN_SECONDS, HANDLER_REPLY_DELAY_MAX_SECONDS);
+    return ticket_iso_now_plus_seconds($delay);
+}
+
+function ticket_reply_token_expiry_iso(): ?string {
+    $days = (int)(getenv('REPORTER_REPLY_TOKEN_TTL_DAYS') ?: 365);
+    if ($days <= 0) {
+        return null;
+    }
+    return gmdate('c', time() + ($days * 86400));
+}
+
 function ticket_require_active_handler_context(): array {
     $token = auth0_get_bearer_token();
     if ($token === '') {
@@ -768,9 +1057,22 @@ function sanitize_reporter_ticket(array $ticket, string $baseUrl, string $servic
     $ticket['attachments'] = array_values(array_filter($ticket['attachments'], static fn($att) => is_array($att)));
 
     $messages = is_array($ticket['messages'] ?? null) ? $ticket['messages'] : [];
-    $ticket['messages'] = array_values(array_filter($messages, static function ($msg) {
+    $nowTs = time();
+    $ticket['messages'] = array_values(array_filter($messages, static function ($msg) use ($nowTs) {
         if (!is_array($msg)) return false;
-        return empty($msg['is_internal']) && empty($msg['isInternal']);
+        if (!empty($msg['is_internal']) || !empty($msg['isInternal'])) {
+            return false;
+        }
+
+        $visibleAtRaw = (string)($msg['visible_at'] ?? $msg['visibleAt'] ?? '');
+        if ($visibleAtRaw === '') {
+            return true;
+        }
+        $visibleAtTs = strtotime($visibleAtRaw);
+        if ($visibleAtTs === false) {
+            return true;
+        }
+        return $visibleAtTs <= $nowTs;
     }));
     usort($ticket['messages'], static function ($a, $b) {
         $ta = strtotime((string)($a['created_at'] ?? '')) ?: 0;
@@ -869,6 +1171,9 @@ function handle_create(array $data): void {
     $incomingCompliance = is_array($incomingMetadata['compliance'] ?? null) ? $incomingMetadata['compliance'] : [];
     $incomingMetadata['sla_response_hours'] = $slaResponseHours;
     $incomingMetadata['sla_resolution_hours'] = $slaResolutionHours;
+    $incomingMetadata['workflow_status_changed_at'] = gmdate('c');
+    $incomingMetadata['workflow_status_previous_code'] = null;
+    $incomingMetadata['workflow_status_previous_stage'] = null;
     $incomingMetadata['compliance'] = array_merge($incomingCompliance, [
         'gdpr_compliant' => $gdprCompliant,
         'anonymize_closed_tickets' => $anonymizeClosedTickets,
@@ -922,15 +1227,61 @@ function handle_create(array $data): void {
     $row = get_first_row($decoded);
     $ticketId = trim((string)($row['id'] ?? ''));
     $workflowType = trim((string)($row['workflow_type'] ?? $payload['workflow_type'] ?? ''));
+    $autoAssignNotifyEnabled = ticket_setting_bool_for_workflow(
+        $settings,
+        $workflowType,
+        ['tickets.auto_assign_notify_handler_email', 'workflow.auto_assign_notify_handler_email', 'notifications.handler_assignment_email_enabled'],
+        true
+    );
     if ($autoAssignEnabled && ticket_is_uuid($ticketId) && $workflowType !== '') {
         try {
             $assignedHandler = ticket_try_auto_assign_handler($baseUrl, $serviceKey, $ticketId, $workflowType);
             if (is_array($assignedHandler) && ticket_is_uuid(trim((string)($assignedHandler['id'] ?? '')))) {
                 $row['handler_id'] = $assignedHandler['id'];
                 $row['handler_name'] = $assignedHandler['name'] ?? null;
+                if ($autoAssignNotifyEnabled) {
+                    try {
+                        ticket_send_auto_assignment_email($row, $assignedHandler);
+                    } catch (Throwable $e) {
+                        error_log('[tickets.api] Auto-assignment email skipped: ' . api_redact_sensitive($e->getMessage()));
+                    }
+                }
             }
         } catch (Throwable $e) {
             error_log('[tickets.api] Auto-assign skipped: ' . api_redact_sensitive($e->getMessage()));
+        }
+    }
+
+    if (ticket_is_uuid($ticketId)) {
+        try {
+            $replyToken = ticket_generate_secure_token();
+            $replyExpiresAt = ticket_reply_token_expiry_iso();
+            $replyPayload = [
+                'ticket_id' => $ticketId,
+                'token' => $replyToken,
+                'expires_at' => $replyExpiresAt,
+            ];
+
+            [$tokenCode, $tokenDecoded, $tokenRaw] = supabase_request(
+                'POST',
+                $baseUrl . '/rest/v1/ticket_reply_tokens',
+                $serviceKey,
+                $replyPayload,
+                true
+            );
+
+            if ($tokenCode < 200 || $tokenCode >= 300) {
+                $tokenMsg = is_array($tokenDecoded)
+                    ? json_encode($tokenDecoded, JSON_UNESCAPED_UNICODE)
+                    : (string)$tokenRaw;
+                error_log('[tickets.api] Could not create ticket_reply_tokens row: ' . api_redact_sensitive($tokenMsg));
+            } else {
+                $row['reply_token'] = $replyToken;
+                $row['reply_url_path'] = '/reply/' . rawurlencode($replyToken);
+                $row['reply_expires_at'] = $replyExpiresAt;
+            }
+        } catch (Throwable $e) {
+            error_log('[tickets.api] Could not create reporter reply token: ' . api_redact_sensitive($e->getMessage()));
         }
     }
 
@@ -1107,6 +1458,61 @@ function handle_handler_update_ticket(array $data): void {
         api_json(400, false, 'No valid fields provided in updates');
     }
 
+    $statusChangeRequested = array_key_exists('status_code', $payload) || array_key_exists('current_stage', $payload);
+    if ($statusChangeRequested) {
+        [$ticketCode, $ticketDecoded, $ticketRaw] = supabase_request(
+            'GET',
+            $baseUrl . '/rest/v1/tickets?select=id,workflow_type,status_code,current_stage,submitted_at,last_update_at,metadata&id=eq.' . rawurlencode($ticketId) . '&limit=1',
+            $serviceKey
+        );
+        if ($ticketCode < 200 || $ticketCode >= 300) {
+            $msg = is_array($ticketDecoded) ? json_encode($ticketDecoded, JSON_UNESCAPED_UNICODE) : (string)$ticketRaw;
+            throw new Exception('Failed to load current ticket for status validation: ' . $msg);
+        }
+
+        $ticketRow = get_first_row($ticketDecoded);
+        if (!is_array($ticketRow)) {
+            api_json(404, false, 'Ticket not found');
+        }
+
+        $workflowType = trim((string)($ticketRow['workflow_type'] ?? ''));
+        $statusRows = ticket_workflow_status_rows($baseUrl, $serviceKey, $workflowType);
+        if (count($statusRows) === 0) {
+            api_json(400, false, 'No workflow statuses configured for this ticket');
+        }
+
+        $requestedStatus = trim((string)($payload['status_code'] ?? $payload['current_stage'] ?? ''));
+        $requestedIndex = ticket_status_index($statusRows, $requestedStatus);
+        if ($requestedIndex < 0) {
+            api_json(400, false, 'Invalid status for this workflow');
+        }
+
+        $currentComparable = trim((string)($ticketRow['current_stage'] ?? $ticketRow['status_code'] ?? ''));
+        $currentIndex = ticket_status_index($statusRows, $currentComparable);
+        if ($currentIndex >= 0 && $requestedIndex < $currentIndex) {
+            $changedAt = ticket_status_changed_at($ticketRow, $baseUrl, $serviceKey, $ticketId);
+            $changedTs = $changedAt !== null ? strtotime($changedAt) : false;
+            $rollbackDeadlineTs = $changedTs !== false ? ($changedTs + STATUS_ROLLBACK_WINDOW_SECONDS) : false;
+            if ($rollbackDeadlineTs === false || $rollbackDeadlineTs < time()) {
+                api_json(409, false, 'Status terugzetten is alleen binnen 1 uur na de laatste statuswijziging toegestaan.', [
+                    'rollback_deadline' => $rollbackDeadlineTs !== false ? gmdate('c', $rollbackDeadlineTs) : null,
+                ]);
+            }
+        }
+
+        $existingMetadata = is_array($ticketRow['metadata'] ?? null) ? $ticketRow['metadata'] : [];
+        $incomingMetadata = is_array($payload['metadata'] ?? null) ? $payload['metadata'] : [];
+        $payload['metadata'] = array_merge($existingMetadata, $incomingMetadata, [
+            'workflow_status_changed_at' => gmdate('c'),
+            'workflow_status_previous_code' => trim((string)($ticketRow['status_code'] ?? '')) ?: null,
+            'workflow_status_previous_stage' => trim((string)($ticketRow['current_stage'] ?? '')) ?: null,
+            'status_contact_person_name' => null,
+            'status_contact_person_email' => null,
+            'status_contact_person_phone' => null,
+            'status_contact_notes' => null,
+        ]);
+    }
+
     $payload['last_update_at'] = gmdate('c');
 
     [$code, $decoded, $raw] = supabase_request(
@@ -1222,26 +1628,43 @@ function handle_handler_add_message(array $data): void {
 
     $isInternal = !empty($data['is_internal']);
     $discloseHandlerIdentity = !empty($data['disclose_handler_identity']);
+    $visibleAt = ticket_handler_message_visible_at($isInternal, $sender);
 
     $performedBy = trim((string)($handler['name'] ?? '')) ?: 'System';
     $handlerId = trim((string)($handler['id'] ?? ''));
     $handlerEmail = trim((string)($handler['email'] ?? ''));
     $publicHandlerName = ($sender === 'handler' && $discloseHandlerIdentity) ? $performedBy : null;
 
+    $messagePayload = [
+        'ticket_id' => $ticketId,
+        'sender' => $sender,
+        'body' => $body,
+        'is_internal' => $isInternal,
+        'visible_at' => $visibleAt,
+        'handler_id' => $handlerId !== '' ? $handlerId : null,
+        'handler_name' => $publicHandlerName,
+    ];
+
     [$msgCode, $msgDecoded, $msgRaw] = supabase_request(
         'POST',
         $baseUrl . '/rest/v1/messages',
         $serviceKey,
-        [
-            'ticket_id' => $ticketId,
-            'sender' => $sender,
-            'body' => $body,
-            'is_internal' => $isInternal,
-            'handler_id' => $handlerId !== '' ? $handlerId : null,
-            'handler_name' => $publicHandlerName,
-        ],
+        $messagePayload,
         true
     );
+    if ($msgCode >= 400) {
+        $msgText = strtolower((string)(is_array($msgDecoded) ? json_encode($msgDecoded, JSON_UNESCAPED_UNICODE) : $msgRaw));
+        if (str_contains($msgText, 'visible_at') && (str_contains($msgText, 'column') || str_contains($msgText, 'schema cache'))) {
+            unset($messagePayload['visible_at']);
+            [$msgCode, $msgDecoded, $msgRaw] = supabase_request(
+                'POST',
+                $baseUrl . '/rest/v1/messages',
+                $serviceKey,
+                $messagePayload,
+                true
+            );
+        }
+    }
     if ($msgCode < 200 || $msgCode >= 300) {
         $msg = is_array($msgDecoded) ? json_encode($msgDecoded, JSON_UNESCAPED_UNICODE) : (string)$msgRaw;
         throw new Exception('Failed to add ticket message: ' . $msg);
@@ -1536,6 +1959,114 @@ function handle_handler_log_action(array $data): void {
     ]);
 }
 
+function handle_handler_set_ticket_handler_role(array $data): void {
+    $ctx = ticket_require_active_handler_context();
+    $baseUrl = (string)$ctx['base_url'];
+    $serviceKey = (string)$ctx['service_key'];
+    $handler = (array)$ctx['handler'];
+
+    $ticketId = trim((string)($data['ticket_id'] ?? ''));
+    $handlerId = trim((string)($data['handler_id'] ?? ''));
+    $role = strtolower(trim((string)($data['role'] ?? '')));
+
+    if (!ticket_is_uuid($ticketId)) {
+        api_json(400, false, 'ticket_id must be a valid UUID');
+    }
+    if (!ticket_is_uuid($handlerId)) {
+        api_json(400, false, 'handler_id must be a valid UUID');
+    }
+    if (!in_array($role, ['primary', 'secondary', 'legal', 'observer'], true)) {
+        api_json(400, false, 'role must be one of: primary, secondary, legal, observer');
+    }
+
+    ticket_enforce_handler_mutation_rate_limit('set_handler_role', $handler, $ticketId);
+
+    if ($role === 'primary') {
+        // Ensure only one primary assignment remains on this ticket.
+        supabase_request(
+            'PATCH',
+            $baseUrl . '/rest/v1/ticket_handlers?ticket_id=eq.' . rawurlencode($ticketId) . '&handler_id=neq.' . rawurlencode($handlerId) . '&role=eq.primary',
+            $serviceKey,
+            ['role' => 'secondary'],
+            false
+        );
+    }
+
+    [$patchCode, $patchDecoded, $patchRaw] = supabase_request(
+        'PATCH',
+        $baseUrl . '/rest/v1/ticket_handlers?ticket_id=eq.' . rawurlencode($ticketId) . '&handler_id=eq.' . rawurlencode($handlerId),
+        $serviceKey,
+        ['role' => $role],
+        true
+    );
+    if ($patchCode < 200 || $patchCode >= 300) {
+        $msg = is_array($patchDecoded) ? json_encode($patchDecoded, JSON_UNESCAPED_UNICODE) : (string)$patchRaw;
+        throw new Exception('Failed to update ticket handler role: ' . $msg);
+    }
+
+    $updated = get_first_row($patchDecoded);
+    if (!$updated) {
+        [$insertCode, $insertDecoded, $insertRaw] = supabase_request(
+            'POST',
+            $baseUrl . '/rest/v1/ticket_handlers',
+            $serviceKey,
+            [
+                'ticket_id' => $ticketId,
+                'handler_id' => $handlerId,
+                'role' => $role,
+                'assigned_at' => gmdate('c'),
+            ],
+            true
+        );
+        if ($insertCode < 200 || $insertCode >= 300) {
+            $msg = is_array($insertDecoded) ? json_encode($insertDecoded, JSON_UNESCAPED_UNICODE) : (string)$insertRaw;
+            throw new Exception('Failed to insert ticket handler role row: ' . $msg);
+        }
+        $updated = get_first_row($insertDecoded);
+    }
+
+    if ($role === 'primary') {
+        supabase_request(
+            'PATCH',
+            $baseUrl . '/rest/v1/tickets?id=eq.' . rawurlencode($ticketId),
+            $serviceKey,
+            [
+                'handler_id' => $handlerId,
+                'last_update_at' => gmdate('c'),
+            ],
+            false
+        );
+    }
+
+    $performedBy = trim((string)($handler['name'] ?? '')) ?: 'System';
+    if (ticket_action_logging_enabled($baseUrl, $serviceKey)) {
+        try {
+            supabase_request(
+                'POST',
+                $baseUrl . '/rest/v1/ticket_actions',
+                $serviceKey,
+                [
+                    'ticket_id' => $ticketId,
+                    'action_type' => 'assignment_role_updated',
+                    'action' => 'Assignment Role Updated',
+                    'description' => sprintf('Updated assignment role for handler %s to %s', $handlerId, $role),
+                    'handler_id' => trim((string)($handler['id'] ?? '')) ?: null,
+                    'handler_name' => $performedBy,
+                    'handler_email' => trim((string)($handler['email'] ?? '')) ?: null,
+                    'performed_by' => $performedBy,
+                ],
+                false
+            );
+        } catch (Throwable $e) {
+            error_log('[tickets.api] Could not write ticket_actions for handler role update: ' . api_redact_sensitive($e->getMessage()));
+        }
+    }
+
+    api_json(200, true, 'Ticket handler role updated', [
+        'ticket_handler' => $updated,
+    ]);
+}
+
 try {
     load_env_file(__DIR__ . '/../../.env.local', true);
     load_env_file(__DIR__ . '/../../.env', false);
@@ -1578,6 +2109,9 @@ try {
             break;
         case 'handler_log_action':
             handle_handler_log_action($data);
+            break;
+        case 'handler_set_ticket_handler_role':
+            handle_handler_set_ticket_handler_role($data);
             break;
         default:
             api_json(400, false, 'Unsupported action');

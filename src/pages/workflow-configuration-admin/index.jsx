@@ -91,7 +91,7 @@ export default function WorkflowConfigurationAdmin() {
     setWorkflowRuntimeError('');
     setIsLoadingWorkflowRuntimeSettings(true);
     try {
-      const { rows = [] } = await settingsService.getSettings({ category: 'workflow' });
+      const { rows = [] } = await settingsService.getSettings({ category: 'workflow', includeSensitive: false });
       const rowsByKey = {};
       const nextValues = { ...defaultWorkflowRuntimeValues };
 

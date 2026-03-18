@@ -68,6 +68,12 @@ const HandlerNavigation = ({ userRole, onLogout }) => {
       icon: 'Settings',
       show: canManageUsers,
     },
+    {
+      path: '/analytics-dashboard',
+      label: 'Analytics',
+      icon: 'BarChart3',
+      show: canManageUsers,
+    },
   ];
 
   const filteredNavItems = navigationItems.filter((item) => item.show);

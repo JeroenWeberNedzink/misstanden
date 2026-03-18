@@ -17,6 +17,9 @@ const CommunicationDeliveryStatusAdmin = lazy(() => import('./pages/logging'));
 const HandlerPriorityWorkflow = lazy(() => import('./pages/handler-priority-workflow'));
 const UserManagementAdmin = lazy(() => import('./pages/user-management-admin'));
 const Settings = lazy(() => import('./pages/settings'));
+const ReporterReplyPage = lazy(() => import('./pages/reporter-reply'));
+const GuestTicketViewPage = lazy(() => import('./pages/guest-ticket-view'));
+const AnalyticsDashboardPage = lazy(() => import('./pages/analytics-dashboard'));
 import { PERMISSIONS } from './utils/permissions';
 const PermissionsAdmin = lazy(() => import('./pages/permissions-admin'));
 const AdminDashboard = lazy(() => import('./pages/admin-dashboard'));
@@ -46,6 +49,8 @@ const Routes = () => {
         <Route path="/anonymous-report-form" element={<AnonymousReportForm />} />
         <Route path="/report-confirmation" element={<ReportConfirmation />} />
         <Route path="/ticket-access-portal" element={<TicketAccessPortal />} />
+        <Route path="/reply/:token" element={<ReporterReplyPage />} />
+        <Route path="/guest/:token" element={<GuestTicketViewPage />} />
 
         {/* Protected Admin/Handler Routes */}
         <Route
@@ -109,6 +114,14 @@ const Routes = () => {
           element={
             <ProtectedRoute permission={PERMISSIONS.MANAGE_USERS} showAccessDenied>
               <Settings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/analytics-dashboard"
+          element={
+            <ProtectedRoute permission={PERMISSIONS.MANAGE_USERS} showAccessDenied>
+              <AnalyticsDashboardPage />
             </ProtectedRoute>
           }
         />

@@ -257,6 +257,60 @@ function settings_is_admin_profile(array $handler): bool {
         || !empty($permissions['manage_settings']);
 }
 
+function settings_env_list(string $key): array {
+    $raw = (string)(getenv($key) ?: '');
+    if ($raw === '') {
+        return [];
+    }
+    return array_values(array_filter(array_map(
+        static fn($item) => trim((string)$item),
+        explode(',', $raw)
+    ), static fn($item) => $item !== ''));
+}
+
+function settings_is_super_admin_profile(array $handler, array $claims = []): bool {
+    $rolesRaw = $handler['roles'] ?? [];
+    if (is_string($rolesRaw)) {
+        $decoded = json_decode($rolesRaw, true);
+        $rolesRaw = is_array($decoded) ? $decoded : [$rolesRaw];
+    }
+    if (!is_array($rolesRaw)) {
+        $rolesRaw = [];
+    }
+    $roles = array_map(
+        static fn($r) => strtoupper(trim((string)$r)),
+        array_filter($rolesRaw, static fn($r) => $r !== null && $r !== '')
+    );
+    if (in_array('SUPER_ADMIN', $roles, true)) {
+        return true;
+    }
+
+    $allowedEmails = array_map('strtolower', settings_env_list('VITE_SUPER_ADMIN_EMAILS'));
+    $allowedSubs = settings_env_list('VITE_SUPER_ADMIN_SUBS');
+
+    $candidateEmails = array_values(array_filter([
+        strtolower(trim((string)($handler['email'] ?? ''))),
+        strtolower(trim((string)($claims['email'] ?? ''))),
+    ], static fn($value) => $value !== ''));
+    foreach ($candidateEmails as $candidateEmail) {
+        if (in_array($candidateEmail, $allowedEmails, true)) {
+            return true;
+        }
+    }
+
+    $candidateSubs = array_values(array_filter([
+        trim((string)($handler['user_id'] ?? '')),
+        trim((string)($claims['sub'] ?? '')),
+    ], static fn($value) => $value !== ''));
+    foreach ($candidateSubs as $candidateSub) {
+        if (in_array($candidateSub, $allowedSubs, true)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function settings_fetch_handler_profile(string $baseUrl, string $serviceKey, array $claims): ?array {
     $sub = trim((string)($claims['sub'] ?? ''));
     $email = trim((string)($claims['email'] ?? ''));
@@ -342,11 +396,18 @@ function settings_handle_get(): void {
         ['1', 'true', 'yes', 'on'],
         true
     );
+    $requireSuperAdmin = in_array(
+        strtolower((string)($_GET['require_super_admin'] ?? '')),
+        ['1', 'true', 'yes', 'on'],
+        true
+    );
 
-    $hasBearer = auth0_get_bearer_token() !== '';
     $adminContext = null;
-    if ($includeSensitive || $hasBearer) {
+    if ($includeSensitive || $requireSuperAdmin) {
         $adminContext = settings_require_admin_context(SETTINGS_SCOPES_READ);
+        if ($requireSuperAdmin && !settings_is_super_admin_profile($adminContext['handler'], $adminContext['claims'])) {
+            settings_api_json(403, false, 'Super admin permissions required');
+        }
     }
 
     $select = rawurlencode('id,setting_key,setting_value,category,description,is_sensitive,updated_by,updated_at');
@@ -371,6 +432,9 @@ function settings_handle_get(): void {
     settings_api_json(200, true, 'Settings loaded', [
         'rows' => is_array($decoded) ? $decoded : [],
         'is_admin' => (bool)$adminContext,
+        'is_super_admin' => $adminContext
+            ? settings_is_super_admin_profile($adminContext['handler'], $adminContext['claims'])
+            : false,
     ]);
 }
 
@@ -432,6 +496,10 @@ function settings_handle_post(): void {
     }
 
     $action = strtolower(trim((string)($data['action'] ?? '')));
+    $requireSuperAdmin = !empty($data['require_super_admin']);
+    if ($requireSuperAdmin && !settings_is_super_admin_profile($ctx['handler'], $ctx['claims'])) {
+        settings_api_json(403, false, 'Super admin permissions required');
+    }
     $baseUrl = settings_get_supabase_url();
     $serviceKey = settings_get_supabase_service_key();
 

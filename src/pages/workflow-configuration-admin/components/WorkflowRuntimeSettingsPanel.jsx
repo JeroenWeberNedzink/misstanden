@@ -5,12 +5,6 @@ import Icon from '../../../components/AppIcon';
 
 export const WORKFLOW_RUNTIME_SETTING_DEFS = [
   {
-    key: 'workflow.allow_status_rollback',
-    label: 'Status terugzetten toestaan',
-    description: 'Sta handlers toe om status terug te zetten.',
-    defaultValue: false,
-  },
-  {
     key: 'workflow.auto_assign',
     label: 'Automatisch toewijzen',
     description: 'Automatisch tickets toewijzen aan handlers.',

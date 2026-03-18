@@ -89,7 +89,7 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
     setWorkflowRuntimeError('');
     setIsLoadingWorkflowRuntimeSettings(true);
     try {
-      const { rows = [] } = await settingsService.getSettings({ category: 'workflow' });
+      const { rows = [] } = await settingsService.getSettings({ category: 'workflow', includeSensitive: false });
       const rowsByKey = {};
       for (const row of rows) {
         const key = String(row?.setting_key || '').trim();

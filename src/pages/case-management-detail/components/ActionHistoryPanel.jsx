@@ -1,9 +1,12 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
 
+const PREVIEW_LIMIT = 5;
+
 const ActionHistoryPanel = ({ history = [], actions = [], isLoading = false }) => {
   const { t, i18n } = useTranslation();
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const items = useMemo(() => {
     const src = Array.isArray(actions) && actions.length > 0 ? actions : history;
@@ -29,6 +32,12 @@ const ActionHistoryPanel = ({ history = [], actions = [], isLoading = false }) =
         return bt - at;
       });
   }, [history, actions, t]);
+
+  useEffect(() => {
+    if (items.length <= PREVIEW_LIMIT && isExpanded) {
+      setIsExpanded(false);
+    }
+  }, [items.length, isExpanded]);
 
   const normalizeType = (type) => {
     const v = String(type || '').toLowerCase();
@@ -102,6 +111,10 @@ const ActionHistoryPanel = ({ history = [], actions = [], isLoading = false }) =
     return (first + last).toUpperCase() || '?';
   };
 
+  const hasHiddenItems = items.length > PREVIEW_LIMIT;
+  const visibleItems = hasHiddenItems && !isExpanded ? items.slice(0, PREVIEW_LIMIT) : items;
+  const hiddenCount = Math.max(items.length - PREVIEW_LIMIT, 0);
+
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden">
       <div className="px-4 py-3 border-b border-border">
@@ -149,13 +162,14 @@ const ActionHistoryPanel = ({ history = [], actions = [], isLoading = false }) =
         ) : (
           <div className="rounded-lg bg-background/40 overflow-hidden">
             <div className="divide-y divide-border">
-              {items.map((item) => {
+              {visibleItems.map((item, index) => {
                 const type = normalizeType(item?.actionType);
                 const accent = getAccent(type);
                 const initials = initialsFromName(item?.performedBy);
+                const itemKey = `${item?.id || 'action'}_${item?.timestamp || 'na'}_${index}`;
 
                 return (
-                  <div key={item?.id} className="px-3 py-2.5 hover:bg-muted/30 transition">
+                  <div key={itemKey} className="px-3 py-2.5 hover:bg-muted/30 transition">
                     <div className="flex items-start gap-3 min-w-0">
                       <div className="w-8 h-8 rounded-md bg-background/70 border border-border flex items-center justify-center flex-shrink-0">
                         <Icon name={getActionIcon(type)} size={15} className={accent.text} />
@@ -187,6 +201,24 @@ const ActionHistoryPanel = ({ history = [], actions = [], isLoading = false }) =
                 );
               })}
             </div>
+
+            {hasHiddenItems && (
+              <div className="px-3 py-2 border-t border-border bg-background/50">
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded((prev) => !prev)}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                >
+                  <Icon name={isExpanded ? 'ChevronUp' : 'ChevronDown'} size={13} />
+                  {isExpanded
+                    ? t('caseManagementDetail.actionHistory.showLess', { defaultValue: 'Show less' })
+                    : t('caseManagementDetail.actionHistory.showMore', {
+                        count: hiddenCount,
+                        defaultValue: `Show ${hiddenCount} more`,
+                      })}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

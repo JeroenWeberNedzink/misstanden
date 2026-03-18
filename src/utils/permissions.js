@@ -11,6 +11,7 @@ export const PERMISSIONS = {
 // Role constants
 export const ROLES = {
   ADMIN: 'ADMIN',
+  SUPER_ADMIN: 'SUPER_ADMIN',
   HANDLER: 'HANDLER',
   USER: 'USER',
 };
@@ -140,7 +141,7 @@ export const hasAnyRole = (userRoles, roleList) => {
  * @returns {boolean}
  */
 export const isAdmin = (userRoles) => {
-  return hasRole(userRoles, ROLES.ADMIN);
+  return hasRole(userRoles, ROLES.ADMIN) || hasRole(userRoles, ROLES.SUPER_ADMIN);
 };
 
 /**

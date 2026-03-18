@@ -55,7 +55,81 @@ function auth0_jwk_to_pem(array $jwk): string {
     return $pem;
 }
 
+function auth0_cache_dir(): string {
+    $dir = __DIR__ . '/../../run/cache';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    return $dir;
+}
+
+function auth0_jwks_cache_file(string $domain): string {
+    return auth0_cache_dir() . '/auth0-jwks-' . hash('sha256', strtolower(trim($domain))) . '.json';
+}
+
+function auth0_read_cached_jwks(string $domain, int $ttlSeconds): ?array {
+    $file = auth0_jwks_cache_file($domain);
+    if (!is_file($file)) {
+        return null;
+    }
+
+    $raw = @file_get_contents($file);
+    if (!is_string($raw) || $raw === '') {
+        return null;
+    }
+
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded) || !is_array($decoded['keys'] ?? null)) {
+        return null;
+    }
+
+    $fetchedAt = (int)($decoded['fetched_at'] ?? 0);
+    if ($fetchedAt > 0 && (time() - $fetchedAt) <= $ttlSeconds) {
+        return $decoded['keys'];
+    }
+
+    return null;
+}
+
+function auth0_write_cached_jwks(string $domain, array $keys): void {
+    $file = auth0_jwks_cache_file($domain);
+    $payload = json_encode([
+        'fetched_at' => time(),
+        'keys' => array_values($keys),
+    ], JSON_UNESCAPED_UNICODE);
+    if ($payload === false) {
+        return;
+    }
+    @file_put_contents($file, $payload, LOCK_EX);
+}
+
+function auth0_read_stale_jwks(string $domain): ?array {
+    $file = auth0_jwks_cache_file($domain);
+    if (!is_file($file)) {
+        return null;
+    }
+    $raw = @file_get_contents($file);
+    if (!is_string($raw) || $raw === '') {
+        return null;
+    }
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded) || !is_array($decoded['keys'] ?? null)) {
+        return null;
+    }
+    return $decoded['keys'];
+}
+
 function auth0_fetch_jwks(string $domain): array {
+    $ttlSeconds = (int)(getenv('AUTH0_JWKS_CACHE_TTL_SECONDS') ?: 21600);
+    if ($ttlSeconds <= 0) {
+        $ttlSeconds = 21600;
+    }
+
+    $cached = auth0_read_cached_jwks($domain, $ttlSeconds);
+    if (is_array($cached) && count($cached) > 0) {
+        return $cached;
+    }
+
     $url = 'https://' . $domain . '/.well-known/jwks.json';
     $ch = curl_init();
     curl_setopt_array($ch, [
@@ -70,6 +144,10 @@ function auth0_fetch_jwks(string $domain): array {
     curl_close($ch);
 
     if ($resp === false || $code < 200 || $code >= 300) {
+        $stale = auth0_read_stale_jwks($domain);
+        if (is_array($stale) && count($stale) > 0) {
+            return $stale;
+        }
         throw new Exception('Failed to fetch Auth0 JWKS: ' . ($err ?: 'HTTP ' . $code));
     }
 
@@ -77,6 +155,7 @@ function auth0_fetch_jwks(string $domain): array {
     if (!is_array($decoded) || !is_array($decoded['keys'] ?? null)) {
         throw new Exception('Invalid JWKS payload');
     }
+    auth0_write_cached_jwks($domain, $decoded['keys']);
     return $decoded['keys'];
 }
 

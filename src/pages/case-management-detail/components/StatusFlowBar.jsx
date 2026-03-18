@@ -7,6 +7,14 @@ import StatusFlowNoteDialog from './StatusFlowNoteDialog';
 
 const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
+const STATUS_ROLLBACK_WINDOW_MS = 60 * 60 * 1000;
+
+const isRollbackWindowOpen = (value) => {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  return Date.now() - date.getTime() <= STATUS_ROLLBACK_WINDOW_MS;
+};
 
 function getBlueShade(index, total) {
   const shades = [
@@ -30,6 +38,7 @@ export default function StatusFlowBar({
   workflowType,
   currentStatus,
   currentStage,
+  statusChangedAt = null,
   onStatusUpdate,
   disabled = false,
 }) {
@@ -83,11 +92,9 @@ export default function StatusFlowBar({
         description: s.description || '',
         color: s.color || null,
         sortOrder: s.sortOrder ?? 999,
+        isTerminal: Boolean(s.isTerminal ?? s.is_terminal ?? false),
+        isFirstResponse: Boolean(s.isFirstResponse ?? s.is_first_response ?? false),
         expectedDurationDays: s.expectedDurationDays || null,
-        contactPersonName: s.contactPersonName || '',
-        contactPersonEmail: s.contactPersonEmail || '',
-        contactPersonPhone: s.contactPersonPhone || '',
-        contactNotes: s.contactNotes || '',
       }))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   }, [workflow?.statusesArray]);
@@ -106,6 +113,38 @@ export default function StatusFlowBar({
   }, [statuses, currentStage, currentStatus]);
 
   const currentIndex = useMemo(() => statuses.findIndex((s) => s.code === currentStatusCode), [statuses, currentStatusCode]);
+  const rollbackWindowOpen = useMemo(() => isRollbackWindowOpen(statusChangedAt), [statusChangedAt]);
+
+  const firstResponseStatuses = useMemo(
+    () => statuses.filter((status) => status.isFirstResponse),
+    [statuses]
+  );
+
+  const completedStatuses = useMemo(() => {
+    const terminals = statuses.filter((status) => status.isTerminal);
+    if (terminals.length > 0) return terminals;
+    return statuses.length > 0 ? [statuses[statuses.length - 1]] : [];
+  }, [statuses]);
+
+  const firstResponseLabel = useMemo(() => {
+    if (firstResponseStatuses.length === 0) {
+      return t('caseManagementDetail.statusFlow.notConfigured', { defaultValue: 'Not configured' });
+    }
+    return firstResponseStatuses
+      .map((status) => status.label || status.code)
+      .filter(Boolean)
+      .join(', ');
+  }, [firstResponseStatuses, t]);
+
+  const completedLabel = useMemo(() => {
+    if (completedStatuses.length === 0) {
+      return t('caseManagementDetail.statusFlow.notConfigured', { defaultValue: 'Not configured' });
+    }
+    return completedStatuses
+      .map((status) => status.label || status.code)
+      .filter(Boolean)
+      .join(', ');
+  }, [completedStatuses, t]);
 
   const getStatusState = (index) => {
     if (currentIndex < 0) return 'pending';
@@ -118,6 +157,14 @@ export default function StatusFlowBar({
     if (disabled) return;
     const state = getStatusState(index);
     if (state === 'current') return;
+    if (currentIndex >= 0 && index < currentIndex && !rollbackWindowOpen) {
+      window.alert(
+        t('caseManagementDetail.statusModal.rollbackNotAllowedAlert', {
+          defaultValue: 'Terugzetten is alleen binnen 1 uur na de laatste statuswijziging toegestaan.',
+        })
+      );
+      return;
+    }
     setSelectedStatus(status);
     setShowNoteDialog(true);
   };
@@ -231,13 +278,6 @@ export default function StatusFlowBar({
                   </div>
                 )}
 
-                {status.contactPersonName && (
-                  <div className="mt-2 pt-2 border-t border-gray-200">
-                    <div className="text-xs font-medium text-gray-900">{status.contactPersonName}</div>
-                    {status.contactPersonEmail && <div className="text-blue-600 text-[11px] mt-0.5">{status.contactPersonEmail}</div>}
-                    {status.contactPersonPhone && <div className="text-blue-600 text-[11px] mt-0.5">{status.contactPersonPhone}</div>}
-                  </div>
-                )}
               </div>
             </div>
           );
@@ -248,6 +288,23 @@ export default function StatusFlowBar({
 
   return (
     <>
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1 text-xs text-foreground">
+          <Icon name="Timer" size={13} className="text-primary" />
+          <span className="font-medium">
+            {t('caseManagementDetail.statusFlow.firstResponseCountsAt', { defaultValue: 'First response counts at' })}:
+          </span>
+          <span className="text-muted-foreground">{firstResponseLabel}</span>
+        </div>
+        <div className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1 text-xs text-foreground">
+          <Icon name="Flag" size={13} className="text-primary" />
+          <span className="font-medium">
+            {t('caseManagementDetail.statusFlow.caseCompletedAt', { defaultValue: 'Case completed at' })}:
+          </span>
+          <span className="text-muted-foreground">{completedLabel}</span>
+        </div>
+      </div>
+
       <div className={`w-full overflow-x-auto mt-5 ${disabled ? 'opacity-60' : ''}`}>
         {disabled && (
           <div className="px-4 pb-2 text-xs text-muted-foreground text-center">
@@ -261,6 +318,7 @@ export default function StatusFlowBar({
               const isCompleted = state === 'completed';
               const isCurrent = state === 'current';
               const isPending = state === 'pending';
+              const isRollbackLocked = currentIndex >= 0 && index < currentIndex && !rollbackWindowOpen;
               const isLast = index === statuses.length - 1;
               const blueShade = getBlueShade(index, statuses.length);
 
@@ -278,9 +336,9 @@ export default function StatusFlowBar({
                     <button
                       type="button"
                       onClick={() => handleStatusClick(status, index)}
-                      disabled={disabled || isCurrent}
+                      disabled={disabled || isCurrent || isRollbackLocked}
                       className={
-                        disabled
+                        disabled || isRollbackLocked
                           ? 'relative w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all border-blue-200 bg-background cursor-not-allowed'
                           : [
                               'relative w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all',

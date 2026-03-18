@@ -1,14 +1,12 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 
 const UserManagementPanel = lazy(() => import('../../admin-dashboard/components/UserManagementPanel'));
-const PermissionsManagementPanel = lazy(() => import('../../admin-dashboard/components/PermissionsManagementPanel'));
 const WorkflowManagementPanel = lazy(() => import('../../admin-dashboard/components/WorkflowManagementPanel'));
 const TranslationManagementPanel = lazy(() => import('../../admin-dashboard/components/TranslationManagementPanel'));
 const LoggingPanel = lazy(() => import('../../admin-dashboard/components/LoggingPanel'));
-const SlaBackfillPanel = lazy(() => import('../../admin-dashboard/components/SlaBackfillPanel'));
 const LocationManagementPanel = lazy(() => import('./LocationManagementPanel'));
 
 import { ticketService } from '../../../services/ticketService';
@@ -27,7 +25,7 @@ const withModuleAccent = (meta) => ({
   ...MODULE_ACCENT_STYLES,
 });
 
-const getModuleMeta = (t, usersCount, rolesCount, workflowsCount) => ({
+const getModuleMeta = (t, usersCount, workflowsCount) => ({
   users: withModuleAccent({
     label: t('settings.adminModules.modules.users.title'),
     icon: 'Users',
@@ -35,47 +33,33 @@ const getModuleMeta = (t, usersCount, rolesCount, workflowsCount) => ({
     description: t('settings.adminModules.modules.users.description'),
     meta: t('settings.adminModules.modules.users.meta', { count: usersCount }),
   }),
-  permissions: withModuleAccent({
-    label: t('settings.adminModules.modules.permissions.title'),
-    icon: 'Key',
-    priority: 2,
-    description: t('settings.adminModules.modules.permissions.description'),
-    meta: t('settings.adminModules.modules.permissions.meta', { count: rolesCount }),
-  }),
   workflows: withModuleAccent({
     label: t('settings.adminModules.modules.workflows.title'),
     icon: 'GitBranch',
-    priority: 3,
+    priority: 2,
     description: t('settings.adminModules.modules.workflows.description'),
     meta: t('settings.adminModules.modules.workflows.meta', { count: workflowsCount }),
   }),
   translations: withModuleAccent({
     label: t('settings.adminModules.modules.translations.title'),
     icon: 'Languages',
-    priority: 4,
+    priority: 3,
     description: t('settings.adminModules.modules.translations.description'),
     meta: t('settings.adminModules.modules.translations.meta', { count: 4 }),
   }),
   locations: withModuleAccent({
     label: t('settings.adminModules.modules.locations.title'),
     icon: 'MapPin',
-    priority: 5,
+    priority: 4,
     description: t('settings.adminModules.modules.locations.description'),
     meta: t('settings.adminModules.modules.locations.meta'),
   }),
   logging: withModuleAccent({
     label: t('settings.adminModules.modules.logging.title'),
     icon: 'ScrollText',
-    priority: 6,
+    priority: 5,
     description: t('settings.adminModules.modules.logging.description'),
     meta: t('settings.adminModules.modules.logging.meta'),
-  }),
-  slaTools: withModuleAccent({
-    label: t('settings.adminModules.modules.slaTools.title'),
-    icon: 'Clock',
-    priority: 7,
-    description: t('settings.adminModules.modules.slaTools.description'),
-    meta: t('settings.adminModules.modules.slaTools.meta'),
   }),
 });
 
@@ -85,33 +69,86 @@ const AdminModulesPanel = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [hasLoadedModuleData, setHasLoadedModuleData] = useState(false);
-
   const [users, setUsers] = useState([]);
-  const [permissions, setPermissions] = useState([]);
   const [roles, setRoles] = useState([]);
   const [workflows, setWorkflows] = useState([]);
+  const [loadedDatasets, setLoadedDatasets] = useState({
+    users: false,
+    roles: false,
+    workflows: false,
+  });
+  const inflightRequestsRef = useRef({
+    users: null,
+    roles: null,
+    workflows: null,
+  });
 
-  const loadAllData = useCallback(async () => {
+  const runDatasetRequest = useCallback(async (key, loader, onSuccess, { force = false } = {}) => {
+    if (!force && loadedDatasets[key]) {
+      return null;
+    }
+    if (!force && inflightRequestsRef.current[key]) {
+      return inflightRequestsRef.current[key];
+    }
+
+    const request = (async () => {
+      const value = await loader();
+      onSuccess(Array.isArray(value) ? value : []);
+      setLoadedDatasets((prev) => ({ ...prev, [key]: true }));
+      return value;
+    })().finally(() => {
+      inflightRequestsRef.current[key] = null;
+    });
+
+    inflightRequestsRef.current[key] = request;
+    return request;
+  }, [loadedDatasets]);
+
+  const loadUsers = useCallback(
+    (options = {}) =>
+      runDatasetRequest(
+        'users',
+        () => ticketService.getAllHandlers({ enrichPermissions: false, preferApi: true }),
+        setUsers,
+        options
+      ),
+    [runDatasetRequest]
+  );
+
+  const loadRoles = useCallback(
+    (options = {}) =>
+      runDatasetRequest('roles', () => permissionService.getAllRoles(), setRoles, options),
+    [runDatasetRequest]
+  );
+
+  const loadWorkflows = useCallback(
+    (options = {}) =>
+      runDatasetRequest('workflows', () => workflowService.getWorkflowsWithStats(), setWorkflows, options),
+    [runDatasetRequest]
+  );
+
+  const loadModuleData = useCallback(async (moduleId, options = {}) => {
+    const force = options.force === true;
+    const tasks = [];
+
+    if (moduleId === 'users') {
+      tasks.push(loadUsers({ force }), loadRoles({ force }), loadWorkflows({ force }));
+    } else if (moduleId === 'workflows') {
+      tasks.push(loadUsers({ force }), loadWorkflows({ force }));
+    }
+
+    if (tasks.length === 0) {
+      return;
+    }
+
     try {
       setLoading(true);
       setError('');
 
-      const [usersResult, permsResult, rolesResult, workflowsResult] = await Promise.allSettled([
-        ticketService.getAllHandlers({ enrichPermissions: false }),
-        permissionService.getAllPermissions(),
-        permissionService.getAllRoles(),
-        workflowService.getWorkflowsWithStats(),
-      ]);
-
-      setUsers(usersResult.status === 'fulfilled' ? (usersResult.value || []) : []);
-      setPermissions(permsResult.status === 'fulfilled' ? (permsResult.value || []) : []);
-      setRoles(rolesResult.status === 'fulfilled' ? (rolesResult.value || []) : []);
-      setWorkflows(workflowsResult.status === 'fulfilled' ? (workflowsResult.value || []) : []);
-
-      const failed = [usersResult, permsResult, rolesResult, workflowsResult].filter((r) => r.status === 'rejected');
+      const results = await Promise.allSettled(tasks);
+      const failed = results.filter((result) => result.status === 'rejected');
       if (failed.length > 0) {
-        setError(t('settings.adminModules.messages.partialLoad', { failed: failed.length, total: 4 }));
+        setError(t('settings.adminModules.messages.partialLoad', { failed: failed.length, total: results.length }));
       }
     } catch (err) {
       console.error('Error loading admin data:', err);
@@ -119,13 +156,16 @@ const AdminModulesPanel = () => {
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [loadRoles, loadUsers, loadWorkflows, t]);
+
+  const refreshUsersModule = useCallback(() => loadModuleData('users', { force: true }), [loadModuleData]);
+  const refreshWorkflowsModule = useCallback(() => loadModuleData('workflows', { force: true }), [loadModuleData]);
+  const noopRefresh = useCallback(async () => {}, []);
 
   useEffect(() => {
-    // Lazy-load admin datasets only when a module is opened.
-    if (!activeModule || hasLoadedModuleData) return;
-    loadAllData().finally(() => setHasLoadedModuleData(true));
-  }, [activeModule, hasLoadedModuleData, loadAllData]);
+    if (!activeModule) return;
+    loadModuleData(activeModule);
+  }, [activeModule, loadModuleData]);
 
   const showToast = useCallback((message, isError = false) => {
     if (isError) {
@@ -138,8 +178,8 @@ const AdminModulesPanel = () => {
   }, []);
 
   const moduleMeta = useMemo(
-    () => getModuleMeta(t, users.length, roles.length, workflows.length),
-    [t, users.length, roles.length, workflows.length]
+    () => getModuleMeta(t, users.length, workflows.length),
+    [t, users.length, workflows.length]
   );
 
   const modules = useMemo(
@@ -226,17 +266,7 @@ const AdminModulesPanel = () => {
                     users={users}
                     roles={roles}
                     workflows={workflows}
-                    onRefresh={loadAllData}
-                    onShowToast={showToast}
-                  />
-                )}
-
-                {activeModule === 'permissions' && (
-                  <PermissionsManagementPanel
-                    permissions={permissions}
-                    roles={roles}
-                    users={users}
-                    onRefresh={loadAllData}
+                    onRefresh={refreshUsersModule}
                     onShowToast={showToast}
                   />
                 )}
@@ -245,13 +275,13 @@ const AdminModulesPanel = () => {
                   <WorkflowManagementPanel
                     workflows={workflows}
                     users={users}
-                    onRefresh={loadAllData}
+                    onRefresh={refreshWorkflowsModule}
                     onShowToast={showToast}
                   />
                 )}
 
                 {activeModule === 'translations' && (
-                  <TranslationManagementPanel onRefresh={loadAllData} onShowToast={showToast} />
+                  <TranslationManagementPanel onRefresh={noopRefresh} onShowToast={showToast} />
                 )}
 
                 {activeModule === 'locations' && (
@@ -260,10 +290,6 @@ const AdminModulesPanel = () => {
 
                 {activeModule === 'logging' && (
                   <LoggingPanel onShowToast={showToast} />
-                )}
-
-                {activeModule === 'slaTools' && (
-                  <SlaBackfillPanel onShowToast={showToast} />
                 )}
               </Suspense>
             </div>
