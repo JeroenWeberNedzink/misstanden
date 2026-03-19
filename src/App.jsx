@@ -14,7 +14,13 @@ import { accessRequestService } from "./services/accessRequestService";
 import { analyticsApiService } from "./services/analyticsApiService";
 import { guestAccessService } from "./services/guestAccessService";
 import { reportService } from "./services/reportService";
-import { getApiAccessToken, getApiAudience, getApiScope, isRecoverableAuth0SessionError } from "./lib/auth0ApiToken";
+import {
+  getApiAccessToken,
+  getApiAudience,
+  getApiAudienceIssue,
+  getApiScope,
+  getOptionalApiAccessToken,
+} from "./lib/auth0ApiToken";
 import "./styles/tailwind.css";
 import "./styles/index.css";
 
@@ -36,7 +42,12 @@ function ServiceTokenBridge() {
   useLayoutEffect(() => {
     let cachedToken = '';
     let cachedExpMs = 0;
+    const audienceIssue = getApiAudienceIssue();
     const provider = async () => {
+      if (audienceIssue) {
+        return null;
+      }
+
       const now = Date.now();
       if (cachedToken && cachedExpMs - now > 30_000) {
         return cachedToken;
@@ -44,11 +55,11 @@ function ServiceTokenBridge() {
 
       let token = '';
       try {
-        token = await getApiAccessToken(getAccessTokenSilently);
-      } catch (error) {
-        if (isRecoverableAuth0SessionError(error)) {
-          throw error;
+        token = await getOptionalApiAccessToken(getAccessTokenSilently);
+        if (!token) {
+          return null;
         }
+      } catch {
         token = await getApiAccessToken(getAccessTokenSilently, { cacheMode: 'off' });
       }
 
@@ -68,6 +79,12 @@ function ServiceTokenBridge() {
     analyticsApiService.setTokenProvider(provider);
     guestAccessService.setTokenProvider(provider);
     reportService.setTokenProvider(provider);
+
+    if (audienceIssue) {
+      console.warn(
+        '[Auth0] VITE_AUTH0_AUDIENCE is configured for the MFA flow. Set it to the API audience to enable authenticated requests.'
+      );
+    }
   }, [getAccessTokenSilently]);
 
   return null;
@@ -77,6 +94,8 @@ export default function App() {
   const domain = import.meta.env.VITE_AUTH0_DOMAIN;
   const clientId = import.meta.env.VITE_AUTH0_CLIENT_ID;
   const apiAudience = getApiAudience();
+  const apiAudienceIssue = getApiAudienceIssue();
+  const auth0Audience = apiAudienceIssue ? '' : apiAudience;
   const apiScope = getApiScope();
   const [migrationStatus, setMigrationStatus] = useState('pending');
   const [migrationMessage, setMigrationMessage] = useState('');
@@ -123,13 +142,23 @@ export default function App() {
       clientId={clientId}
       authorizationParams={{
         redirect_uri: window.location.origin,
-        ...(apiAudience ? { audience: apiAudience } : {}),
-        scope: ['openid', 'profile', 'email', apiScope].filter(Boolean).join(' '),
+        ...(auth0Audience ? { audience: auth0Audience } : {}),
+        scope: ['openid', 'profile', 'email', ...(auth0Audience ? [apiScope] : [])].filter(Boolean).join(' '),
       }}
       useRefreshTokens={true}
       cacheLocation="localstorage"
     >
       <ServiceTokenBridge />
+      {apiAudienceIssue && (
+        <div className="fixed top-4 left-4 right-4 z-[10000] mx-auto max-w-2xl rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg">
+          <p className="text-sm font-semibold text-amber-900">
+            Auth0 audience misconfigured
+          </p>
+          <p className="mt-1 text-xs text-amber-800">
+            <code>VITE_AUTH0_AUDIENCE</code> is set to the MFA audience. Change it to your API identifier so the app can request access tokens.
+          </p>
+        </div>
+      )}
       <SettingsProvider>
         {migrationStatus === 'needs_setup' && (
           <div className="fixed top-4 right-4 z-[10000] max-w-md bg-amber-50 border border-amber-200 rounded-lg shadow-lg p-4">

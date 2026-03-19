@@ -34,6 +34,22 @@ export const getApiAudience = () => {
 };
 export const getApiScope = () => API_SCOPE;
 
+export const getApiAudienceIssue = () => {
+  if (!API_AUDIENCE) {
+    return 'missing';
+  }
+
+  if (API_AUDIENCE.toLowerCase().includes('/mfa/')) {
+    return 'mfa';
+  }
+
+  return null;
+};
+
+export const isValidApiAudience = () => {
+  return !getApiAudienceIssue();
+};
+
 export const isRecoverableAuth0SessionError = (error) => {
   const text = getAuth0ErrorText(error);
   if (!text) return false;
@@ -47,6 +63,9 @@ export const getApiAccessToken = async (getAccessTokenSilently, { scope = '', ca
   const audience = getApiAudience();
   if (!audience) {
     throw new Error('Missing VITE_AUTH0_AUDIENCE for API access tokens');
+  }
+  if (getApiAudienceIssue()) {
+    throw new Error('VITE_AUTH0_AUDIENCE is configured for the MFA flow. Set it to your API audience instead.');
   }
 
   const mergedScope = mergeScope(API_SCOPE, scope);
@@ -63,6 +82,10 @@ export const getApiAccessToken = async (getAccessTokenSilently, { scope = '', ca
 };
 
 export const getOptionalApiAccessToken = async (getAccessTokenSilently, options = {}) => {
+  if (getApiAudienceIssue()) {
+    return null;
+  }
+
   if (Date.now() < optionalTokenRetryAfterMs) {
     return null;
   }
