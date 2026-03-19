@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { supabase } from '../../lib/supabase';
-import { getApiAccessToken } from '../../lib/auth0ApiToken';
+import { getOptionalApiAccessToken } from '../../lib/auth0ApiToken';
 import AnonymousNavHeader from './AnonymousNavHeader';
 import HandlerNavigation from './HandlerNavigation';
 import NoAccessPage from '../auth/NoAccessPage';
@@ -46,21 +46,23 @@ const AuthContextNavigator = ({ children }) => {
         return null;
       }
 
-      try {
-        const token = await getApiAccessToken(getAccessTokenSilently);
-        const response = await fetch('/api/me.api.php', {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        const payload = await response.json().catch(() => null);
-        if (response.ok && payload?.success && payload?.data?.handler) {
-          return payload.data.handler;
+      const token = await getOptionalApiAccessToken(getAccessTokenSilently);
+      if (token) {
+        try {
+          const response = await fetch('/api/me.api.php', {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+          const payload = await response.json().catch(() => null);
+          if (response.ok && payload?.success && payload?.data?.handler) {
+            return payload.data.handler;
+          }
+        } catch (apiError) {
+          // Fallback to direct lookup to keep local/dev workflows working.
+          console.warn('Handler API context lookup failed, trying direct profile lookup:', apiError);
         }
-      } catch (apiError) {
-        // Fallback to direct lookup to keep local/dev workflows working.
-        console.warn('Handler API context lookup failed, trying direct profile lookup:', apiError);
       }
 
       let data = null;

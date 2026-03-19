@@ -1,7 +1,7 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { getApiAccessToken } from '../lib/auth0ApiToken';
+import { getOptionalApiAccessToken } from '../lib/auth0ApiToken';
 import {
   hasPermission,
   hasAnyPermission,
@@ -46,21 +46,23 @@ export const usePermissions = () => {
         }
 
         let apiProfile = null;
-        try {
-          const token = await getApiAccessToken(getAccessTokenSilently);
-          const response = await fetch('/api/me.api.php', {
-            method: 'GET',
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-          const payload = await response.json().catch(() => null);
-          if (response.ok && payload?.success && payload?.data?.handler) {
-            apiProfile = payload.data.handler;
+        const token = await getOptionalApiAccessToken(getAccessTokenSilently);
+        if (token) {
+          try {
+            const response = await fetch('/api/me.api.php', {
+              method: 'GET',
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+            const payload = await response.json().catch(() => null);
+            if (response.ok && payload?.success && payload?.data?.handler) {
+              apiProfile = payload.data.handler;
+            }
+          } catch (apiError) {
+            // Fallback to direct Supabase lookup for local/dev scenarios.
+            console.warn('Handler API context lookup failed, trying direct profile lookup:', apiError);
           }
-        } catch (apiError) {
-          // Fallback to direct Supabase lookup for local/dev scenarios.
-          console.warn('Handler API context lookup failed, trying direct profile lookup:', apiError);
         }
 
         if (apiProfile) {

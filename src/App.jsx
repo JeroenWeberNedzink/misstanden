@@ -14,7 +14,7 @@ import { accessRequestService } from "./services/accessRequestService";
 import { analyticsApiService } from "./services/analyticsApiService";
 import { guestAccessService } from "./services/guestAccessService";
 import { reportService } from "./services/reportService";
-import { getApiAccessToken, getApiAudience, getApiScope } from "./lib/auth0ApiToken";
+import { getApiAccessToken, getApiAudience, getApiScope, isRecoverableAuth0SessionError } from "./lib/auth0ApiToken";
 import "./styles/tailwind.css";
 import "./styles/index.css";
 
@@ -46,6 +46,9 @@ function ServiceTokenBridge() {
       try {
         token = await getApiAccessToken(getAccessTokenSilently);
       } catch (error) {
+        if (isRecoverableAuth0SessionError(error)) {
+          throw error;
+        }
         token = await getApiAccessToken(getAccessTokenSilently, { cacheMode: 'off' });
       }
 
