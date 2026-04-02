@@ -48,8 +48,8 @@ try {
     $auth0ClientId = api_authz_env_required('VITE_AUTH0_CLIENT_ID');
     $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
 
-    $baseUrl = rtrim(api_authz_env_required('VITE_SUPABASE_URL'), '/');
-    $serviceKey = supabase_get_service_role_key();
+    $baseUrl = sqlserver_is_configured() ? '' : rtrim(api_authz_env_required('VITE_SUPABASE_URL'), '/');
+    $serviceKey = sqlserver_is_configured() ? '' : supabase_get_service_role_key();
 
     $handler = api_authz_fetch_handler($baseUrl, $serviceKey, $claims);
     if (!$handler || empty($handler['active'])) {

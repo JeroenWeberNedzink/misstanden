@@ -5,6 +5,7 @@ require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_auth0.php';
 require_once __DIR__ . '/_scopes.php';
 require_once __DIR__ . '/_supabase.php';
+require_once __DIR__ . '/_sqlserver.php';
 require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
 require_once __DIR__ . '/_rate_limit.php';
@@ -186,6 +187,40 @@ function wf_normalize_routing_rows(array $rows): array {
     return $out;
 }
 
+function wf_decode_json($value, $fallback) {
+    if (is_array($value)) {
+        return $value;
+    }
+    if (!is_string($value)) {
+        return $fallback;
+    }
+    $trimmed = trim($value);
+    if ($trimmed === '') {
+        return $fallback;
+    }
+    $decoded = json_decode($trimmed, true);
+    return json_last_error() === JSON_ERROR_NONE ? $decoded : $fallback;
+}
+
+function wf_sql_normalize_handler_row(array $row): array {
+    $row['roles'] = wf_decode_json($row['roles'] ?? null, $row['roles'] ?? []);
+    $row['permissions'] = wf_decode_json($row['permissions'] ?? null, $row['permissions'] ?? []);
+    return wf_normalize_handler_row($row);
+}
+
+function wf_sql_normalize_handler_rows(array $rows): array {
+    $out = [];
+    foreach ($rows as $row) {
+        $out[] = is_array($row) ? wf_sql_normalize_handler_row($row) : $row;
+    }
+    return $out;
+}
+
+function wf_sql_normalize_status_row(array $row): array {
+    $row['next_codes'] = wf_decode_json($row['next_codes'] ?? null, []);
+    return $row;
+}
+
 function wf_require_admin(string $baseUrl, string $serviceKey, array $requiredScopes = []): array {
     $token = auth0_get_bearer_token();
     if ($token === '') wf_json(401, false, 'Authorization token required');
@@ -202,15 +237,35 @@ function wf_require_admin(string $baseUrl, string $serviceKey, array $requiredSc
     $email = trim((string)($claims['email'] ?? ''));
 
     $handler = null;
-    if ($sub !== '') {
-        [$c1, $d1, $r1] = wf_req('GET', $baseUrl . '/rest/v1/handlers?select=id,name,email,user_id,active,roles,permissions&user_id=eq.' . rawurlencode($sub) . '&limit=1', $serviceKey);
-        $arr = wf_or_fail('Load handler by sub', $c1, $d1, $r1);
-        $handler = wf_row($arr);
-    }
-    if (!$handler && $email !== '') {
-        [$c2, $d2, $r2] = wf_req('GET', $baseUrl . '/rest/v1/handlers?select=id,name,email,user_id,active,roles,permissions&email=ilike.' . rawurlencode($email) . '&limit=1', $serviceKey);
-        $arr = wf_or_fail('Load handler by email', $c2, $d2, $r2);
-        $handler = wf_row($arr);
+    if (sqlserver_is_configured()) {
+        if ($sub !== '') {
+            $rows = sqlserver_query(
+                'SELECT TOP 1 id, name, email, user_id, active, roles, permissions FROM dbo.handlers WHERE user_id = @user_id',
+                ['user_id' => $sub]
+            );
+            $handler = $rows[0] ?? null;
+        }
+        if (!$handler && $email !== '') {
+            $rows = sqlserver_query(
+                'SELECT TOP 1 id, name, email, user_id, active, roles, permissions FROM dbo.handlers WHERE LOWER(email) = LOWER(@email)',
+                ['email' => $email]
+            );
+            $handler = $rows[0] ?? null;
+        }
+        if (is_array($handler)) {
+            $handler = wf_sql_normalize_handler_row($handler);
+        }
+    } else {
+        if ($sub !== '') {
+            [$c1, $d1, $r1] = wf_req('GET', $baseUrl . '/rest/v1/handlers?select=id,name,email,user_id,active,roles,permissions&user_id=eq.' . rawurlencode($sub) . '&limit=1', $serviceKey);
+            $arr = wf_or_fail('Load handler by sub', $c1, $d1, $r1);
+            $handler = wf_row($arr);
+        }
+        if (!$handler && $email !== '') {
+            [$c2, $d2, $r2] = wf_req('GET', $baseUrl . '/rest/v1/handlers?select=id,name,email,user_id,active,roles,permissions&email=ilike.' . rawurlencode($email) . '&limit=1', $serviceKey);
+            $arr = wf_or_fail('Load handler by email', $c2, $d2, $r2);
+            $handler = wf_row($arr);
+        }
     }
     if (!$handler || empty($handler['active'])) wf_json(403, false, 'Handler account not active or not found');
     if (!wf_is_admin($handler)) wf_json(403, false, 'Admin permissions required');
@@ -221,6 +276,13 @@ function wf_require_admin(string $baseUrl, string $serviceKey, array $requiredSc
 }
 
 function wf_status_list(string $baseUrl, string $serviceKey, string $workflowId): array {
+    if (sqlserver_is_configured()) {
+        $rows = sqlserver_query(
+            'SELECT * FROM dbo.workflow_statuses WHERE workflow_id = @workflow_id ORDER BY sort_order ASC, label ASC',
+            ['workflow_id' => $workflowId]
+        );
+        return ['rows' => array_map('wf_sql_normalize_status_row', $rows)];
+    }
     [$code, $decoded, $raw] = wf_req('GET', $baseUrl . '/rest/v1/workflow_statuses?select=*&workflow_id=eq.' . rawurlencode($workflowId) . '&order=sort_order.asc', $serviceKey);
     return ['rows' => wf_or_fail('Load workflow statuses', $code, $decoded, $raw)];
 }
@@ -313,17 +375,55 @@ try {
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $action = strtolower(trim((string)($_GET['action'] ?? 'list_with_stats')));
         if ($action === 'list_with_stats') {
+            if (sqlserver_is_configured()) {
+                $rows = sqlserver_query(
+                    'SELECT
+                        w.*,
+                        (SELECT COUNT(*) FROM dbo.workflow_statuses ws WHERE ws.workflow_id = w.id) AS status_count,
+                        (SELECT COUNT(*) FROM dbo.tickets t WHERE t.workflow_type = w.code) AS ticket_count,
+                        (SELECT COUNT(*) FROM dbo.handler_workflows hw WHERE hw.workflow_id = w.id) AS handler_count
+                    FROM dbo.workflows w
+                    ORDER BY w.display_order ASC, w.name ASC'
+                );
+                $rows = array_map(static function (array $row): array {
+                    $statusCount = (int)($row['status_count'] ?? 0);
+                    $ticketCount = (int)($row['ticket_count'] ?? 0);
+                    $handlerCount = (int)($row['handler_count'] ?? 0);
+                    unset($row['status_count'], $row['ticket_count'], $row['handler_count']);
+                    $row['workflow_statuses'] = [['count' => $statusCount]];
+                    $row['tickets'] = [['count' => $ticketCount]];
+                    $row['handler_workflows'] = [['count' => $handlerCount]];
+                    return $row;
+                }, $rows);
+                wf_json(200, true, 'Workflows loaded', ['rows' => $rows]);
+            }
             $select = rawurlencode('*,workflow_statuses:workflow_statuses(count),tickets:tickets(count),handler_workflows:handler_workflows(count)');
             [$code, $decoded, $raw] = wf_req('GET', $baseUrl . '/rest/v1/workflows?select=' . $select . '&order=display_order.asc', $serviceKey);
             wf_json(200, true, 'Workflows loaded', ['rows' => wf_or_fail('List workflows', $code, $decoded, $raw)]);
         }
         if ($action === 'active_handlers') {
+            if (sqlserver_is_configured()) {
+                $rows = sqlserver_query(
+                    'SELECT id, name, email, roles, active FROM dbo.handlers WHERE active = @active ORDER BY name ASC',
+                    ['active' => true]
+                );
+                wf_json(200, true, 'Handlers loaded', ['rows' => wf_sql_normalize_handler_rows($rows)]);
+            }
             [$code, $decoded, $raw] = wf_req('GET', $baseUrl . '/rest/v1/handlers?select=id,name,email,roles,active&active=eq.true&order=name.asc', $serviceKey);
             $rows = wf_or_fail('List handlers', $code, $decoded, $raw);
             wf_json(200, true, 'Handlers loaded', ['rows' => wf_normalize_handler_rows($rows)]);
         }
         if ($action === 'all_handlers') {
             $includeInactive = wf_query_bool('include_inactive', false);
+            if (sqlserver_is_configured()) {
+                $sql = 'SELECT id, name, email, phone, active, roles, permissions, user_id, picture, created_at, updated_at, last_login FROM dbo.handlers';
+                if (!$includeInactive) {
+                    $sql .= ' WHERE active = @active';
+                }
+                $sql .= ' ORDER BY name ASC';
+                $rows = sqlserver_query($sql, $includeInactive ? [] : ['active' => true]);
+                wf_json(200, true, 'All handlers loaded', ['rows' => wf_sql_normalize_handler_rows($rows)]);
+            }
             $select = 'id,name,email,phone,active,roles,permissions,user_id,picture,created_at,updated_at,last_login';
             $url = $baseUrl . '/rest/v1/handlers?select=' . rawurlencode($select) . '&order=name.asc';
             if (!$includeInactive) {
@@ -335,6 +435,15 @@ try {
         }
         if ($action === 'locations_list') {
             $includeInactive = wf_query_bool('include_inactive', false);
+            if (sqlserver_is_configured()) {
+                $sql = 'SELECT id, country_code, country_name, display_order, active, created_at, updated_at, created_by, updated_by FROM dbo.locations';
+                if (!$includeInactive) {
+                    $sql .= ' WHERE active = @active';
+                }
+                $sql .= ' ORDER BY display_order ASC, country_name ASC';
+                $rows = sqlserver_query($sql, $includeInactive ? [] : ['active' => true]);
+                wf_json(200, true, 'Locations loaded', ['rows' => $rows]);
+            }
             $select = 'id,country_code,country_name,display_order,active,created_at,updated_at,created_by,updated_by';
             $url = $baseUrl . '/rest/v1/locations?select=' . rawurlencode($select) . '&order=display_order.asc&order=country_name.asc';
             if (!$includeInactive) {
@@ -347,6 +456,12 @@ try {
         if ($action === 'location_by_id') {
             $id = trim((string)($_GET['id'] ?? ''));
             if (!wf_uuid($id)) throw new Exception('id must be UUID');
+            if (sqlserver_is_configured()) {
+                $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.locations WHERE id = @id', ['id' => $id]);
+                $row = $rows[0] ?? null;
+                if (!$row) wf_json(404, false, 'Location not found');
+                wf_json(200, true, 'Location loaded', ['row' => $row]);
+            }
             [$code, $decoded, $raw] = wf_req(
                 'GET',
                 $baseUrl . '/rest/v1/locations?select=*&id=eq.' . rawurlencode($id) . '&limit=1',
@@ -360,6 +475,12 @@ try {
             $countryCode = strtoupper(trim((string)($_GET['country_code'] ?? '')));
             if ($countryCode === '' || preg_match('/^[A-Z]{2}$/', $countryCode) !== 1) {
                 throw new Exception('country_code must be 2 letters');
+            }
+            if (sqlserver_is_configured()) {
+                $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.locations WHERE country_code = @country_code', ['country_code' => $countryCode]);
+                $row = $rows[0] ?? null;
+                if (!$row) wf_json(404, false, 'Location not found');
+                wf_json(200, true, 'Location loaded', ['row' => $row]);
             }
             [$code, $decoded, $raw] = wf_req(
                 'GET',
@@ -379,6 +500,23 @@ try {
             }
 
             $ids = array_slice($ids, 0, 100);
+            if (sqlserver_is_configured()) {
+                $params = [];
+                $placeholders = [];
+                foreach ($ids as $index => $value) {
+                    $key = 'id_' . $index;
+                    $params[$key] = $value;
+                    $placeholders[] = '@' . $key;
+                }
+                $sql = 'SELECT id, name, email, phone, active, roles, permissions, user_id, picture, created_at, updated_at, last_login FROM dbo.handlers WHERE id IN (' . implode(', ', $placeholders) . ')';
+                if (!$includeInactive) {
+                    $sql .= ' AND active = @active';
+                    $params['active'] = true;
+                }
+                $sql .= ' ORDER BY name ASC';
+                $rows = sqlserver_query($sql, $params);
+                wf_json(200, true, 'Handlers loaded', ['rows' => wf_sql_normalize_handler_rows($rows)]);
+            }
             $inValues = '(' . implode(',', array_map(static fn($x) => '"' . $x . '"', $ids)) . ')';
             $select = 'id,name,email,phone,active,roles,permissions,user_id,picture,created_at,updated_at,last_login';
             $url = $baseUrl . '/rest/v1/handlers?select=' . rawurlencode($select) . '&id=in.' . rawurlencode($inValues) . '&order=name.asc';
@@ -392,6 +530,43 @@ try {
         if ($action === 'routing_rules') {
             $workflowId = trim((string)($_GET['workflow_id'] ?? ''));
             if (!wf_uuid($workflowId)) throw new Exception('workflow_id must be UUID');
+            if (sqlserver_is_configured()) {
+                $rows = sqlserver_query(
+                    'SELECT
+                        hw.id,
+                        hw.handler_id,
+                        hw.workflow_id,
+                        h.id AS handler_ref_id,
+                        h.name AS handler_name,
+                        h.email AS handler_email,
+                        h.roles AS handler_roles,
+                        h.active AS handler_active
+                    FROM dbo.handler_workflows hw
+                    LEFT JOIN dbo.handlers h ON h.id = hw.handler_id
+                    WHERE hw.workflow_id = @workflow_id
+                    ORDER BY h.name ASC',
+                    ['workflow_id' => $workflowId]
+                );
+                $normalized = array_map(static function (array $row): array {
+                    $handler = null;
+                    if (!empty($row['handler_ref_id'])) {
+                        $handler = wf_sql_normalize_handler_row([
+                            'id' => $row['handler_ref_id'],
+                            'name' => $row['handler_name'] ?? null,
+                            'email' => $row['handler_email'] ?? null,
+                            'roles' => $row['handler_roles'] ?? [],
+                            'active' => $row['handler_active'] ?? false,
+                        ]);
+                    }
+                    return [
+                        'id' => $row['id'] ?? null,
+                        'handler_id' => $row['handler_id'] ?? null,
+                        'workflow_id' => $row['workflow_id'] ?? null,
+                        'handlers' => $handler,
+                    ];
+                }, $rows);
+                wf_json(200, true, 'Routing rules loaded', ['rows' => $normalized]);
+            }
             $select = rawurlencode('id,handler_id,workflow_id,handlers:handler_id(id,name,email,roles,active)');
             [$code, $decoded, $raw] = wf_req('GET', $baseUrl . '/rest/v1/handler_workflows?select=' . $select . '&workflow_id=eq.' . rawurlencode($workflowId), $serviceKey);
             $rows = wf_or_fail('List routing rules', $code, $decoded, $raw);
@@ -405,17 +580,33 @@ try {
         if ($action === 'handler_workflow_ids') {
             $handlerId = trim((string)($_GET['handler_id'] ?? ''));
             if (!wf_uuid($handlerId)) throw new Exception('handler_id must be UUID');
+            if (sqlserver_is_configured()) {
+                $rows = sqlserver_query(
+                    'SELECT workflow_id FROM dbo.handler_workflows WHERE handler_id = @handler_id',
+                    ['handler_id' => $handlerId]
+                );
+                $workflowIds = array_values(array_filter(array_map(static fn($r) => trim((string)($r['workflow_id'] ?? '')), $rows), static fn($x) => wf_uuid($x)));
+                wf_json(200, true, 'Handler workflows loaded', ['handler_id' => $handlerId, 'workflow_ids' => $workflowIds]);
+            }
             [$code, $decoded, $raw] = wf_req('GET', $baseUrl . '/rest/v1/handler_workflows?select=workflow_id&handler_id=eq.' . rawurlencode($handlerId), $serviceKey);
             $rows = wf_or_fail('Load handler workflows', $code, $decoded, $raw);
             $workflowIds = array_values(array_filter(array_map(static fn($r) => trim((string)($r['workflow_id'] ?? '')), $rows), static fn($x) => wf_uuid($x)));
             wf_json(200, true, 'Handler workflows loaded', ['handler_id' => $handlerId, 'workflow_ids' => $workflowIds]);
         }
         if ($action === 'permissions_list') {
+            if (sqlserver_is_configured()) {
+                $rows = sqlserver_query('SELECT * FROM dbo.permissions ORDER BY category ASC, name ASC');
+                wf_json(200, true, 'Permissions loaded', ['rows' => $rows]);
+            }
             [$code, $decoded, $raw] = wf_req('GET', $baseUrl . '/rest/v1/permissions?select=*&order=category.asc,name.asc', $serviceKey);
             $rows = wf_or_fail('List permissions', $code, $decoded, $raw);
             wf_json(200, true, 'Permissions loaded', ['rows' => $rows]);
         }
         if ($action === 'roles_list') {
+            if (sqlserver_is_configured()) {
+                $rows = sqlserver_query('SELECT * FROM dbo.roles ORDER BY name ASC');
+                wf_json(200, true, 'Roles loaded', ['rows' => $rows]);
+            }
             [$code, $decoded, $raw] = wf_req('GET', $baseUrl . '/rest/v1/roles?select=*&order=name.asc', $serviceKey);
             $rows = wf_or_fail('List roles', $code, $decoded, $raw);
             wf_json(200, true, 'Roles loaded', ['rows' => $rows]);
@@ -423,6 +614,42 @@ try {
         if ($action === 'role_with_permissions') {
             $roleId = trim((string)($_GET['role_id'] ?? ''));
             if ($roleId === '') throw new Exception('role_id is required');
+            if (sqlserver_is_configured()) {
+                $roleRows = sqlserver_query('SELECT TOP 1 * FROM dbo.roles WHERE id = @id', ['id' => $roleId]);
+                $row = $roleRows[0] ?? null;
+                if (!$row) {
+                    throw new Exception('Role not found');
+                }
+                $permissionRows = sqlserver_query(
+                    'SELECT
+                        rp.permission_id,
+                        p.id,
+                        p.code,
+                        p.name,
+                        p.description,
+                        p.category,
+                        p.is_system
+                    FROM dbo.role_permissions rp
+                    INNER JOIN dbo.permissions p ON p.id = rp.permission_id
+                    WHERE rp.role_id = @role_id
+                    ORDER BY p.category ASC, p.name ASC',
+                    ['role_id' => $roleId]
+                );
+                $row['role_permissions'] = array_map(static function (array $permissionRow): array {
+                    return [
+                        'permission_id' => $permissionRow['permission_id'] ?? null,
+                        'permissions' => [[
+                            'id' => $permissionRow['id'] ?? null,
+                            'code' => $permissionRow['code'] ?? null,
+                            'name' => $permissionRow['name'] ?? null,
+                            'description' => $permissionRow['description'] ?? null,
+                            'category' => $permissionRow['category'] ?? null,
+                            'is_system' => $permissionRow['is_system'] ?? null,
+                        ]],
+                    ];
+                }, $permissionRows);
+                wf_json(200, true, 'Role loaded', ['row' => $row]);
+            }
             $select = rawurlencode('*,role_permissions(permission_id,permissions(id,code,name,description,category,is_system))');
             [$code, $decoded, $raw] = wf_req('GET', $baseUrl . '/rest/v1/roles?select=' . $select . '&id=eq.' . rawurlencode($roleId) . '&limit=1', $serviceKey);
             $rows = wf_or_fail('Load role with permissions', $code, $decoded, $raw);

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_auth0.php';
 require_once __DIR__ . '/_supabase.php';
+require_once __DIR__ . '/_sqlserver.php';
 require_once __DIR__ . '/_scopes.php';
 
 function api_authz_env_required(string $key): string {
@@ -119,6 +120,34 @@ function api_authz_fetch_handler(string $baseUrl, string $serviceKey, array $cla
     $sub = trim((string)($claims['sub'] ?? ''));
     $email = trim((string)($claims['email'] ?? ''));
 
+    if (sqlserver_is_configured()) {
+        if ($sub !== '') {
+            $rows = sqlserver_query(
+                'SELECT TOP 1 id, name, email, user_id, active, roles, permissions
+                 FROM dbo.handlers
+                 WHERE user_id = @sub',
+                ['sub' => $sub]
+            );
+            if (!empty($rows[0]) && is_array($rows[0])) {
+                return api_authz_normalize_handler($rows[0]);
+            }
+        }
+
+        if ($email !== '') {
+            $rows = sqlserver_query(
+                'SELECT TOP 1 id, name, email, user_id, active, roles, permissions
+                 FROM dbo.handlers
+                 WHERE LOWER(email) = LOWER(@email)',
+                ['email' => $email]
+            );
+            if (!empty($rows[0]) && is_array($rows[0])) {
+                return api_authz_normalize_handler($rows[0]);
+            }
+        }
+
+        return null;
+    }
+
     if ($sub !== '') {
         $urlBySub = $baseUrl
             . '/rest/v1/handlers?select=id,name,email,user_id,active,roles,permissions'
@@ -164,8 +193,8 @@ function api_authz_require_admin(callable $deny, array $requiredScopes = []): ar
     $auth0ClientId = api_authz_env_required('VITE_AUTH0_CLIENT_ID');
     $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
 
-    $baseUrl = rtrim(api_authz_env_required('VITE_SUPABASE_URL'), '/');
-    $serviceKey = supabase_get_service_role_key();
+    $baseUrl = sqlserver_is_configured() ? '' : rtrim(api_authz_env_required('VITE_SUPABASE_URL'), '/');
+    $serviceKey = sqlserver_is_configured() ? '' : supabase_get_service_role_key();
 
     $handler = api_authz_fetch_handler($baseUrl, $serviceKey, $claims);
     if (!$handler || empty($handler['active'])) {
@@ -195,8 +224,8 @@ function api_authz_require_active_handler(callable $deny): array {
     $auth0ClientId = api_authz_env_required('VITE_AUTH0_CLIENT_ID');
     $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
 
-    $baseUrl = rtrim(api_authz_env_required('VITE_SUPABASE_URL'), '/');
-    $serviceKey = supabase_get_service_role_key();
+    $baseUrl = sqlserver_is_configured() ? '' : rtrim(api_authz_env_required('VITE_SUPABASE_URL'), '/');
+    $serviceKey = sqlserver_is_configured() ? '' : supabase_get_service_role_key();
 
     $handler = api_authz_fetch_handler($baseUrl, $serviceKey, $claims);
     if (!$handler || empty($handler['active'])) {

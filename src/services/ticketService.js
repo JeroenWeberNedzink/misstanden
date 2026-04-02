@@ -80,6 +80,7 @@ const isAuthOrRlsError = (err) => {
 
 const TICKETS_API_URL = '/api/tickets.api.php';
 const WORKFLOWS_API_URL = '/api/workflows.api.php';
+const CATALOG_API_URL = '/api/catalog.api.php';
 let ticketTokenProvider = null;
 const TICKET_RUNTIME_SETTINGS_TTL_MS = 2 * 60 * 1000;
 let cachedTicketSettingsByKey = null;
@@ -392,6 +393,20 @@ const workflowApiGet = async (action, params = {}, { requireAuth = false } = {})
   const json = await response.json().catch(() => null);
   if (!response.ok || !json?.success) {
     throw new Error(json?.message || `Workflows API error (${response.status})`);
+  }
+
+  return json?.data;
+};
+
+const catalogApiGet = async (action, params = {}) => {
+  const query = new URLSearchParams({ action, ...params }).toString();
+  const response = await fetch(`${CATALOG_API_URL}?${query}`, {
+    method: 'GET',
+  });
+
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    throw new Error(json?.message || `Catalog API error (${response.status})`);
   }
 
   return json?.data;
@@ -2645,18 +2660,15 @@ async deleteHandler(handlerId, options = {}) {
   },
 
   async getWorkflows(includeInactive = false) {
-    let query = supabase.from('workflows').select('*');
-    if (!includeInactive) query = query.eq('active', true);
-
-    const { data, error } = await query.order('display_order');
-    throwIfError(error, 'getWorkflows');
-    return toCamelCase(data);
+    const data = await catalogApiGet('workflows', {
+      include_inactive: includeInactive ? '1' : '0',
+    });
+    return toCamelCase(data?.rows || []);
   },
 
   async getSeverities() {
-    const { data, error } = await supabase.from('incident_severities').select('*').order('sort_order');
-    throwIfError(error, 'getSeverities');
-    return toCamelCase(data);
+    const data = await catalogApiGet('severities');
+    return toCamelCase(data?.rows || []);
   },
 
   async getWorkflowStatuses(workflowCode) {

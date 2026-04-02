@@ -2,6 +2,7 @@
 import { supabase } from '../lib/supabase';
 
 const WORKFLOW_API_URL = '/api/workflows.api.php';
+const CATALOG_API_URL = '/api/catalog.api.php';
 let locationTokenProvider = null;
 
 const throwIfError = (error, context = '') => {
@@ -74,6 +75,18 @@ const apiPost = async (action, payload = {}, { requireAdmin = true } = {}) => {
   return json?.data;
 };
 
+const catalogGet = async (action, params = {}) => {
+  const query = new URLSearchParams({ action, ...params }).toString();
+  const response = await fetch(`${CATALOG_API_URL}?${query}`, {
+    method: 'GET',
+  });
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    throw new Error(json?.message || `Catalog API error (${response.status})`);
+  }
+  return json?.data;
+};
+
 export const locationService = {
   setTokenProvider,
 
@@ -94,25 +107,12 @@ export const locationService = {
         if (!activeOnly) {
           throw apiError;
         }
-        // Public form can still work without admin token/policies.
-        console.warn('[locationService] API locations_list failed, using direct supabase fallback', apiError);
+        console.warn('[locationService] Admin locations API failed, using public catalog API', apiError);
       }
     }
 
-    let query = supabase
-      .from('locations')
-      .select('*')
-      .order('display_order', { ascending: true })
-      .order('country_name', { ascending: true });
-
-    if (activeOnly) {
-      query = query.eq('active', true);
-    }
-
-    const { data, error } = await query;
-    throwIfError(error, 'getLocations');
-
-    return data || [];
+    const data = await catalogGet('locations', { include_inactive: activeOnly ? '0' : '1' });
+    return Array.isArray(data?.rows) ? data.rows : [];
   },
 
   /**
@@ -124,14 +124,15 @@ export const locationService = {
       return data?.row || null;
     }
 
-    const { data, error } = await supabase
-      .from('locations')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
-
-    throwIfError(error, 'getLocationById');
-    return data || null;
+    try {
+      const data = await catalogGet('location_by_id', { id });
+      return data?.row || null;
+    } catch (error) {
+      if (String(error?.message || '').toLowerCase().includes('not found')) {
+        return null;
+      }
+      throw error;
+    }
   },
 
   /**
@@ -147,14 +148,17 @@ export const locationService = {
       return data?.row || null;
     }
 
-    const { data, error } = await supabase
-      .from('locations')
-      .select('*')
-      .eq('country_code', countryCode)
-      .maybeSingle();
-
-    throwIfError(error, 'getLocationByCode');
-    return data || null;
+    try {
+      const data = await catalogGet('location_by_code', {
+        country_code: String(countryCode || '').toUpperCase(),
+      });
+      return data?.row || null;
+    } catch (error) {
+      if (String(error?.message || '').toLowerCase().includes('not found')) {
+        return null;
+      }
+      throw error;
+    }
   },
 
   /**

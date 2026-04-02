@@ -1,5 +1,4 @@
 // src/services/workflowService.js
-import { supabase } from '../lib/supabase';
 
 // -----------------------------
 // Helpers
@@ -40,6 +39,7 @@ const throwIfError = (error, context = '') => {
 
 const safeTrim = (v) => String(v ?? '').trim();
 const WORKFLOW_API_URL = '/api/workflows.api.php';
+const CATALOG_API_URL = '/api/catalog.api.php';
 let workflowTokenProvider = null;
 
 const setTokenProvider = (provider) => {
@@ -103,6 +103,19 @@ const apiPost = async (action, payload = {}, { requireAdmin = true } = {}) => {
   return json?.data;
 };
 
+const catalogGet = async (action, params = {}) => {
+  const urlParams = new URLSearchParams({ action, ...params });
+  const response = await fetch(`${CATALOG_API_URL}?${urlParams.toString()}`, {
+    method: 'GET',
+  });
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    const message = json?.message || `Catalog API error (${response.status})`;
+    throw new Error(message);
+  }
+  return json?.data;
+};
+
 // -----------------------------
 // Small cache (optional)
 // -----------------------------
@@ -154,29 +167,30 @@ export const workflowService = {
   },
 
   async getWorkflows(includeInactive = true) {
-    let q = supabase.from('workflows').select('*').order('display_order', { ascending: true });
-    if (!includeInactive) q = q.eq('active', true);
-
-    const { data, error } = await q;
-    throwIfError(error, 'getWorkflows(workflows)');
-    return toCamelCase(data);
+    const data = await catalogGet('workflows', {
+      include_inactive: includeInactive ? '1' : '0',
+    });
+    return toCamelCase(data?.rows || []);
   },
 
   async getWorkflowById(id) {
     if (!id) throw new Error('workflow id is required');
-
-    const { data, error } = await supabase.from('workflows').select('*').eq('id', id).single();
-    throwIfError(error, 'getWorkflowById(workflows)');
-    return toCamelCase(data);
+    const data = await catalogGet('workflow_by_id', { id });
+    return toCamelCase(data?.row || null);
   },
 
   async getWorkflowByCode(code) {
     const c = safeTrim(code);
     if (!c) return null;
-
-    const { data, error } = await supabase.from('workflows').select('*').eq('code', c).maybeSingle();
-    throwIfError(error, 'getWorkflowByCode(workflows)');
-    return toCamelCase(data);
+    try {
+      const data = await catalogGet('workflow_by_code', { code: c });
+      return toCamelCase(data?.row || null);
+    } catch (error) {
+      if (String(error?.message || '').toLowerCase().includes('not found')) {
+        return null;
+      }
+      throw error;
+    }
   },
 
   async createWorkflow(payload) {
@@ -215,15 +229,8 @@ export const workflowService = {
     const cached = cache.statusesByWorkflowId.get(id);
     if (useCache && cached && now - cached.ts < TTL_MS) return cached.statuses;
 
-    const { data, error } = await supabase
-      .from('workflow_statuses')
-      .select('*')
-      .eq('workflow_id', id)
-      .order('sort_order', { ascending: true });
-
-    throwIfError(error, 'getWorkflowStatuses(workflow_statuses)');
-
-    const statuses = toCamelCase(data || []);
+    const data = await catalogGet('workflow_statuses', { workflow_id: id });
+    const statuses = toCamelCase(data?.rows || []);
     cache.statusesByWorkflowId.set(id, { statuses, ts: now });
     return statuses;
   },

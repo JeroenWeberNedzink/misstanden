@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
-import { supabase } from '../../lib/supabase';
 import { getApiAccessToken, getOptionalApiAccessToken, isValidApiAudience } from '../../lib/auth0ApiToken';
 import { normalizeHandlerRecord } from '../../services/utils/handlerNormalization';
 import AnonymousNavHeader from './AnonymousNavHeader';
@@ -87,59 +86,7 @@ const AuthContextNavigator = ({ children }) => {
         }
       }
 
-      let data = null;
-      let error = null;
-
-      if (normalizedSub) {
-        const resultBySub = await supabase
-          .from('handlers')
-          .select('*')
-          .eq('user_id', normalizedSub)
-          .eq('active', true)
-          .maybeSingle();
-        data = resultBySub.data;
-        error = resultBySub.error;
-      }
-
-      if (!data && normalizedEmail) {
-        const resultByEmail = await supabase
-          .from('handlers')
-          .select('*')
-          .ilike('email', normalizedEmail)
-          .eq('active', true)
-          .maybeSingle();
-        data = resultByEmail.data;
-        error = resultByEmail.error;
-
-        if (data && normalizedSub && !data.user_id) {
-          await supabase
-            .from('handlers')
-            .update({ user_id: normalizedSub })
-            .eq('id', data.id);
-        }
-      }
-
-      if (error) {
-        console.error('Failed to load handler profile:', error);
-        return null;
-      }
-
-      // If no handler found, return null
-      if (!data) {
-        return null;
-      }
-
-      // Update last_login timestamp (ignore errors)
-      try {
-        await supabase
-          .from('handlers')
-          .update({ last_login: new Date().toISOString() })
-          .eq('id', data.id);
-      } catch (updateError) {
-        console.warn('Could not update last_login:', updateError);
-      }
-
-      return normalizeHandlerRecord(data);
+      return null;
     } catch (error) {
       console.error('Error loading handler profile:', error);
       return null;
