@@ -90,13 +90,18 @@ function settings_http_request(
 
     if (function_exists('curl_init')) {
         $ch = curl_init();
-        curl_setopt_array($ch, [
+        $curlOptions = [
             CURLOPT_URL => $url,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_CUSTOMREQUEST => $method,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_TIMEOUT => $timeout,
-        ]);
+        ];
+        $caBundle = settings_find_ca_bundle();
+        if (stripos($url, 'https://') === 0 && $caBundle !== null) {
+            $curlOptions[CURLOPT_CAINFO] = $caBundle;
+        }
+        curl_setopt_array($ch, $curlOptions);
         if ($payloadJson !== null) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, $payloadJson);
         }
@@ -124,6 +129,14 @@ function settings_http_request(
             'timeout' => $timeout,
         ],
     ];
+    $caBundle = settings_find_ca_bundle();
+    if (stripos($url, 'https://') === 0 && $caBundle !== null) {
+        $opts['ssl'] = [
+            'cafile' => $caBundle,
+            'verify_peer' => true,
+            'verify_peer_name' => true,
+        ];
+    }
     if ($payloadJson !== null) {
         $opts['http']['content'] = $payloadJson;
     }
@@ -146,6 +159,75 @@ function settings_http_request(
     }
 
     return [$code, is_string($resp) ? $resp : ''];
+}
+
+function settings_find_ca_bundle(): ?string {
+    static $resolved = null;
+    static $initialized = false;
+
+    if ($initialized) {
+        return $resolved;
+    }
+    $initialized = true;
+
+    $candidates = [];
+
+    foreach ([
+        'SUPABASE_CA_BUNDLE',
+        'PHP_CURL_CAINFO',
+        'CURL_CA_BUNDLE',
+        'SSL_CERT_FILE',
+        'OPENSSL_CAFILE',
+    ] as $envKey) {
+        $value = trim((string)(getenv($envKey) ?: ''));
+        if ($value !== '') {
+            $candidates[] = $value;
+        }
+    }
+
+    foreach (['curl.cainfo', 'openssl.cafile'] as $iniKey) {
+        $value = trim((string)ini_get($iniKey));
+        if ($value !== '') {
+            $candidates[] = $value;
+        }
+    }
+
+    foreach (settings_candidate_roots() as $root) {
+        $candidates[] = $root . DIRECTORY_SEPARATOR . 'cacert.pem';
+        $candidates[] = $root . DIRECTORY_SEPARATOR . 'certs' . DIRECTORY_SEPARATOR . 'cacert.pem';
+    }
+
+    foreach ($candidates as $candidate) {
+        $candidate = trim((string)$candidate);
+        if ($candidate === '') {
+            continue;
+        }
+        $real = realpath($candidate);
+        $path = $real !== false ? $real : $candidate;
+        if (is_file($path) && is_readable($path)) {
+            $resolved = $path;
+            return $resolved;
+        }
+    }
+
+    $resolved = null;
+    return null;
+}
+
+function settings_debug_diagnostics(): array {
+    return [
+        'curl_available' => function_exists('curl_init'),
+        'allow_url_fopen' => filter_var((string)ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOLEAN),
+        'curl_cainfo' => trim((string)ini_get('curl.cainfo')) !== '',
+        'openssl_cafile' => trim((string)ini_get('openssl.cafile')) !== '',
+        'ca_bundle_found' => settings_find_ca_bundle() !== null,
+        'ca_bundle_path' => settings_find_ca_bundle(),
+        'env_present' => [
+            'VITE_SUPABASE_URL' => trim((string)(getenv('VITE_SUPABASE_URL') ?: '')) !== '',
+            'SUPABASE_SERVICE_ROLE_KEY' => trim((string)(getenv('SUPABASE_SERVICE_ROLE_KEY') ?: '')) !== '',
+            'SUPABASE_SERVICE_KEY' => trim((string)(getenv('SUPABASE_SERVICE_KEY') ?: '')) !== '',
+        ],
+    ];
 }
 
 function settings_supabase_request(
@@ -575,6 +657,7 @@ try {
     $data = ['error_id' => $errorId];
     if (isset($_GET['debug']) && (string)$_GET['debug'] === '1') {
         $data['error'] = api_redact_sensitive($e->getMessage());
+        $data['diagnostics'] = settings_debug_diagnostics();
     }
     settings_api_json(500, false, 'Internal server error', $data);
 }

@@ -302,8 +302,7 @@ function reporter_reply_insert_attachment(string $baseUrl, string $serviceKey, s
 }
 
 try {
-    load_env_file(__DIR__ . '/../../.env.local', true);
-    load_env_file(__DIR__ . '/../../.env', false);
+    load_runtime_env(__DIR__);
 
     api_apply_no_store_headers();
 

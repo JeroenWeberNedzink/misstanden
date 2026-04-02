@@ -176,6 +176,16 @@ Start (recommended on Windows PowerShell):
 .\nz-startup.ps1
 ```
 
+Local IIS deploy from your workstation:
+
+```powershell
+.\nz-startup.ps1 local
+```
+
+This runs a fresh `npm run build` and syncs `dist/` into `\\nz-web02\Websites\misstanden.nedzink.nl`.
+It also copies `.env`, optional `.env.local`, `cacert.pem`, and mirrors `vendor/` and `private/` when present so the IIS PHP runtime can boot correctly.
+After deploy it calls `https://misstanden.nedzink.nl/api/settings.api.php?debug=1` (or `MISSTANDEN_DEPLOY_URL`) and prints the response for a quick sanity check.
+
 Optional strict audience check:
 
 ```powershell

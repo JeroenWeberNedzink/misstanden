@@ -218,6 +218,7 @@ export default function ReportConfirmation() {
 
                 <Button
                   variant="default"
+                  
                   size="lg"
                   iconName={copied ? 'Check' : 'Copy'}
                   iconPosition="left"

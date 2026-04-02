@@ -21,13 +21,15 @@ function api_authz_supabase_request(string $method, string $url, string $service
     ];
 
     $ch = curl_init();
-    curl_setopt_array($ch, [
+    $curlOptions = [
         CURLOPT_URL => $url,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_CUSTOMREQUEST => $method,
         CURLOPT_HTTPHEADER => $headers,
         CURLOPT_TIMEOUT => 20,
-    ]);
+    ];
+    auth0_apply_ssl_options($curlOptions, $url);
+    curl_setopt_array($ch, $curlOptions);
 
     $resp = curl_exec($ch);
     $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);

@@ -119,6 +119,96 @@ function auth0_read_stale_jwks(string $domain): ?array {
     return $decoded['keys'];
 }
 
+function auth0_candidate_roots(): array {
+    $roots = [];
+    foreach ([__DIR__ . '/..', __DIR__ . '/../..'] as $candidate) {
+        $resolved = realpath($candidate);
+        if ($resolved === false || !is_dir($resolved)) {
+            continue;
+        }
+        if (!in_array($resolved, $roots, true)) {
+            $roots[] = $resolved;
+        }
+    }
+    if (!$roots) {
+        $roots[] = dirname(__DIR__);
+    }
+    return $roots;
+}
+
+function auth0_find_ca_bundle(): ?string {
+    static $resolved = null;
+    static $initialized = false;
+
+    if ($initialized) {
+        return $resolved;
+    }
+    $initialized = true;
+
+    $candidates = [];
+    foreach ([
+        'SUPABASE_CA_BUNDLE',
+        'PHP_CURL_CAINFO',
+        'CURL_CA_BUNDLE',
+        'SSL_CERT_FILE',
+        'OPENSSL_CAFILE',
+    ] as $envKey) {
+        $value = trim((string)(getenv($envKey) ?: ''));
+        if ($value !== '') {
+            $candidates[] = $value;
+        }
+    }
+
+    foreach (['curl.cainfo', 'openssl.cafile'] as $iniKey) {
+        $value = trim((string)ini_get($iniKey));
+        if ($value !== '') {
+            $candidates[] = $value;
+        }
+    }
+
+    foreach (auth0_candidate_roots() as $root) {
+        $candidates[] = $root . DIRECTORY_SEPARATOR . 'cacert.pem';
+        $candidates[] = $root . DIRECTORY_SEPARATOR . 'certs' . DIRECTORY_SEPARATOR . 'cacert.pem';
+    }
+
+    foreach ($candidates as $candidate) {
+        $candidate = trim((string)$candidate);
+        if ($candidate === '') {
+            continue;
+        }
+        $real = realpath($candidate);
+        $path = $real !== false ? $real : $candidate;
+        if (is_file($path) && is_readable($path)) {
+            $resolved = $path;
+            return $resolved;
+        }
+    }
+
+    $resolved = null;
+    return null;
+}
+
+function auth0_apply_ssl_options(array &$curlOptions, string $url): void {
+    if (stripos($url, 'https://') !== 0) {
+        return;
+    }
+    $caBundle = auth0_find_ca_bundle();
+    if ($caBundle !== null) {
+        $curlOptions[CURLOPT_CAINFO] = $caBundle;
+    }
+}
+
+function auth0_ssl_diagnostics(): array {
+    return [
+        'curl_available' => function_exists('curl_init'),
+        'allow_url_fopen' => filter_var((string)ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOLEAN),
+        'curl_cainfo' => trim((string)ini_get('curl.cainfo')) !== '',
+        'openssl_cafile' => trim((string)ini_get('openssl.cafile')) !== '',
+        'ca_bundle_found' => auth0_find_ca_bundle() !== null,
+        'ca_bundle_path' => auth0_find_ca_bundle(),
+    ];
+}
+
 function auth0_fetch_jwks(string $domain): array {
     $ttlSeconds = (int)(getenv('AUTH0_JWKS_CACHE_TTL_SECONDS') ?: 21600);
     if ($ttlSeconds <= 0) {
@@ -132,12 +222,14 @@ function auth0_fetch_jwks(string $domain): array {
 
     $url = 'https://' . $domain . '/.well-known/jwks.json';
     $ch = curl_init();
-    curl_setopt_array($ch, [
+    $curlOptions = [
         CURLOPT_URL => $url,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 10,
         CURLOPT_HTTPHEADER => ['Accept: application/json'],
-    ]);
+    ];
+    auth0_apply_ssl_options($curlOptions, $url);
+    curl_setopt_array($ch, $curlOptions);
     $resp = curl_exec($ch);
     $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_error($ch);

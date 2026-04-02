@@ -32,8 +32,7 @@ function me_json(int $status, bool $success, string $message, $data = null): voi
 }
 
 try {
-    load_env_file(__DIR__ . '/../../.env.local', true);
-    load_env_file(__DIR__ . '/../../.env', false);
+    load_runtime_env(__DIR__);
 
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         me_json(405, false, 'Method not allowed');
@@ -64,5 +63,22 @@ try {
     ]);
 } catch (Throwable $e) {
     $errorId = api_log_exception('me.api', $e);
-    me_json(500, false, 'Internal server error', ['error_id' => $errorId]);
+    $data = ['error_id' => $errorId];
+    if (isset($_GET['debug']) && (string)$_GET['debug'] === '1') {
+        $data['error'] = api_redact_sensitive($e->getMessage());
+        $data['diagnostics'] = array_merge(
+            auth0_ssl_diagnostics(),
+            [
+                'env_present' => [
+                    'VITE_AUTH0_DOMAIN' => trim((string)(getenv('VITE_AUTH0_DOMAIN') ?: '')) !== '',
+                    'VITE_AUTH0_CLIENT_ID' => trim((string)(getenv('VITE_AUTH0_CLIENT_ID') ?: '')) !== '',
+                    'VITE_AUTH0_AUDIENCE' => trim((string)(getenv('VITE_AUTH0_AUDIENCE') ?: '')) !== '',
+                    'VITE_SUPABASE_URL' => trim((string)(getenv('VITE_SUPABASE_URL') ?: '')) !== '',
+                    'SUPABASE_SERVICE_ROLE_KEY' => trim((string)(getenv('SUPABASE_SERVICE_ROLE_KEY') ?: '')) !== '',
+                    'SUPABASE_SERVICE_KEY' => trim((string)(getenv('SUPABASE_SERVICE_KEY') ?: '')) !== '',
+                ],
+            ]
+        );
+    }
+    me_json(500, false, 'Internal server error', $data);
 }

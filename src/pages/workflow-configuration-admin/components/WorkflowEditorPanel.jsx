@@ -28,6 +28,7 @@ export default function WorkflowEditorPanel({
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState(false);
   const [showDangerZone, setShowDangerZone] = useState(false);
+  const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
 
   useEffect(() => {
     if (!workflow) return;
@@ -45,6 +46,7 @@ export default function WorkflowEditorPanel({
     setErrors({});
     setTouched(false);
     setShowDangerZone(false);
+    setShowTechnicalDetails(false);
   }, [workflow?.id]);
 
   const statusCount = useMemo(() => {
@@ -128,10 +130,11 @@ export default function WorkflowEditorPanel({
               <div className="text-base font-bold text-sky-700">Stap 2 - Bewerk workflow</div>
             </div>
             <h2 className="text-lg font-bold text-foreground truncate">{workflow?.name}</h2>
-            <p className="text-xs text-muted-foreground truncate">
-              <span className="font-mono text-[11px]">{workflow?.code}</span>
-              {workflow?.description ? <span> - {workflow.description}</span> : null}
-            </p>
+            {workflow?.description ? (
+              <p className="text-xs text-muted-foreground truncate">{workflow.description}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Werk de naam en omschrijving bij voor dagelijkse administratie.</p>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -166,7 +169,7 @@ export default function WorkflowEditorPanel({
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <Input
               label="Naam"
               required
@@ -175,16 +178,6 @@ export default function WorkflowEditorPanel({
               error={errors.name}
               disabled={isBusy}
               description="Zichtbaar voor gebruikers in het meldformulier."
-            />
-
-            <Input
-              label="Code"
-              required
-              value={form.code}
-              onChange={(e) => handleChange({ code: e.target.value })}
-              error={errors.code}
-              disabled={isBusy}
-              description="Interne sleutel, gebruik kleine letters en underscores."
             />
           </div>
 
@@ -197,6 +190,39 @@ export default function WorkflowEditorPanel({
               rows={3}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none resize-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
             />
+          </div>
+
+          <div className="rounded-lg border border-sky-100 bg-sky-50/60 p-3">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between gap-3 text-left"
+              onClick={() => setShowTechnicalDetails((prev) => !prev)}
+              disabled={isBusy}
+            >
+              <div>
+                <div className="text-sm font-medium text-sky-900">Technische details</div>
+                <div className="text-xs text-sky-700">
+                  De interne workflowcode is alleen relevant voor beheer, koppelingen en support.
+                </div>
+              </div>
+              <Icon
+                name={showTechnicalDetails ? 'ChevronUp' : 'ChevronDown'}
+                size={16}
+                className="text-sky-700 shrink-0"
+              />
+            </button>
+
+            {showTechnicalDetails && (
+              <div className="mt-3 pt-3 border-t border-sky-100">
+                <Input
+                  label="Interne code"
+                  value={form.code}
+                  error={errors.code}
+                  disabled
+                  description="Deze sleutel wordt gebruikt door het systeem en is daarom hier alleen-lezen."
+                />
+              </div>
+            )}
           </div>
         </section>
 

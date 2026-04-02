@@ -172,8 +172,7 @@ function sla_escalation_hours_from_metadata($metadata): int {
 }
 
 try {
-    load_env_file(__DIR__ . '/../../.env.local', true);
-    load_env_file(__DIR__ . '/../../.env', false);
+    load_runtime_env(__DIR__);
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         sla_escalation_json(405, false, 'Method not allowed');

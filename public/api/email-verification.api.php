@@ -298,8 +298,7 @@ function ev_user_from_management(string $domain, string $mgmtToken, string $sub)
 }
 
 try {
-    load_env_file(__DIR__ . '/../../.env.local', true);
-    load_env_file(__DIR__ . '/../../.env', false);
+    load_runtime_env(__DIR__);
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         ev_json(405, false, 'Method not allowed');

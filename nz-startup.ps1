@@ -1,4 +1,6 @@
 param(
+    [ValidateSet('dev', 'local')]
+    [string]$Mode = 'dev',
     [switch]$RequireAuth0Audience
 )
 
@@ -104,6 +106,153 @@ function Resolve-ConfigValue($key, $rootDir) {
     }
 }
 
+function Invoke-RobocopyChecked($source, $destination, $files = @('*'), $extraArgs = @()) {
+    if (-not (Test-Path $source)) {
+        Die "Source path not found: $source"
+    }
+
+    if (-not (Test-Path $destination)) {
+        Info "Creating destination: $destination"
+        New-Item -ItemType Directory -Path $destination -Force | Out-Null
+    }
+
+    $fileArgs = @()
+    foreach ($pattern in $files) {
+        $fileArgs += [string]$pattern
+    }
+
+    $args = @(
+        $source,
+        $destination
+    ) + $fileArgs + $extraArgs
+
+    & robocopy @args | Out-Host
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -gt 7) {
+        Die "Robocopy failed ($exitCode) while copying '$source' to '$destination'"
+    }
+}
+
+function Invoke-DeployHealthCheck($siteUrl) {
+    $settingsUrl = ($siteUrl.TrimEnd('/') + '/api/settings.api.php?debug=1')
+    Info "Running post-deploy health check: $settingsUrl"
+    try {
+        $response = Invoke-WebRequest -Uri $settingsUrl -UseBasicParsing -TimeoutSec 30
+        $body = $response.Content
+        Ok "Health check responded with HTTP $([int]$response.StatusCode)"
+        if ($body) {
+            Write-Host $body
+        }
+    } catch {
+        $resp = $_.Exception.Response
+        if ($resp) {
+            $statusCode = [int]$resp.StatusCode
+            $stream = $resp.GetResponseStream()
+            $reader = New-Object System.IO.StreamReader($stream)
+            $body = $reader.ReadToEnd()
+            $reader.Close()
+            Warn "Health check returned HTTP $statusCode"
+            if ($body) {
+                Write-Host $body
+            }
+            return
+        }
+        Warn "Health check failed: $($_.Exception.Message)"
+    }
+}
+
+function Invoke-LocalDeploy($rootDir) {
+    $deployTarget = '\\nz-web02\Websites\misstanden.nedzink.nl'
+    $deploySiteUrl = if ($env:MISSTANDEN_DEPLOY_URL) { $env:MISSTANDEN_DEPLOY_URL } else { 'https://misstanden.nedzink.nl' }
+    $distDir = Join-Path $rootDir 'dist'
+    $distAssetsDir = Join-Path $distDir 'assets'
+    $distApiDir = Join-Path $distDir 'api'
+    $targetAssetsDir = Join-Path $deployTarget 'assets'
+    $targetApiDir = Join-Path $deployTarget 'api'
+    $vendorDir = Join-Path $rootDir 'vendor'
+    $privateDir = Join-Path $rootDir 'private'
+    $targetVendorDir = Join-Path $deployTarget 'vendor'
+    $targetPrivateDir = Join-Path $deployTarget 'private'
+
+    Info "Running production build"
+    Push-Location $rootDir
+    try {
+        & npm run build
+        if ($LASTEXITCODE -ne 0) {
+            Die "npm run build failed"
+        }
+    } finally {
+        Pop-Location
+    }
+
+    if (-not (Test-Path $deployTarget)) {
+        Die "Deploy target is not reachable: $deployTarget"
+    }
+    if (-not (Test-Path $distDir)) {
+        Die "Build output not found: $distDir"
+    }
+
+    Info "Deploying build output to $deployTarget"
+
+    $rootFiles = @('index.html', 'favicon.ico', 'manifest.json', 'robots.txt')
+    $existingRootFiles = @()
+    foreach ($file in $rootFiles) {
+        if (Test-Path (Join-Path $distDir $file)) {
+            $existingRootFiles += $file
+        }
+    }
+    if ($existingRootFiles.Count -gt 0) {
+        Invoke-RobocopyChecked $distDir $deployTarget $existingRootFiles @('/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
+    }
+
+    $runtimeRootFiles = @('.env', '.env.local', 'cacert.pem')
+    $existingRuntimeFiles = @()
+    foreach ($file in $runtimeRootFiles) {
+        if (Test-Path (Join-Path $rootDir $file)) {
+            $existingRuntimeFiles += $file
+        }
+    }
+    if ($existingRuntimeFiles.Count -gt 0) {
+        Info "Deploying runtime environment files"
+        Invoke-RobocopyChecked $rootDir $deployTarget $existingRuntimeFiles @('/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
+    } else {
+        Warn "No runtime runtime/support files found to deploy (.env / .env.local / cacert.pem)"
+    }
+
+    if (Test-Path $distAssetsDir) {
+        Invoke-RobocopyChecked $distAssetsDir $targetAssetsDir @('*') @('/MIR', '/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
+    } else {
+        Warn "Build output has no assets directory: $distAssetsDir"
+    }
+
+    if (Test-Path $distApiDir) {
+        Invoke-RobocopyChecked $distApiDir $targetApiDir @('*') @('/MIR', '/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
+    } else {
+        Warn "Build output has no api directory: $distApiDir"
+    }
+
+    if (Test-Path $vendorDir) {
+        Info "Deploying Composer vendor directory"
+        Invoke-RobocopyChecked $vendorDir $targetVendorDir @('*') @('/MIR', '/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
+    } else {
+        Warn "vendor directory not found locally: $vendorDir"
+    }
+
+    if (Test-Path $privateDir) {
+        Info "Deploying private runtime directory"
+        Invoke-RobocopyChecked $privateDir $targetPrivateDir @('*') @('/MIR', '/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
+    } else {
+        Warn "private directory not found locally: $privateDir"
+    }
+
+    Ok "Local deploy completed"
+    Write-Host "Target  : $deployTarget"
+    Write-Host "Build   : $distDir"
+    Write-Host "Site    : $deploySiteUrl"
+
+    Invoke-DeployHealthCheck $deploySiteUrl
+}
+
 # -----------------------------
 # Paths
 # -----------------------------
@@ -114,6 +263,11 @@ $ApiDir    = Join-Path $PublicDir "api"
 $DistApiDir = Join-Path $RootDir "dist\\api"
 
 if (-not (Test-Path $PublicDir)) { Die "public folder not found: $PublicDir" }
+
+if ($Mode -eq 'local') {
+    Invoke-LocalDeploy $RootDir
+    exit 0
+}
 
 # -----------------------------
 # Env defaults (PS 5.1 safe)

@@ -292,8 +292,7 @@ function apiResponse(int $code, bool $success, string $message, $data = null): v
 
 // Main request handling
 try {
-    load_env_file(__DIR__ . '/../../.env.local', true);
-    load_env_file(__DIR__ . '/../../.env', false);
+    load_runtime_env(__DIR__);
 
     $method = $_SERVER['REQUEST_METHOD'];
     $requiredScopes = $method === 'GET' ? TRANSLATIONS_SCOPES_READ : TRANSLATIONS_SCOPES_WRITE;

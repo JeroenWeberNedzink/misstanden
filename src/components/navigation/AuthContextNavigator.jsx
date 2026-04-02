@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { supabase } from '../../lib/supabase';
-import { getOptionalApiAccessToken } from '../../lib/auth0ApiToken';
+import { getApiAccessToken, getOptionalApiAccessToken, isValidApiAudience } from '../../lib/auth0ApiToken';
+import { normalizeHandlerRecord } from '../../services/utils/handlerNormalization';
 import AnonymousNavHeader from './AnonymousNavHeader';
 import HandlerNavigation from './HandlerNavigation';
 import NoAccessPage from '../auth/NoAccessPage';
@@ -10,7 +11,7 @@ import { isAdmin } from '../../utils/permissions';
 const readCachedHandlerProfile = () => {
   try {
     const cached = sessionStorage.getItem('handler_profile');
-    return cached ? JSON.parse(cached) : null;
+    return cached ? normalizeHandlerRecord(JSON.parse(cached)) : null;
   } catch {
     return null;
   }
@@ -40,13 +41,34 @@ const AuthContextNavigator = ({ children }) => {
     try {
       const normalizedEmail = String(email || '').toLowerCase().trim();
       const normalizedSub = String(sub || '').trim();
+      const cachedProfile = readCachedHandlerProfile();
+
+      if (cachedProfile) {
+        const cachedEmail = String(cachedProfile?.email || '').toLowerCase().trim();
+        const cachedUserId = String(cachedProfile?.user_id || '').trim();
+        if (
+          (normalizedSub && cachedUserId === normalizedSub) ||
+          (normalizedEmail && cachedEmail === normalizedEmail)
+        ) {
+          return cachedProfile;
+        }
+      }
 
       if (!normalizedEmail && !normalizedSub) {
         console.warn('No email/sub provided to loadHandlerProfile');
         return null;
       }
 
-      const token = await getOptionalApiAccessToken(getAccessTokenSilently);
+      let token = await getOptionalApiAccessToken(getAccessTokenSilently);
+      if (!token && isValidApiAudience()) {
+        try {
+          token = await getApiAccessToken(getAccessTokenSilently, { cacheMode: 'off' });
+        } catch (tokenError) {
+          if (import.meta.env.DEV) {
+            console.debug('[AuthContext] Auth0 API token retry failed, falling back to direct handler lookup', tokenError);
+          }
+        }
+      }
       if (token) {
         try {
           const response = await fetch('/api/me.api.php', {
@@ -57,7 +79,7 @@ const AuthContextNavigator = ({ children }) => {
           });
           const payload = await response.json().catch(() => null);
           if (response.ok && payload?.success && payload?.data?.handler) {
-            return payload.data.handler;
+            return normalizeHandlerRecord(payload.data.handler);
           }
         } catch (apiError) {
           // Fallback to direct lookup to keep local/dev workflows working.
@@ -104,7 +126,6 @@ const AuthContextNavigator = ({ children }) => {
 
       // If no handler found, return null
       if (!data) {
-        console.warn(`No active handler found for user (sub=${normalizedSub || 'n/a'}, email=${normalizedEmail || 'n/a'})`);
         return null;
       }
 
@@ -118,7 +139,7 @@ const AuthContextNavigator = ({ children }) => {
         console.warn('Could not update last_login:', updateError);
       }
 
-      return data;
+      return normalizeHandlerRecord(data);
     } catch (error) {
       console.error('Error loading handler profile:', error);
       return null;
@@ -142,13 +163,13 @@ const AuthContextNavigator = ({ children }) => {
       // Prefer your existing session-based auth if present
       const authToken = sessionStorage.getItem('auth_token');
       const userRoleData = sessionStorage.getItem('user_role');
-      const cachedProfile = sessionStorage.getItem('handler_profile');
+      const cachedProfile = readCachedHandlerProfile();
 
       // 1) If session says authenticated, trust it (but verify on Auth0 change)
       if (authToken && userRoleData && cachedProfile && !user) {
         setIsAuthenticated(true);
         setUserRole(userRoleData);
-        setHandlerProfile(JSON.parse(cachedProfile));
+        setHandlerProfile(cachedProfile);
         setIsLoading(false);
         return;
       }
@@ -160,7 +181,9 @@ const AuthContextNavigator = ({ children }) => {
 
         if (!profile) {
           // User authenticated in Auth0 but not in handlers table
-          console.warn('User authenticated but not found in handlers table');
+          if (import.meta.env.DEV) {
+            console.debug('User authenticated but not found in handlers table');
+          }
           setIsAuthenticated(false);
           setUserRole(null);
           setHandlerProfile(null);
@@ -177,7 +200,7 @@ const AuthContextNavigator = ({ children }) => {
         // Persist to session
         sessionStorage.setItem('auth_token', 'auth0');
         sessionStorage.setItem('user_role', derivedRole);
-        sessionStorage.setItem('handler_profile', JSON.stringify(profile));
+        sessionStorage.setItem('handler_profile', JSON.stringify(normalizeHandlerRecord(profile)));
         setIsLoading(false);
         return;
       }

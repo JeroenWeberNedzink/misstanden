@@ -102,8 +102,7 @@ function supabase_request(string $method, string $url, string $apikey, $payload 
 }
 
 try {
-    load_env_file(__DIR__ . '/../../.env.local', true);
-    load_env_file(__DIR__ . '/../../.env', false);
+    load_runtime_env(__DIR__);
 
     $authMode = 'scheduler';
     $adminCtx = null;

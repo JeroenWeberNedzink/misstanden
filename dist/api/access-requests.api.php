@@ -812,8 +812,7 @@ function ar_reject_request(
 }
 
 try {
-    load_env_file(__DIR__ . '/../../.env.local', true);
-    load_env_file(__DIR__ . '/../../.env', false);
+    load_runtime_env(__DIR__);
 
     $baseUrl = rtrim(ar_env_required('VITE_SUPABASE_URL'), '/');
     $serviceKey = supabase_get_service_role_key();

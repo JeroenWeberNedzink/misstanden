@@ -81,8 +81,11 @@ function ServiceTokenBridge() {
     reportService.setTokenProvider(provider);
 
     if (audienceIssue) {
+      const message = audienceIssue === 'tenant'
+        ? '[Auth0] VITE_AUTH0_AUDIENCE is set to the Auth0 tenant URL. Set it to the API audience to enable authenticated requests.'
+        : '[Auth0] VITE_AUTH0_AUDIENCE is configured for the MFA flow. Set it to the API audience to enable authenticated requests.';
       console.warn(
-        '[Auth0] VITE_AUTH0_AUDIENCE is configured for the MFA flow. Set it to the API audience to enable authenticated requests.'
+        message
       );
     }
   }, [getAccessTokenSilently]);
@@ -155,7 +158,7 @@ export default function App() {
             Auth0 audience misconfigured
           </p>
           <p className="mt-1 text-xs text-amber-800">
-            <code>VITE_AUTH0_AUDIENCE</code> is set to the MFA audience. Change it to your API identifier so the app can request access tokens.
+            <code>VITE_AUTH0_AUDIENCE</code> must be your Auth0 API identifier, not the tenant URL or MFA audience.
           </p>
         </div>
       )}

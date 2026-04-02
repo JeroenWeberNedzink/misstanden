@@ -97,7 +97,27 @@ const ProtectedRoute = ({
   }
 
   // If access denied, show message or redirect
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    window.__nzProtectedRouteDebug = {
+      path: window.location.pathname,
+      isAuthenticated,
+      auth0Loading,
+      permissionsLoading,
+      settingsLoading,
+      permission,
+      permissions,
+      requireAll,
+      role,
+      roles,
+      hasAccess,
+      sessionHint: hasSessionHint,
+    };
+  }
+
   if (!hasAccess) {
+    if (import.meta.env.DEV) {
+      console.debug('[ProtectedRoute] Access denied', window.__nzProtectedRouteDebug, window.__nzPermissionsDebug);
+    }
     if (showAccessDenied) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-background">

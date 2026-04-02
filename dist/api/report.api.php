@@ -250,8 +250,7 @@ function report_render_html(array $ticket): string {
 }
 
 try {
-    load_env_file(__DIR__ . '/../../.env.local', true);
-    load_env_file(__DIR__ . '/../../.env', false);
+    load_runtime_env(__DIR__);
 
     api_apply_no_store_headers();
 

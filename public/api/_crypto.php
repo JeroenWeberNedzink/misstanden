@@ -48,6 +48,34 @@ function load_env_file(string $file, bool $override = true): void {
     apply_env_aliases();
 }
 
+function runtime_env_candidate_roots(?string $anchorDir = null): array {
+    $anchor = $anchorDir ?: __DIR__;
+    $roots = [];
+
+    foreach ([$anchor . '/..', $anchor . '/../..'] as $candidate) {
+        $resolved = realpath($candidate);
+        if ($resolved === false || !is_dir($resolved)) {
+            continue;
+        }
+        if (!in_array($resolved, $roots, true)) {
+            $roots[] = $resolved;
+        }
+    }
+
+    if (!$roots) {
+        $roots[] = dirname($anchor);
+    }
+
+    return $roots;
+}
+
+function load_runtime_env(?string $anchorDir = null): void {
+    foreach (array_reverse(runtime_env_candidate_roots($anchorDir)) as $root) {
+        load_env_file($root . '/.env', false);
+        load_env_file($root . '/.env.local', true);
+    }
+}
+
 function get_email_crypto_key(): string {
     $path = getenv('EMAIL_ENC_KEY_PATH');
     if (!$path) {

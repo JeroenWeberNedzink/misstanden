@@ -228,8 +228,7 @@ function analytics_build_location_series(array $countsByCode, array $catalog, in
 }
 
 try {
-    load_env_file(__DIR__ . '/../../.env.local', true);
-    load_env_file(__DIR__ . '/../../.env', false);
+    load_runtime_env(__DIR__);
 
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         analytics_json(405, false, 'Method not allowed');

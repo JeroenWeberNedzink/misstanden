@@ -1,4 +1,5 @@
 const API_AUDIENCE = String(import.meta.env?.VITE_AUTH0_AUDIENCE || '').trim();
+const AUTH0_DOMAIN = String(import.meta.env?.VITE_AUTH0_DOMAIN || '').trim();
 const API_SCOPE = String(import.meta.env?.VITE_AUTH0_API_SCOPE || '').trim();
 const RECOVERABLE_AUTH0_ERROR_HINTS = [
   'invalid_grant',
@@ -39,6 +40,15 @@ export const getApiAudienceIssue = () => {
     return 'missing';
   }
 
+  const normalizedAudience = API_AUDIENCE.replace(/\/+$/, '').toLowerCase();
+  const tenantAudience = AUTH0_DOMAIN
+    ? `https://${AUTH0_DOMAIN}`.replace(/\/+$/, '').toLowerCase()
+    : '';
+
+  if (tenantAudience && normalizedAudience === tenantAudience) {
+    return 'tenant';
+  }
+
   if (API_AUDIENCE.toLowerCase().includes('/mfa/')) {
     return 'mfa';
   }
@@ -64,8 +74,12 @@ export const getApiAccessToken = async (getAccessTokenSilently, { scope = '', ca
   if (!audience) {
     throw new Error('Missing VITE_AUTH0_AUDIENCE for API access tokens');
   }
-  if (getApiAudienceIssue()) {
+  const audienceIssue = getApiAudienceIssue();
+  if (audienceIssue === 'mfa') {
     throw new Error('VITE_AUTH0_AUDIENCE is configured for the MFA flow. Set it to your API audience instead.');
+  }
+  if (audienceIssue === 'tenant') {
+    throw new Error('VITE_AUTH0_AUDIENCE is set to the Auth0 tenant URL. Set it to your API audience instead.');
   }
 
   const mergedScope = mergeScope(API_SCOPE, scope);

@@ -78,13 +78,15 @@ function wf_req(string $method, string $url, string $key, $payload = null, bool 
     if ($repr) $headers[] = 'Prefer: resolution=merge-duplicates,return=representation';
 
     $ch = curl_init();
-    curl_setopt_array($ch, [
+    $curlOptions = [
         CURLOPT_URL => $url,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_CUSTOMREQUEST => $method,
         CURLOPT_HTTPHEADER => $headers,
         CURLOPT_TIMEOUT => 25,
-    ]);
+    ];
+    auth0_apply_ssl_options($curlOptions, $url);
+    curl_setopt_array($ch, $curlOptions);
     if ($payload !== null) curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_UNESCAPED_UNICODE));
     $resp = curl_exec($ch);
     $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -263,9 +265,24 @@ function wf_clean_id_array($raw): array {
     return $out;
 }
 
+function wf_debug_diagnostics(): array {
+    return array_merge(
+        auth0_ssl_diagnostics(),
+        [
+            'env_present' => [
+                'VITE_AUTH0_DOMAIN' => trim((string)(getenv('VITE_AUTH0_DOMAIN') ?: '')) !== '',
+                'VITE_AUTH0_CLIENT_ID' => trim((string)(getenv('VITE_AUTH0_CLIENT_ID') ?: '')) !== '',
+                'VITE_AUTH0_AUDIENCE' => trim((string)(getenv('VITE_AUTH0_AUDIENCE') ?: '')) !== '',
+                'VITE_SUPABASE_URL' => trim((string)(getenv('VITE_SUPABASE_URL') ?: '')) !== '',
+                'SUPABASE_SERVICE_ROLE_KEY' => trim((string)(getenv('SUPABASE_SERVICE_ROLE_KEY') ?: '')) !== '',
+                'SUPABASE_SERVICE_KEY' => trim((string)(getenv('SUPABASE_SERVICE_KEY') ?: '')) !== '',
+            ],
+        ]
+    );
+}
+
 try {
-    load_env_file(__DIR__ . '/../../.env.local', true);
-    load_env_file(__DIR__ . '/../../.env', false);
+    load_runtime_env(__DIR__);
 
     $baseUrl = wf_url();
     $serviceKey = wf_key();
@@ -1028,5 +1045,10 @@ try {
     wf_json(400, false, 'Unsupported action');
 } catch (Throwable $e) {
     $errorId = api_log_exception('workflows.api', $e);
-    wf_json(500, false, 'Internal server error', ['error_id' => $errorId]);
+    $data = ['error_id' => $errorId];
+    if (isset($_GET['debug']) && (string)$_GET['debug'] === '1') {
+        $data['error'] = api_redact_sensitive($e->getMessage());
+        $data['diagnostics'] = wf_debug_diagnostics();
+    }
+    wf_json(500, false, 'Internal server error', $data);
 }
