@@ -50,14 +50,39 @@ function sqlserver_config(): array {
     ];
 }
 
+function sqlserver_project_root(): string {
+    $candidates = [
+        dirname(__DIR__),
+        dirname(__DIR__, 2),
+    ];
+
+    foreach ($candidates as $candidate) {
+        $resolved = realpath($candidate);
+        $path = ($resolved !== false && is_dir($resolved)) ? $resolved : $candidate;
+        if (
+            is_file($path . DIRECTORY_SEPARATOR . '.env')
+            || is_dir($path . DIRECTORY_SEPARATOR . 'private')
+            || is_dir($path . DIRECTORY_SEPARATOR . 'run')
+        ) {
+            return $path;
+        }
+    }
+
+    $fallback = dirname(__DIR__, 2);
+    $resolvedFallback = realpath($fallback);
+    return ($resolvedFallback !== false && is_dir($resolvedFallback)) ? $resolvedFallback : $fallback;
+}
+
 function sqlserver_bridge_script_path(): string {
-    return realpath(__DIR__ . '/../../private/sqlserver-bridge.ps1') ?: (__DIR__ . '/../../private/sqlserver-bridge.ps1');
+    $path = sqlserver_project_root() . DIRECTORY_SEPARATOR . 'private' . DIRECTORY_SEPARATOR . 'sqlserver-bridge.ps1';
+    $resolved = realpath($path);
+    return $resolved !== false ? $resolved : $path;
 }
 
 function sqlserver_temp_dir(): string {
-    $dir = realpath(__DIR__ . '/../../run/sqlserver');
+    $dir = realpath(sqlserver_project_root() . DIRECTORY_SEPARATOR . 'run' . DIRECTORY_SEPARATOR . 'sqlserver');
     if ($dir === false) {
-        $dir = __DIR__ . '/../../run/sqlserver';
+        $dir = sqlserver_project_root() . DIRECTORY_SEPARATOR . 'run' . DIRECTORY_SEPARATOR . 'sqlserver';
     }
     if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) {
         throw new Exception('Unable to create SQL Server temp directory');
@@ -194,4 +219,20 @@ function sqlserver_scalar(string $sql, array $params = [], int $timeout = 30) {
     ]]);
 
     return $results[0]['value'] ?? null;
+}
+
+function sqlserver_execute(string $sql, array $params = [], int $timeout = 30): int {
+    $normalizedParams = [];
+    foreach ($params as $key => $value) {
+        $normalizedParams[] = sqlserver_normalize_parameter((string)$key, $value);
+    }
+
+    $results = sqlserver_run([[
+        'type' => 'nonquery',
+        'sql' => $sql,
+        'params' => $normalizedParams,
+        'timeout' => $timeout,
+    ]]);
+
+    return (int)($results[0]['affected'] ?? 0);
 }

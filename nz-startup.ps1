@@ -194,7 +194,7 @@ function Invoke-LocalDeploy($rootDir) {
 
     Info "Deploying build output to $deployTarget"
 
-    $rootFiles = @('index.html', 'favicon.ico', 'manifest.json', 'robots.txt')
+    $rootFiles = @('index.html', 'favicon.ico', 'manifest.json', 'robots.txt', 'web.config')
     $existingRootFiles = @()
     foreach ($file in $rootFiles) {
         if (Test-Path (Join-Path $distDir $file)) {

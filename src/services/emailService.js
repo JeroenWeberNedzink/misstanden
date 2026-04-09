@@ -121,6 +121,7 @@ const REPORTER_EMAIL_COPY = {
     notProvided: 'Not provided',
     confirmationTitle: 'Confirmation of your report',
     confirmationIntro: 'Thank you for your report. We received it and started processing.',
+    confirmationSupportingText: 'Keep this email carefully. You need your ticket number and access code to check your report later.',
     coreDetails: 'Core details',
     ticketNumber: 'Ticket number',
     status: 'Status',
@@ -131,6 +132,18 @@ const REPORTER_EMAIL_COPY = {
     description: 'Description',
     accessCode: 'Access code',
     accessCodeHelp: 'Keep this code to track your report status.',
+    portalAccessTitle: 'How to access your report',
+    portalAccessIntro: 'Use the details below to view your report status in the portal.',
+    portalLinkLabel: 'Open report portal',
+    portalUrlLabel: 'Portal',
+    portalInstruction1: 'Open the report portal.',
+    portalInstruction2: 'Enter your ticket number exactly as shown below.',
+    portalInstruction3: 'Enter your 6-digit access code.',
+    portalInstruction4: 'Click the button to view the status of your report.',
+    credentialsTitle: 'Your login details',
+    credentialHelp: 'Without these details you cannot open your report in the portal.',
+    saveDetailsTitle: 'Important',
+    saveDetailsBody: 'Save this email or write down the ticket number and access code somewhere safe.',
     nextSteps: 'What happens next',
     nextStep1: 'We review your report and route it to the correct workflow.',
     nextStep2: 'You receive updates on important status changes.',
@@ -193,6 +206,7 @@ const REPORTER_EMAIL_COPY = {
     notProvided: 'Niet opgegeven',
     confirmationTitle: 'Bevestiging van uw melding',
     confirmationIntro: 'Bedankt voor uw melding. We hebben deze ontvangen en nemen deze in behandeling.',
+    confirmationSupportingText: 'Bewaar deze e-mail goed. U heeft uw ticketnummer en toegangscode later nodig om uw melding terug te openen.',
     coreDetails: 'Kerngegevens',
     ticketNumber: 'Ticketnummer',
     status: 'Status',
@@ -203,6 +217,18 @@ const REPORTER_EMAIL_COPY = {
     description: 'Omschrijving',
     accessCode: 'Toegangscode',
     accessCodeHelp: 'Bewaar deze code om de status van uw melding te volgen.',
+    portalAccessTitle: 'Zo opent u uw melding opnieuw',
+    portalAccessIntro: 'Gebruik onderstaande gegevens om uw melding later terug te vinden in het portaal.',
+    portalLinkLabel: 'Open meldingenportaal',
+    portalUrlLabel: 'Portaal',
+    portalInstruction1: 'Open het meldingenportaal.',
+    portalInstruction2: 'Vul uw ticketnummer exact zo in als hieronder staat.',
+    portalInstruction3: 'Vul daarna uw 6-cijferige toegangscode in.',
+    portalInstruction4: 'Klik op de knop om de status van uw melding te bekijken.',
+    credentialsTitle: 'Uw inloggegevens',
+    credentialHelp: 'Zonder deze gegevens kunt u uw melding niet openen in het portaal.',
+    saveDetailsTitle: 'Belangrijk',
+    saveDetailsBody: 'Bewaar deze e-mail of noteer ticketnummer en toegangscode op een veilige plaats.',
     nextSteps: 'Wat gebeurt er nu',
     nextStep1: 'We beoordelen uw melding en koppelen deze aan de juiste workflow.',
     nextStep2: 'U ontvangt updates bij belangrijke statuswijzigingen.',
@@ -265,6 +291,7 @@ const REPORTER_EMAIL_COPY = {
     notProvided: 'Nicht angegeben',
     confirmationTitle: 'Bestaetigung Ihrer Meldung',
     confirmationIntro: 'Danke fuer Ihre Meldung. Wir haben sie erhalten und bearbeiten sie jetzt.',
+    confirmationSupportingText: 'Bewahren Sie diese E-Mail gut auf. Sie brauchen Ticketnummer und Zugangscode, um Ihre Meldung spaeter wieder zu oeffnen.',
     coreDetails: 'Kerndaten',
     ticketNumber: 'Ticketnummer',
     status: 'Status',
@@ -275,6 +302,18 @@ const REPORTER_EMAIL_COPY = {
     description: 'Beschreibung',
     accessCode: 'Zugangscode',
     accessCodeHelp: 'Bewahren Sie diesen Code auf, um den Status zu verfolgen.',
+    portalAccessTitle: 'So greifen Sie auf Ihre Meldung zu',
+    portalAccessIntro: 'Verwenden Sie die folgenden Angaben, um den Status Ihrer Meldung im Portal zu sehen.',
+    portalLinkLabel: 'Meldeportal oeffnen',
+    portalUrlLabel: 'Portal',
+    portalInstruction1: 'Oeffnen Sie das Meldeportal.',
+    portalInstruction2: 'Geben Sie Ihre Ticketnummer genau wie unten gezeigt ein.',
+    portalInstruction3: 'Geben Sie Ihren 6-stelligen Zugangscode ein.',
+    portalInstruction4: 'Klicken Sie auf die Schaltflaeche, um den Status Ihrer Meldung anzuzeigen.',
+    credentialsTitle: 'Ihre Zugangsdaten',
+    credentialHelp: 'Ohne diese Daten koennen Sie Ihre Meldung im Portal nicht oeffnen.',
+    saveDetailsTitle: 'Wichtig',
+    saveDetailsBody: 'Speichern Sie diese E-Mail oder notieren Sie Ticketnummer und Zugangscode an einem sicheren Ort.',
     nextSteps: 'Naechste Schritte',
     nextStep1: 'Wir pruefen Ihre Meldung und leiten sie in den richtigen Workflow.',
     nextStep2: 'Sie erhalten Updates bei wichtigen Statusaenderungen.',
@@ -337,6 +376,7 @@ const REPORTER_EMAIL_COPY = {
     notProvided: 'Non precise',
     confirmationTitle: 'Confirmation de votre signalement',
     confirmationIntro: 'Merci pour votre signalement. Nous l avons recu et il est en cours de traitement.',
+    confirmationSupportingText: 'Conservez bien cet e-mail. Vous aurez besoin du numero de ticket et du code d acces pour rouvrir votre signalement plus tard.',
     coreDetails: 'Informations principales',
     ticketNumber: 'Numero de ticket',
     status: 'Statut',
@@ -347,6 +387,18 @@ const REPORTER_EMAIL_COPY = {
     description: 'Description',
     accessCode: 'Code d acces',
     accessCodeHelp: 'Conservez ce code pour suivre le statut.',
+    portalAccessTitle: 'Comment acceder a votre signalement',
+    portalAccessIntro: 'Utilisez les informations ci-dessous pour consulter le statut de votre signalement dans le portail.',
+    portalLinkLabel: 'Ouvrir le portail',
+    portalUrlLabel: 'Portail',
+    portalInstruction1: 'Ouvrez le portail de signalement.',
+    portalInstruction2: 'Saisissez votre numero de ticket exactement comme indique ci-dessous.',
+    portalInstruction3: 'Saisissez ensuite votre code d acces a 6 chiffres.',
+    portalInstruction4: 'Cliquez sur le bouton pour afficher le statut de votre signalement.',
+    credentialsTitle: 'Vos donnees de connexion',
+    credentialHelp: 'Sans ces informations, vous ne pourrez pas ouvrir votre signalement dans le portail.',
+    saveDetailsTitle: 'Important',
+    saveDetailsBody: 'Conservez cet e-mail ou notez le numero de ticket et le code d acces dans un endroit sur.',
     nextSteps: 'Etapes suivantes',
     nextStep1: 'Nous evaluons votre signalement et le dirigeons vers le bon workflow.',
     nextStep2: 'Vous recevrez des mises a jour lors des changements importants.',
@@ -409,6 +461,7 @@ const REPORTER_EMAIL_COPY = {
     notProvided: 'Nao informado',
     confirmationTitle: 'Confirmacao do seu reporte',
     confirmationIntro: 'Obrigado pelo seu reporte. Recebemos e iniciamos o tratamento.',
+    confirmationSupportingText: 'Guarde este e-mail com cuidado. Voce precisara do numero do ticket e do codigo de acesso para abrir o reporte novamente depois.',
     coreDetails: 'Detalhes principais',
     ticketNumber: 'Numero do ticket',
     status: 'Status',
@@ -419,6 +472,18 @@ const REPORTER_EMAIL_COPY = {
     description: 'Descricao',
     accessCode: 'Codigo de acesso',
     accessCodeHelp: 'Guarde este codigo para acompanhar o status.',
+    portalAccessTitle: 'Como acessar seu reporte',
+    portalAccessIntro: 'Use os dados abaixo para consultar o status do seu reporte no portal.',
+    portalLinkLabel: 'Abrir portal',
+    portalUrlLabel: 'Portal',
+    portalInstruction1: 'Abra o portal de reportes.',
+    portalInstruction2: 'Digite o numero do ticket exatamente como aparece abaixo.',
+    portalInstruction3: 'Digite o codigo de acesso de 6 digitos.',
+    portalInstruction4: 'Clique no botao para visualizar o status do seu reporte.',
+    credentialsTitle: 'Seus dados de acesso',
+    credentialHelp: 'Sem esses dados, voce nao conseguira abrir seu reporte no portal.',
+    saveDetailsTitle: 'Importante',
+    saveDetailsBody: 'Guarde este e-mail ou anote o numero do ticket e o codigo de acesso em um local seguro.',
     nextSteps: 'Proximos passos',
     nextStep1: 'Vamos revisar seu reporte e encaminhar para o fluxo correto.',
     nextStep2: 'Voce recebera atualizacoes em mudancas importantes.',
@@ -593,11 +658,28 @@ const buildMetaTable = (rows) => `
   </table>
 `;
 
+const getPortalAccessUrl = () => {
+  try {
+    if (typeof window !== 'undefined' && window?.location?.origin) {
+      return `${window.location.origin}/ticket-access-portal`;
+    }
+  } catch {
+    // ignore
+  }
+  return 'https://misstanden.nedzink.nl/ticket-access-portal';
+};
+
 const baseStyles = `
 <style>
+  .email-shell { background: #ffffff; border: 1px solid #d9e6f2; border-radius: 18px; overflow: hidden; margin: 0; }
+  .brand-header { background: linear-gradient(180deg, #f7fbff 0%, #edf5fb 100%); border-bottom: 1px solid #d9e6f2; padding: 22px 24px 18px; }
+  .brand-topline { margin: 0 0 6px 0; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #5d7f9f; }
+  .brand-title { margin: 0; font-size: 24px; line-height: 1.2; font-weight: 700; color: #0f3b63; }
+  .brand-subtitle { margin: 10px 0 0 0; font-size: 14px; line-height: 1.6; color: #35526d; }
+  .email-content { padding: 22px 24px 26px; background: #ffffff; }
   .section-title { margin: 0 0 8px 0; font-size: 16px; color: #0f172a; }
   .lead { margin: 0 0 12px 0; font-size: 15px; color: #1f2937; }
-  .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 12px 0; }
+  .card { background: #f8fbfe; border: 1px solid #dce8f3; border-radius: 14px; padding: 18px; margin: 14px 0; }
   .meta-table { width: 100%; border-collapse: collapse; }
   .meta-table td { padding: 6px 0; font-size: 14px; vertical-align: top; }
   .meta-label { width: 140px; color: #64748b; }
@@ -608,8 +690,23 @@ const baseStyles = `
   .badge-medium { background: #fef9c3; color: #a16207; }
   .badge-low { background: #dcfce7; color: #15803d; }
   .badge-neutral { background: #e2e8f0; color: #334155; }
-  .callout { background: #ecfeff; border-left: 4px solid #0ea5e9; padding: 12px; border-radius: 8px; margin: 12px 0; }
+  .callout { background: #f4f9fd; border-left: 4px solid #2e6f9f; padding: 14px; border-radius: 10px; margin: 14px 0; }
   .callout strong { color: #0f172a; }
+  .instruction-list { margin: 10px 0 0 0; padding: 0; list-style: none; }
+  .instruction-list li { margin: 0 0 10px 0; padding-left: 34px; position: relative; color: #29445b; line-height: 1.5; }
+  .instruction-step { position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 999px; background: #0f5f9c; color: #ffffff; font-size: 12px; font-weight: 700; text-align: center; line-height: 22px; }
+  .credential-grid { width: 100%; border-collapse: separate; border-spacing: 12px; margin: 10px -12px 0; }
+  .credential-card { background: #ffffff; border: 1px solid #cfe0ed; border-radius: 12px; padding: 14px; }
+  .credential-label { margin: 0 0 6px 0; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #62809b; }
+  .credential-value { margin: 0; font-size: 22px; line-height: 1.2; font-weight: 700; letter-spacing: 0.02em; color: #103a60; }
+  .credential-value.mono { font-family: Consolas, 'Courier New', monospace; font-size: 24px; }
+  .portal-link-box { background: #ffffff; border: 1px solid #cfe0ed; border-radius: 12px; padding: 14px; margin-top: 12px; }
+  .portal-link-label { margin: 0 0 6px 0; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #62809b; }
+  .portal-link-url { color: #0f5f9c; word-break: break-all; font-size: 14px; line-height: 1.5; text-decoration: none; }
+  .portal-button { display: inline-block; margin-top: 14px; padding: 12px 18px; background: #0f5f9c; color: #ffffff !important; border-radius: 10px; font-size: 14px; font-weight: 700; text-decoration: none; }
+  .portal-button:hover { background: #0b4e81; }
+  .help-note { margin: 10px 0 0 0; font-size: 13px; color: #476782; line-height: 1.6; }
+  .divider-space { height: 4px; }
   .muted { color: #64748b; font-size: 13px; }
   .list { margin: 8px 0 0 0; padding: 0 0 0 18px; }
 </style>
@@ -751,44 +848,88 @@ export async function sendReportConfirmationEmail(ticket) {
   const copy = getReporterEmailCopy(language);
   const safeSeverityLabel = severityLabel || severityLabelFromCode(severityCode, language);
   const statusLabel = getStatusLabel({ metadata, statusLabel: ticket.statusLabel, status: ticket.status, statusCode: ticket.statusCode });
+  const portalUrl = getPortalAccessUrl();
 
   const html = `
 ${baseStyles}
-<h2 class="section-title">${escapeHtml(copy.confirmationTitle)}</h2>
-<p class="lead">${escapeHtml(copy.greeting || 'Dear')} ${escapeHtml(reporterName || copy.reporterFallback)},</p>
-<p class="lead">${escapeHtml(copy.confirmationIntro)}</p>
+<div class="email-shell">
+  <div class="brand-header">
+    <div class="brand-topline">NedZink</div>
+    <h1 class="brand-title">${escapeHtml(copy.confirmationTitle)}</h1>
+    <p class="brand-subtitle">${escapeHtml(copy.confirmationIntro)}</p>
+  </div>
 
-<div class="card">
-  <h3 class="section-title">${escapeHtml(copy.coreDetails)}</h3>
-  ${buildMetaTable([
-    [copy.ticketNumber, escapeHtml(ticketNumber || '-')],
-    [copy.status, escapeHtml(statusLabel)],
-    [copy.severity, `<span class="badge ${severityClassFromCode(severityCode)}">${escapeHtml(safeSeverityLabel)}</span>`],
-    [copy.workflow, escapeHtml(workflowType || '-')],
-    [copy.location, escapeHtml(location || copy.notProvided)],
-    [copy.submittedOn, escapeHtml(formatDateByLanguage(submittedAt, language))]
-  ])}
-  <div class="section-title" style="margin-top:12px;">${escapeHtml(copy.description)}</div>
-  <div>${nl2br(description || '-')}</div>
+  <div class="email-content">
+    <p class="lead">${escapeHtml(copy.greeting || 'Dear')} ${escapeHtml(reporterName || copy.reporterFallback)},</p>
+    <p class="lead">${escapeHtml(copy.confirmationSupportingText || copy.accessCodeHelp)}</p>
+
+    <div class="card">
+      <h3 class="section-title">${escapeHtml(copy.credentialsTitle || copy.accessCode)}</h3>
+      <p class="help-note">${escapeHtml(copy.credentialHelp || copy.accessCodeHelp)}</p>
+      <table class="credential-grid" role="presentation">
+        <tr>
+          <td width="50%" style="vertical-align:top;">
+            <div class="credential-card">
+              <div class="credential-label">${escapeHtml(copy.ticketNumber)}</div>
+              <p class="credential-value mono">${escapeHtml(ticketNumber || '-')}</p>
+            </div>
+          </td>
+          <td width="50%" style="vertical-align:top;">
+            <div class="credential-card">
+              <div class="credential-label">${escapeHtml(copy.accessCode)}</div>
+              <p class="credential-value mono">${escapeHtml(accessCode || '-')}</p>
+            </div>
+          </td>
+        </tr>
+      </table>
+      <div class="callout">
+        <strong>${escapeHtml(copy.saveDetailsTitle || 'Important')}</strong><br/>
+        ${escapeHtml(copy.saveDetailsBody || copy.accessCodeHelp)}
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 class="section-title">${escapeHtml(copy.portalAccessTitle || copy.nextSteps)}</h3>
+      <p class="lead">${escapeHtml(copy.portalAccessIntro || copy.nextStep3)}</p>
+      <ol class="instruction-list">
+        <li><span class="instruction-step">1</span>${escapeHtml(copy.portalInstruction1 || copy.nextStep1)}</li>
+        <li><span class="instruction-step">2</span>${escapeHtml(copy.portalInstruction2 || copy.nextStep3)}</li>
+        <li><span class="instruction-step">3</span>${escapeHtml(copy.portalInstruction3 || copy.accessCodeHelp)}</li>
+        <li><span class="instruction-step">4</span>${escapeHtml(copy.portalInstruction4 || copy.nextStep3)}</li>
+      </ol>
+      <div class="portal-link-box">
+        <div class="portal-link-label">${escapeHtml(copy.portalUrlLabel || 'Portal')}</div>
+        <a class="portal-link-url" href="${escapeHtml(portalUrl)}">${escapeHtml(portalUrl)}</a>
+      </div>
+      <a class="portal-button" href="${escapeHtml(portalUrl)}">${escapeHtml(copy.portalLinkLabel || 'Open portal')}</a>
+    </div>
+
+    <div class="card">
+      <h3 class="section-title">${escapeHtml(copy.coreDetails)}</h3>
+      ${buildMetaTable([
+        [copy.ticketNumber, escapeHtml(ticketNumber || '-')],
+        [copy.status, escapeHtml(statusLabel)],
+        [copy.severity, `<span class="badge ${severityClassFromCode(severityCode)}">${escapeHtml(safeSeverityLabel)}</span>`],
+        [copy.workflow, escapeHtml(workflowType || '-')],
+        [copy.location, escapeHtml(location || copy.notProvided)],
+        [copy.submittedOn, escapeHtml(formatDateByLanguage(submittedAt, language))]
+      ])}
+      <div class="section-title" style="margin-top:14px;">${escapeHtml(copy.description)}</div>
+      <div>${nl2br(description || '-')}</div>
+    </div>
+
+    <div class="card">
+      <h3 class="section-title">${escapeHtml(copy.nextSteps)}</h3>
+      <ul class="list">
+        <li>${escapeHtml(copy.nextStep1)}</li>
+        <li>${escapeHtml(copy.nextStep2)}</li>
+        <li>${escapeHtml(copy.nextStep3)}</li>
+      </ul>
+    </div>
+
+    <p class="muted">${escapeHtml(copy.registeredAt.replace('{{date}}', formatDateByLanguage(submittedAt, language)))}</p>
+  </div>
 </div>
-
-${accessCode ? `
-<div class="callout">
-  <strong>${escapeHtml(copy.accessCode)}:</strong> ${escapeHtml(accessCode)}<br/>
-  ${escapeHtml(copy.accessCodeHelp)}
-</div>
-` : ''}
-
-<div class="card">
-  <h3 class="section-title">${escapeHtml(copy.nextSteps)}</h3>
-  <ul class="list">
-    <li>${escapeHtml(copy.nextStep1)}</li>
-    <li>${escapeHtml(copy.nextStep2)}</li>
-    <li>${escapeHtml(copy.nextStep3)}</li>
-  </ul>
-</div>
-
-<p class="muted">${escapeHtml(copy.registeredAt.replace('{{date}}', formatDateByLanguage(submittedAt, language)))}</p>
 `;
 
   const result = await sendEmail({

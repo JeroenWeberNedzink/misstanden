@@ -82,6 +82,12 @@ BEGIN
         code NVARCHAR(100) NOT NULL,
         name NVARCHAR(255) NOT NULL,
         description NVARCHAR(MAX) NULL,
+        created_by NVARCHAR(255) NULL,
+        updated_by NVARCHAR(255) NULL,
+        file_path NVARCHAR(1024) NULL,
+        content NVARCHAR(MAX) NULL,
+        icon_name NVARCHAR(255) NULL,
+        color_scheme NVARCHAR(100) NULL,
         active BIT NOT NULL CONSTRAINT DF_workflows_active DEFAULT (1),
         display_order INT NOT NULL CONSTRAINT DF_workflows_display_order DEFAULT (0),
         statutory_deadline_days INT NULL,
@@ -89,6 +95,36 @@ BEGIN
         updated_at DATETIME2(3) NOT NULL CONSTRAINT DF_workflows_updated_at DEFAULT SYSUTCDATETIME()
     );
     CREATE UNIQUE INDEX UX_workflows_code ON dbo.workflows(code);
+END;
+
+IF COL_LENGTH(N'dbo.workflows', N'created_by') IS NULL
+BEGIN
+    ALTER TABLE dbo.workflows ADD created_by NVARCHAR(255) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.workflows', N'updated_by') IS NULL
+BEGIN
+    ALTER TABLE dbo.workflows ADD updated_by NVARCHAR(255) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.workflows', N'file_path') IS NULL
+BEGIN
+    ALTER TABLE dbo.workflows ADD file_path NVARCHAR(1024) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.workflows', N'content') IS NULL
+BEGIN
+    ALTER TABLE dbo.workflows ADD content NVARCHAR(MAX) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.workflows', N'icon_name') IS NULL
+BEGIN
+    ALTER TABLE dbo.workflows ADD icon_name NVARCHAR(255) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.workflows', N'color_scheme') IS NULL
+BEGIN
+    ALTER TABLE dbo.workflows ADD color_scheme NVARCHAR(100) NULL;
 END;
 
 IF OBJECT_ID(N'dbo.workflow_statuses', N'U') IS NULL

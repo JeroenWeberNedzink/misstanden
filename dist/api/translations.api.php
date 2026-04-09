@@ -249,11 +249,11 @@ function cleanupBackups(string $lang): void {
 }
 
 /**
- * Log change to audit table (Supabase)
+ * Log change to the translation audit trail.
  */
 function logAuditChange(string $keyPath, string $lang, string $action, ?string $oldValue, ?string $newValue, ?string $userId = null): void {
-    // TODO: Implement Supabase audit logging
-    // For now, log to file
+    // TODO: Persist this in a database-backed audit store.
+    // For now, log to file.
     $rawIp = trim((string)($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
     $ipHash = api_rate_limit_hash('translation_audit_ip:' . $rawIp);
 

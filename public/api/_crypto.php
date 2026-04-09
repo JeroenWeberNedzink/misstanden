@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 function apply_env_aliases(): void {
     $aliases = [
-        'VITE_SUPABASE_URL' => 'SUPABASE_URL',
         'VITE_AUTH0_DOMAIN' => 'AUTH0_DOMAIN',
         'VITE_AUTH0_CLIENT_ID' => 'AUTH0_CLIENT_ID',
         'VITE_AUTH0_AUDIENCE' => 'AUTH0_AUDIENCE',
@@ -77,11 +76,35 @@ function load_runtime_env(?string $anchorDir = null): void {
 }
 
 function get_email_crypto_key(): string {
-    $path = getenv('EMAIL_ENC_KEY_PATH');
-    if (!$path) {
-        $path = __DIR__ . '/../../private/keys/email_enc.key';
+    $candidates = [];
+
+    $envPath = trim((string)(getenv('EMAIL_ENC_KEY_PATH') ?: ''));
+    if ($envPath !== '') {
+        $candidates[] = $envPath;
     }
-    if (!is_file($path)) {
+
+    foreach ([
+        __DIR__ . '/../private/keys/email_enc.key',
+        __DIR__ . '/../../private/keys/email_enc.key',
+    ] as $candidate) {
+        $candidates[] = $candidate;
+    }
+
+    foreach (runtime_env_candidate_roots(__DIR__) as $root) {
+        $candidates[] = $root . '/private/keys/email_enc.key';
+    }
+
+    $path = '';
+    foreach ($candidates as $candidate) {
+        $resolved = realpath($candidate);
+        $checkPath = $resolved !== false ? $resolved : $candidate;
+        if (is_file($checkPath)) {
+            $path = $checkPath;
+            break;
+        }
+    }
+
+    if ($path === '') {
         throw new Exception('Email encryption key file not found');
     }
     $key = trim((string)file_get_contents($path));

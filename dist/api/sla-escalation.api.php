@@ -3,10 +3,10 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_admin_auth.php';
-require_once __DIR__ . '/_supabase.php';
 require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
 require_once __DIR__ . '/_rate_limit.php';
+require_once __DIR__ . '/_sqlserver.php';
 
 api_apply_security_headers([
     'allow_methods' => 'POST, OPTIONS',
@@ -50,47 +50,14 @@ function sla_escalation_header_value(string $name): string {
 
 function sla_escalation_scheduler_authorized(): bool {
     $expected = trim((string)(getenv('SLA_ESCALATION_CRON_KEY') ?: getenv('SLA_BACKFILL_CRON_KEY') ?: ''));
-    if ($expected === '') return false;
+    if ($expected === '') {
+        return false;
+    }
     $provided = sla_escalation_header_value('X-SLA-ESCALATION-KEY');
     if ($provided === '') {
         $provided = sla_escalation_header_value('X-SLA-CRON-KEY');
     }
-    if ($provided === '') return false;
-    return hash_equals($expected, $provided);
-}
-
-function sla_escalation_supabase_request(string $method, string $url, string $serviceKey, $payload = null, bool $returnRepresentation = false): array {
-    $headers = [
-        'apikey: ' . $serviceKey,
-        'Authorization: Bearer ' . $serviceKey,
-        'Content-Type: application/json',
-    ];
-    if ($returnRepresentation) {
-        $headers[] = 'Prefer: return=representation';
-    }
-
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL => $url,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_CUSTOMREQUEST => $method,
-        CURLOPT_HTTPHEADER => $headers,
-        CURLOPT_TIMEOUT => 30,
-    ]);
-    if ($payload !== null) {
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_UNESCAPED_UNICODE));
-    }
-
-    $resp = curl_exec($ch);
-    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    if ($resp === false) {
-        $err = curl_error($ch);
-        curl_close($ch);
-        throw new Exception('Supabase request failed: ' . $err);
-    }
-    curl_close($ch);
-
-    return [$code, json_decode($resp, true), $resp];
+    return $provided !== '' && hash_equals($expected, $provided);
 }
 
 function sla_escalation_parse_email_list(string $raw): array {
@@ -107,16 +74,21 @@ function sla_escalation_parse_email_list(string $raw): array {
 
 function sla_escalation_mail_api_url(): string {
     $explicit = trim((string)(getenv('MAIL_API_INTERNAL_URL') ?: getenv('PHP_MAIL_API_URL') ?: ''));
-    if ($explicit !== '') return $explicit;
+    if ($explicit !== '') {
+        return $explicit;
+    }
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
-    if ($host === '') return 'http://127.0.0.1:8081/api/mail.api.php';
+    if ($host === '') {
+        return 'http://127.0.0.1:8081/api/mail.api.php';
+    }
     return $scheme . '://' . $host . '/api/mail.api.php';
 }
 
 function sla_escalation_send_mail(array $to, string $subject, string $html, string $text): bool {
-    if (count($to) === 0) return false;
-    $url = sla_escalation_mail_api_url();
+    if (count($to) === 0) {
+        return false;
+    }
 
     $payload = [
         'to' => implode(';', $to),
@@ -127,7 +99,7 @@ function sla_escalation_send_mail(array $to, string $subject, string $html, stri
 
     $ch = curl_init();
     curl_setopt_array($ch, [
-        CURLOPT_URL => $url,
+        CURLOPT_URL => sla_escalation_mail_api_url(),
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
         CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
@@ -150,9 +122,15 @@ function sla_escalation_send_mail(array $to, string $subject, string $html, stri
 
 function sla_escalation_priority_bump(string $severity): string {
     $value = strtolower(trim($severity));
-    if ($value === 'low') return 'medium';
-    if ($value === 'medium') return 'high';
-    if ($value === 'high') return 'critical';
+    if ($value === 'low') {
+        return 'medium';
+    }
+    if ($value === 'medium') {
+        return 'high';
+    }
+    if ($value === 'high') {
+        return 'critical';
+    }
     return 'critical';
 }
 
@@ -166,8 +144,12 @@ function sla_escalation_hours_from_metadata($metadata): int {
     }
     $value = $metadata['sla_response_hours'] ?? $metadata['slaResponseHours'] ?? 24;
     $hours = is_numeric($value) ? (int)$value : 24;
-    if ($hours <= 0) $hours = 24;
-    if ($hours > 24 * 30) $hours = 24 * 30;
+    if ($hours <= 0) {
+        $hours = 24;
+    }
+    if ($hours > 24 * 30) {
+        $hours = 24 * 30;
+    }
     return $hours;
 }
 
@@ -176,6 +158,9 @@ try {
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         sla_escalation_json(405, false, 'Method not allowed');
+    }
+    if (!sqlserver_is_configured()) {
+        throw new Exception('SQL Server is not configured');
     }
 
     $authMode = 'scheduler';
@@ -208,61 +193,56 @@ try {
         );
     }
 
-    $supabaseUrl = rtrim((string)(getenv('VITE_SUPABASE_URL') ?: ''), '/');
-    $serviceKey = supabase_get_service_role_key();
-    if ($supabaseUrl === '') {
-        throw new Exception('Missing Supabase URL configuration');
-    }
-
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw ?? '', true);
-    if (!is_array($payload)) $payload = [];
+    if (!is_array($payload)) {
+        $payload = [];
+    }
 
     $lookbackDays = isset($payload['lookback_days']) && is_numeric($payload['lookback_days'])
         ? (int)$payload['lookback_days']
         : 90;
-    if ($lookbackDays <= 0) $lookbackDays = 90;
-    if ($lookbackDays > 365) $lookbackDays = 365;
+    if ($lookbackDays <= 0) {
+        $lookbackDays = 90;
+    }
+    if ($lookbackDays > 365) {
+        $lookbackDays = 365;
+    }
     $lookbackIso = gmdate('c', time() - ($lookbackDays * 86400));
 
-    [$statusCode, $statusesDecoded, $statusesRaw] = sla_escalation_supabase_request(
-        'GET',
-        $supabaseUrl . '/rest/v1/workflow_statuses?select=code,is_terminal',
-        $serviceKey
-    );
-    if ($statusCode < 200 || $statusCode >= 300) {
-        $msg = is_array($statusesDecoded) ? json_encode($statusesDecoded, JSON_UNESCAPED_UNICODE) : (string)$statusesRaw;
-        throw new Exception('Failed to load workflow statuses: ' . $msg);
-    }
+    $statusRows = sqlserver_query('SELECT code, is_terminal FROM dbo.workflow_statuses');
     $terminalCodes = [];
-    foreach (($statusesDecoded ?? []) as $row) {
-        if (!empty($row['is_terminal'])) {
-            $terminalCodes[strtolower(trim((string)($row['code'] ?? '')))] = true;
+    foreach ($statusRows as $statusRow) {
+        if (!empty($statusRow['is_terminal'])) {
+            $terminalCodes[strtolower(trim((string)($statusRow['code'] ?? '')))] = true;
         }
     }
 
-    [$ticketCode, $ticketsDecoded, $ticketsRaw] = sla_escalation_supabase_request(
-        'GET',
-        $supabaseUrl . '/rest/v1/tickets?select=id,ticket_number,submitted_at,status_code,severity_code,metadata,last_update_at'
-        . '&submitted_at=gte.' . rawurlencode($lookbackIso)
-        . '&order=submitted_at.asc',
-        $serviceKey
+    $ticketRows = sqlserver_query(
+        'SELECT id, ticket_number, submitted_at, status_code, severity_code, metadata, last_update_at
+         FROM dbo.tickets
+         WHERE submitted_at >= @submitted_at
+         ORDER BY submitted_at ASC',
+        ['submitted_at' => $lookbackIso]
     );
-    if ($ticketCode < 200 || $ticketCode >= 300) {
-        $msg = is_array($ticketsDecoded) ? json_encode($ticketsDecoded, JSON_UNESCAPED_UNICODE) : (string)$ticketsRaw;
-        throw new Exception('Failed to load tickets: ' . $msg);
-    }
-    $tickets = is_array($ticketsDecoded) ? $ticketsDecoded : [];
+
     $openTickets = [];
-    foreach ($tickets as $ticket) {
-        $status = strtolower(trim((string)($ticket['status_code'] ?? '')));
-        if (isset($terminalCodes[$status])) continue;
-        $ticketId = trim((string)($ticket['id'] ?? ''));
-        if ($ticketId === '') continue;
-        $openTickets[] = $ticket;
+    foreach ($ticketRows as $ticketRow) {
+        $status = strtolower(trim((string)($ticketRow['status_code'] ?? '')));
+        if (isset($terminalCodes[$status])) {
+            continue;
+        }
+        $ticketRow['metadata'] = is_array($ticketRow['metadata'] ?? null)
+            ? $ticketRow['metadata']
+            : (json_decode((string)($ticketRow['metadata'] ?? ''), true) ?: []);
+        $ticketId = trim((string)($ticketRow['id'] ?? ''));
+        if ($ticketId === '') {
+            continue;
+        }
+        $openTickets[] = $ticketRow;
     }
 
-    $ticketIds = array_values(array_unique(array_map(static fn($t) => (string)$t['id'], $openTickets)));
+    $ticketIds = array_values(array_unique(array_map(static fn($ticket) => (string)$ticket['id'], $openTickets)));
     if (count($ticketIds) === 0) {
         sla_escalation_json(200, true, 'No open tickets to evaluate', [
             'evaluated' => 0,
@@ -273,50 +253,48 @@ try {
         ]);
     }
 
+    $params = [];
+    $placeholders = [];
+    foreach ($ticketIds as $index => $ticketId) {
+        $key = 'ticket_' . $index;
+        $params[$key] = $ticketId;
+        $placeholders[] = '@' . $key;
+    }
+
+    $messageRows = sqlserver_query(
+        'SELECT ticket_id, created_at, sender, is_internal
+         FROM dbo.messages
+         WHERE sender = @sender
+           AND is_internal = @is_internal
+           AND ticket_id IN (' . implode(', ', $placeholders) . ')
+         ORDER BY created_at ASC',
+        array_merge($params, ['sender' => 'handler', 'is_internal' => false])
+    );
+
     $firstHandlerMessageByTicket = [];
-    $chunks = array_chunk($ticketIds, 40);
-    foreach ($chunks as $chunk) {
-        $inValues = implode(',', array_map(static fn($id) => '"' . str_replace('"', '', (string)$id) . '"', $chunk));
-        [$msgCode, $msgDecoded, $msgRaw] = sla_escalation_supabase_request(
-            'GET',
-            $supabaseUrl . '/rest/v1/messages?select=ticket_id,created_at,sender,is_internal'
-            . '&sender=eq.handler'
-            . '&is_internal=eq.false'
-            . '&ticket_id=in.(' . rawurlencode($inValues) . ')'
-            . '&order=created_at.asc',
-            $serviceKey
-        );
-        if ($msgCode < 200 || $msgCode >= 300) {
-            $msg = is_array($msgDecoded) ? json_encode($msgDecoded, JSON_UNESCAPED_UNICODE) : (string)$msgRaw;
-            throw new Exception('Failed to load handler messages: ' . $msg);
+    foreach ($messageRows as $messageRow) {
+        $ticketId = trim((string)($messageRow['ticket_id'] ?? ''));
+        $createdAt = trim((string)($messageRow['created_at'] ?? ''));
+        if ($ticketId === '' || $createdAt === '') {
+            continue;
         }
-        foreach (($msgDecoded ?? []) as $row) {
-            $ticketId = trim((string)($row['ticket_id'] ?? ''));
-            $createdAt = trim((string)($row['created_at'] ?? ''));
-            if ($ticketId === '' || $createdAt === '') continue;
-            if (!isset($firstHandlerMessageByTicket[$ticketId])) {
-                $firstHandlerMessageByTicket[$ticketId] = $createdAt;
-            }
+        if (!isset($firstHandlerMessageByTicket[$ticketId])) {
+            $firstHandlerMessageByTicket[$ticketId] = $createdAt;
         }
     }
 
+    $escalationRows = sqlserver_query(
+        'SELECT ticket_id, reason
+         FROM dbo.sla_escalations
+         WHERE reason = @reason
+           AND ticket_id IN (' . implode(', ', $placeholders) . ')',
+        array_merge($params, ['reason' => SLA_ESCALATION_REASON_FIRST_RESPONSE])
+    );
     $existingEscalations = [];
-    foreach ($chunks as $chunk) {
-        $inValues = implode(',', array_map(static fn($id) => '"' . str_replace('"', '', (string)$id) . '"', $chunk));
-        [$escCode, $escDecoded, $escRaw] = sla_escalation_supabase_request(
-            'GET',
-            $supabaseUrl . '/rest/v1/sla_escalations?select=ticket_id,reason'
-            . '&reason=eq.' . rawurlencode(SLA_ESCALATION_REASON_FIRST_RESPONSE)
-            . '&ticket_id=in.(' . rawurlencode($inValues) . ')',
-            $serviceKey
-        );
-        if ($escCode < 200 || $escCode >= 300) {
-            $msg = is_array($escDecoded) ? json_encode($escDecoded, JSON_UNESCAPED_UNICODE) : (string)$escRaw;
-            throw new Exception('Failed to load existing escalations: ' . $msg);
-        }
-        foreach (($escDecoded ?? []) as $row) {
-            $ticketId = trim((string)($row['ticket_id'] ?? ''));
-            if ($ticketId !== '') $existingEscalations[$ticketId] = true;
+    foreach ($escalationRows as $escalationRow) {
+        $ticketId = trim((string)($escalationRow['ticket_id'] ?? ''));
+        if ($ticketId !== '') {
+            $existingEscalations[$ticketId] = true;
         }
     }
 
@@ -331,10 +309,14 @@ try {
     foreach ($openTickets as $ticket) {
         $ticketId = trim((string)($ticket['id'] ?? ''));
         $submittedAt = trim((string)($ticket['submitted_at'] ?? ''));
-        if ($ticketId === '' || $submittedAt === '') continue;
+        if ($ticketId === '' || $submittedAt === '') {
+            continue;
+        }
 
         $submittedTs = strtotime($submittedAt);
-        if ($submittedTs === false) continue;
+        if ($submittedTs === false) {
+            continue;
+        }
 
         $slaHours = sla_escalation_hours_from_metadata($ticket['metadata'] ?? null);
         $dueTs = $submittedTs + ($slaHours * 3600);
@@ -352,43 +334,26 @@ try {
             continue;
         }
 
-        [$insCode, $insDecoded, $insRaw] = sla_escalation_supabase_request(
-            'POST',
-            $supabaseUrl . '/rest/v1/sla_escalations',
-            $serviceKey,
-            [
-                'ticket_id' => $ticketId,
-                'escalated_at' => gmdate('c'),
-                'reason' => SLA_ESCALATION_REASON_FIRST_RESPONSE,
-            ],
-            true
+        sqlserver_execute(
+            'INSERT INTO dbo.sla_escalations (ticket_id, escalated_at, reason, created_at)
+             VALUES (@ticket_id, SYSUTCDATETIME(), @reason, SYSUTCDATETIME())',
+            ['ticket_id' => $ticketId, 'reason' => SLA_ESCALATION_REASON_FIRST_RESPONSE]
         );
-        if ($insCode < 200 || $insCode >= 300) {
-            $msgText = is_array($insDecoded) ? json_encode($insDecoded, JSON_UNESCAPED_UNICODE) : (string)$insRaw;
-            if (!str_contains(strtolower($msgText), 'duplicate')) {
-                error_log('[sla-escalation.api] Failed to insert escalation: ' . api_redact_sensitive($msgText));
-            }
-        } else {
-            $escalated++;
-            $existingEscalations[$ticketId] = true;
-        }
+        $existingEscalations[$ticketId] = true;
+        $escalated++;
 
         $currentSeverity = trim((string)($ticket['severity_code'] ?? ''));
         $nextSeverity = sla_escalation_priority_bump($currentSeverity);
         if (strtolower($nextSeverity) !== strtolower($currentSeverity)) {
-            [$upCode] = sla_escalation_supabase_request(
-                'PATCH',
-                $supabaseUrl . '/rest/v1/tickets?id=eq.' . rawurlencode($ticketId),
-                $serviceKey,
-                [
-                    'severity_code' => $nextSeverity,
-                    'last_update_at' => gmdate('c'),
-                ],
-                false
+            sqlserver_execute(
+                'UPDATE dbo.tickets
+                 SET severity_code = @severity_code,
+                     last_update_at = SYSUTCDATETIME(),
+                     updated_at = SYSUTCDATETIME()
+                 WHERE id = @ticket_id',
+                ['severity_code' => $nextSeverity, 'ticket_id' => $ticketId]
             );
-            if ($upCode >= 200 && $upCode < 300) {
-                $updatedPriority++;
-            }
+            $updatedPriority++;
         }
 
         if (count($mailRecipients) > 0) {

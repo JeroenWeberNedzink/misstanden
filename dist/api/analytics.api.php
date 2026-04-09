@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_admin_auth.php';
-require_once __DIR__ . '/_supabase.php';
+require_once __DIR__ . '/_sqlserver.php';
 require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
 
@@ -30,34 +30,6 @@ function analytics_json(int $status, bool $success, string $message, array $data
         'message' => $message,
     ], $data), JSON_UNESCAPED_UNICODE);
     exit;
-}
-
-function analytics_supabase_request(string $method, string $url, string $serviceKey): array {
-    $headers = [
-        'apikey: ' . $serviceKey,
-        'Authorization: Bearer ' . $serviceKey,
-        'Content-Type: application/json',
-    ];
-
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL => $url,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_CUSTOMREQUEST => $method,
-        CURLOPT_HTTPHEADER => $headers,
-        CURLOPT_TIMEOUT => 30,
-    ]);
-
-    $resp = curl_exec($ch);
-    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    if ($resp === false) {
-        $err = curl_error($ch);
-        curl_close($ch);
-        throw new Exception('Supabase request failed: ' . $err);
-    }
-    curl_close($ch);
-
-    return [$code, json_decode($resp, true), $resp];
 }
 
 function analytics_parse_date(string $raw, ?DateTimeImmutable $fallback = null): ?DateTimeImmutable {
@@ -91,18 +63,13 @@ function analytics_build_series(array $map): array {
     return $out;
 }
 
-function analytics_fetch_locations_catalog(string $baseUrl, string $serviceKey): array {
-    [$code, $decoded, $raw] = analytics_supabase_request(
-        'GET',
-        $baseUrl . '/rest/v1/locations?select=id,country_code,country_name,display_order,active&order=display_order.asc&order=country_name.asc',
-        $serviceKey
+function analytics_fetch_locations_catalog(): array {
+    $rows = sqlserver_query(
+        'SELECT id, country_code, country_name, display_order, active
+         FROM dbo.locations
+         ORDER BY display_order ASC, country_name ASC'
     );
-    if ($code < 200 || $code >= 300) {
-        $msg = is_array($decoded) ? json_encode($decoded, JSON_UNESCAPED_UNICODE) : (string)$raw;
-        throw new Exception('Failed to load locations catalog: ' . $msg);
-    }
 
-    $rows = is_array($decoded) ? $decoded : [];
     $byId = [];
     $byCode = [];
     $byName = [];
@@ -155,13 +122,11 @@ function analytics_resolve_country_code(array $ticket, array $catalog): ?string 
         return null;
     }
 
-    // Direct match on configured country name.
     $nameKey = strtolower($rawLocation);
     if (isset($byName[$nameKey])) {
         return (string)$byName[$nameKey]['country_code'];
     }
 
-    // Most reporter values are stored as "CC: free text".
     if (preg_match('/^\s*([A-Za-z]{2})\s*[:\-\/\s]/', $rawLocation, $m) === 1) {
         $countryCode = strtoupper((string)($m[1] ?? ''));
         if (isset($byCode[$countryCode])) {
@@ -169,7 +134,6 @@ function analytics_resolve_country_code(array $ticket, array $catalog): ?string 
         }
     }
 
-    // Exact 2-letter code.
     if (preg_match('/^\s*([A-Za-z]{2})\s*$/', $rawLocation, $m) === 1) {
         $countryCode = strtoupper((string)($m[1] ?? ''));
         if (isset($byCode[$countryCode])) {
@@ -233,13 +197,13 @@ try {
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         analytics_json(405, false, 'Method not allowed');
     }
+    if (!sqlserver_is_configured()) {
+        throw new Exception('SQL Server is not configured');
+    }
 
-    $ctx = api_authz_require_admin(static function (int $status, string $message): void {
+    api_authz_require_admin(static function (int $status, string $message): void {
         analytics_json($status, false, $message);
     });
-
-    $baseUrl = rtrim((string)$ctx['base_url'], '/');
-    $serviceKey = (string)$ctx['service_key'];
 
     $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
     $defaultFrom = $now->modify('-12 months')->setTime(0, 0, 0);
@@ -251,57 +215,35 @@ try {
         analytics_json(400, false, 'Invalid date range');
     }
 
-    $ticketsSelectWithLocationId = 'id,submitted_at,last_update_at,status_code,workflow_type,location,location_id,severity_code,metadata';
-    $ticketUrl = $baseUrl . '/rest/v1/tickets?select=' . rawurlencode($ticketsSelectWithLocationId)
-        . '&submitted_at=gte.' . rawurlencode($dateFrom->format(DATE_ATOM))
-        . '&submitted_at=lte.' . rawurlencode($dateTo->format(DATE_ATOM))
-        . '&order=submitted_at.asc';
-
-    [$ticketCode, $ticketsDecoded, $ticketsRaw] = analytics_supabase_request('GET', $ticketUrl, $serviceKey);
-    if ($ticketCode < 200 || $ticketCode >= 300) {
-        // Some environments still have textual location only. Retry without location_id.
-        $ticketsSelectFallback = 'id,submitted_at,last_update_at,status_code,workflow_type,location,severity_code,metadata';
-        $ticketUrlFallback = $baseUrl . '/rest/v1/tickets?select=' . rawurlencode($ticketsSelectFallback)
-            . '&submitted_at=gte.' . rawurlencode($dateFrom->format(DATE_ATOM))
-            . '&submitted_at=lte.' . rawurlencode($dateTo->format(DATE_ATOM))
-            . '&order=submitted_at.asc';
-        [$ticketCode, $ticketsDecoded, $ticketsRaw] = analytics_supabase_request('GET', $ticketUrlFallback, $serviceKey);
-    }
-    if ($ticketCode < 200 || $ticketCode >= 300) {
-        $msg = is_array($ticketsDecoded) ? json_encode($ticketsDecoded, JSON_UNESCAPED_UNICODE) : (string)$ticketsRaw;
-        throw new Exception('Failed to load tickets for analytics: ' . $msg);
-    }
-    $tickets = is_array($ticketsDecoded) ? $ticketsDecoded : [];
-    $locationsCatalog = analytics_fetch_locations_catalog($baseUrl, $serviceKey);
-
-    [$statusCode, $statusDecoded, $statusRaw] = analytics_supabase_request(
-        'GET',
-        $baseUrl . '/rest/v1/workflow_statuses?select=code,is_terminal',
-        $serviceKey
+    $tickets = sqlserver_query(
+        'SELECT id, submitted_at, last_update_at, status_code, workflow_type, location, location_id, severity_code, metadata
+         FROM dbo.tickets
+         WHERE submitted_at >= @date_from AND submitted_at <= @date_to
+         ORDER BY submitted_at ASC',
+        [
+            'date_from' => $dateFrom->format(DATE_ATOM),
+            'date_to' => $dateTo->format(DATE_ATOM),
+        ]
     );
-    if ($statusCode < 200 || $statusCode >= 300) {
-        $msg = is_array($statusDecoded) ? json_encode($statusDecoded, JSON_UNESCAPED_UNICODE) : (string)$statusRaw;
-        throw new Exception('Failed to load workflow statuses: ' . $msg);
-    }
+    $locationsCatalog = analytics_fetch_locations_catalog();
+
+    $statusRows = sqlserver_query('SELECT code, is_terminal FROM dbo.workflow_statuses');
     $terminalStatuses = [];
-    foreach (($statusDecoded ?? []) as $statusRow) {
+    foreach ($statusRows as $statusRow) {
         if (!empty($statusRow['is_terminal'])) {
             $terminalStatuses[strtolower(trim((string)($statusRow['code'] ?? '')))] = true;
         }
     }
 
-    [$escalationCode, $escalationDecoded, $escalationRaw] = analytics_supabase_request(
-        'GET',
-        $baseUrl . '/rest/v1/sla_escalations?select=id,ticket_id,reason,escalated_at'
-        . '&escalated_at=gte.' . rawurlencode($dateFrom->format(DATE_ATOM))
-        . '&escalated_at=lte.' . rawurlencode($dateTo->format(DATE_ATOM)),
-        $serviceKey
+    $escalations = sqlserver_query(
+        'SELECT id, ticket_id, reason, escalated_at
+         FROM dbo.sla_escalations
+         WHERE escalated_at >= @date_from AND escalated_at <= @date_to',
+        [
+            'date_from' => $dateFrom->format(DATE_ATOM),
+            'date_to' => $dateTo->format(DATE_ATOM),
+        ]
     );
-    if ($escalationCode < 200 || $escalationCode >= 300) {
-        $msg = is_array($escalationDecoded) ? json_encode($escalationDecoded, JSON_UNESCAPED_UNICODE) : (string)$escalationRaw;
-        throw new Exception('Failed to load SLA escalations: ' . $msg);
-    }
-    $escalations = is_array($escalationDecoded) ? $escalationDecoded : [];
 
     $reportsPerMonth = [];
     $reportsPerCategory = [];
@@ -340,10 +282,9 @@ try {
         }
     }
 
-    $avgResolutionHours = 0.0;
-    if (count($resolutionHours) > 0) {
-        $avgResolutionHours = array_sum($resolutionHours) / count($resolutionHours);
-    }
+    $avgResolutionHours = count($resolutionHours) > 0
+        ? array_sum($resolutionHours) / count($resolutionHours)
+        : 0.0;
 
     $slaBreachesByReason = [];
     foreach ($escalations as $row) {

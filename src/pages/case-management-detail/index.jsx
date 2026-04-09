@@ -16,11 +16,11 @@ import Icon from '../../components/AppIcon';
 import { ticketService } from '../../services/ticketService';
 import { reportService } from '../../services/reportService';
 import { guestAccessService } from '../../services/guestAccessService';
-import { supabase } from '../../lib/supabase';
 import { getApiAccessToken } from '../../lib/auth0ApiToken';
 import { addHours, getFirstResponseAt, getFirstResponseHoursForTicket, toDateSafe } from '../../utils/slaUtils';
 import { useSettings } from '../../contexts/SettingsContext';
 import { buildAttachmentPolicy, validateAttachmentSelection } from '../../utils/attachmentPolicy';
+import { normalizeHandlerRecord } from '../../services/utils/handlerNormalization';
 
 const fmtDateTime = (value, locale) => {
   if (!value) return '-';
@@ -38,6 +38,14 @@ const idsEqual = (a, b) => {
   const left = normalizeEntityId(a);
   const right = normalizeEntityId(b);
   return left !== '' && right !== '' && left === right;
+};
+const readCachedHandlerProfile = () => {
+  try {
+    const cached = sessionStorage.getItem('handler_profile');
+    return cached ? normalizeHandlerRecord(JSON.parse(cached)) : null;
+  } catch {
+    return null;
+  }
 };
 
 const resolveAssignedHandler = (ticket, handlers = [], fallbackLabel = '-') => {
@@ -480,21 +488,20 @@ export default function CaseManagementDetail() {
             handler = payload.data.handler;
           }
         } catch (apiErr) {
-          console.warn('[CaseManagementDetail] /api/me.api.php lookup failed, fallback to direct handler lookup', apiErr);
+          console.warn('[CaseManagementDetail] /api/me.api.php lookup failed, using cached handler profile if available', apiErr);
         }
 
-        if (!handler && user?.email) {
+        if (!handler) {
+          const cachedProfile = readCachedHandlerProfile();
+          const cachedEmail = String(cachedProfile?.email || '').trim().toLowerCase();
           const normalizedEmail = String(user?.email || '').trim().toLowerCase();
-          const { data: directHandler, error: directHandlerError } = await supabase
-            .from('handlers')
-            .select('*')
-            .ilike('email', normalizedEmail)
-            .eq('active', true)
-            .maybeSingle();
-          if (directHandlerError) {
-            console.warn('[CaseManagementDetail] Direct handler fallback lookup failed', directHandlerError);
-          } else {
-            handler = directHandler || null;
+          const cachedUserId = String(cachedProfile?.user_id || '').trim();
+          const normalizedSub = String(user?.sub || '').trim();
+          if (
+            (cachedUserId && normalizedSub && cachedUserId === normalizedSub) ||
+            (cachedEmail && normalizedEmail && cachedEmail === normalizedEmail)
+          ) {
+            handler = cachedProfile;
           }
         }
 

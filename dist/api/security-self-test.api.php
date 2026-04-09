@@ -8,7 +8,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_admin_auth.php';
 require_once __DIR__ . '/_auth0.php';
-require_once __DIR__ . '/_supabase.php';
+require_once __DIR__ . '/_sqlserver.php';
 require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
 
@@ -103,13 +103,6 @@ try {
         $audienceConfigured = false;
     }
 
-    $serviceRoleConfigured = true;
-    try {
-        supabase_get_service_role_key();
-    } catch (Throwable $e) {
-        $serviceRoleConfigured = false;
-    }
-
     $emailKeyReadable = true;
     try {
         get_email_crypto_key();
@@ -123,9 +116,8 @@ try {
         'auth0_client_id_configured' => security_env_present('VITE_AUTH0_CLIENT_ID'),
         'auth0_audience_configured' => $audienceConfigured,
         'jwt_verify_function_available' => function_exists('auth0_verify_access_token'),
-        'supabase_url_configured' => security_env_present('VITE_SUPABASE_URL'),
-        'supabase_service_key_env_present' => security_any_env_present(['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SERVICE_KEY']),
-        'supabase_service_role_key_valid' => $serviceRoleConfigured,
+        'sqlserver_configured' => sqlserver_is_configured(),
+        'sqlserver_bridge_available' => is_file(sqlserver_bridge_script_path()),
         'email_crypto_key_configured' => security_env_present('EMAIL_ENC_KEY_PATH') || is_file(__DIR__ . '/../../private/keys/email_enc.key'),
         'email_crypto_key_readable' => $emailKeyReadable,
         'rate_limit_storage_writable' => security_rate_limit_storage_writable(),

@@ -49,6 +49,7 @@ function Add-SqlParameter {
         'Int' { $sqlParameter.Value = [int]$value; break }
         'BigInt' { $sqlParameter.Value = [long]$value; break }
         'Float' { $sqlParameter.Value = [double]$value; break }
+        'UniqueIdentifier' { $sqlParameter.Value = [Guid]::Parse([string]$value); break }
         'DateTime2' { $sqlParameter.Value = [DateTime]::Parse([string]$value); break }
         default { $sqlParameter.Value = $value; break }
     }

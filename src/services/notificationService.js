@@ -7,7 +7,8 @@
 import * as emailService from './emailService';
 import { handlerProfileService } from './handlerProfileService';
 import { ticketService } from './ticketService';
-import { supabase } from '../lib/supabase';
+const WORKFLOW_API_URL = '/api/workflows.api.php';
+let notificationTokenProvider = null;
 
 const escapeHtml = (value) =>
   String(value ?? '')
@@ -31,6 +32,47 @@ const commentStyles = `
   .muted { color: #64748b; font-size: 13px; }
 </style>
 `;
+
+const setTokenProvider = (provider) => {
+  notificationTokenProvider = typeof provider === 'function' ? provider : null;
+};
+
+const getAuthHeaders = async () => {
+  if (!notificationTokenProvider) return {};
+  try {
+    const token = await notificationTokenProvider();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+};
+
+const getAuthHeadersWithRetry = async (requireAuth = false) => {
+  let headers = await getAuthHeaders();
+  if (requireAuth && !headers.Authorization) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    headers = await getAuthHeaders();
+  }
+  return headers;
+};
+
+const workflowApiGet = async (action, params = {}, { requireAuth = false } = {}) => {
+  const headers = await getAuthHeadersWithRetry(requireAuth);
+  if (requireAuth && !headers.Authorization) {
+    throw new Error('Authorization token required');
+  }
+
+  const query = new URLSearchParams({ action, ...params }).toString();
+  const response = await fetch(`${WORKFLOW_API_URL}?${query}`, {
+    method: 'GET',
+    headers,
+  });
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    throw new Error(json?.message || `Workflows API error (${response.status})`);
+  }
+  return json?.data || {};
+};
 
 /**
  * Check if current time is within quiet hours
@@ -153,6 +195,7 @@ function shouldNotifyHandler(settings, notificationType, ticketSeverity = 'mediu
  * Notification Service
  */
 export const notificationService = {
+  setTokenProvider,
   /**
    * Send ticket creation confirmation to reporter
    * @param {Object} ticket - Ticket object
@@ -189,49 +232,44 @@ export const notificationService = {
       return { success: false, skipped: true, reason: 'Missing workflow type' };
     }
 
-    try {
-      const { data: workflow, error: workflowError } = await supabase
-        .from('workflows')
-        .select('id, code')
-        .eq('code', workflowCode)
-        .maybeSingle();
+    const authHeaders = await getAuthHeadersWithRetry(true);
+    if (!authHeaders.Authorization) {
+      return {
+        success: false,
+        skipped: true,
+        reason: 'No authenticated admin context for workflow handler notifications',
+      };
+    }
 
-      if (workflowError) {
-        console.error('[Notification] Failed to load workflow for new report notifications:', workflowError);
-        return { success: false, error: workflowError.message };
-      }
+    try {
+      const workflows = await ticketService.getWorkflows(true);
+      const workflow = (workflows || []).find((item) => String(item?.code || '').trim() === workflowCode) || null;
 
       if (!workflow?.id) {
         return { success: false, skipped: true, reason: 'Workflow not found' };
       }
 
-      const { data: routingRows, error: routingError } = await supabase
-        .from('handler_workflows')
-        .select('handler_id')
-        .eq('workflow_id', workflow.id);
-
-      if (routingError) {
-        console.error('[Notification] Failed to load workflow handlers:', routingError);
-        return { success: false, error: routingError.message };
-      }
+      const routingData = await workflowApiGet(
+        'routing_rules',
+        { workflow_id: workflow.id },
+        { requireAuth: true }
+      );
+      const routingRows = Array.isArray(routingData?.rows) ? routingData.rows : [];
 
       const handlerIds = Array.from(new Set((routingRows || []).map((r) => r?.handler_id).filter(Boolean)));
       if (handlerIds.length === 0) {
         return { success: true, skipped: true, reason: 'No handlers assigned to workflow', totalCandidates: 0, sent: 0 };
       }
 
-      const { data: handlers, error: handlerError } = await supabase
-        .from('handlers')
-        .select('id, name, email, active, language, preferred_language, locale')
-        .in('id', handlerIds)
-        .eq('active', true);
+      const handlers = await ticketService.getAllHandlers({
+        includeInactive: false,
+        enrichPermissions: false,
+        preferApi: true,
+      });
 
-      if (handlerError) {
-        console.error('[Notification] Failed to load active handlers for workflow:', handlerError);
-        return { success: false, error: handlerError.message };
-      }
-
-      const recipients = (handlers || []).filter((h) => Boolean(h?.email));
+      const recipients = (handlers || [])
+        .filter((h) => handlerIds.includes(h?.id))
+        .filter((h) => Boolean(h?.email));
       if (recipients.length === 0) {
         return { success: true, skipped: true, reason: 'No active handler recipients', totalCandidates: 0, sent: 0 };
       }

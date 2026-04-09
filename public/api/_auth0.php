@@ -147,7 +147,7 @@ function auth0_find_ca_bundle(): ?string {
 
     $candidates = [];
     foreach ([
-        'SUPABASE_CA_BUNDLE',
+        'APP_CA_BUNDLE',
         'PHP_CURL_CAINFO',
         'CURL_CA_BUNDLE',
         'SSL_CERT_FILE',

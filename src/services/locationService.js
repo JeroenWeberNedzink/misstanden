@@ -1,17 +1,8 @@
 // services/locationService.js
-import { supabase } from '../lib/supabase';
 
 const WORKFLOW_API_URL = '/api/workflows.api.php';
 const CATALOG_API_URL = '/api/catalog.api.php';
 let locationTokenProvider = null;
-
-const throwIfError = (error, context = '') => {
-  if (!error) return;
-  const msg = context ? `${context}: ${error.message || error}` : (error.message || String(error));
-  const e = new Error(msg);
-  e.original = error;
-  throw e;
-};
 
 const setTokenProvider = (provider) => {
   locationTokenProvider = typeof provider === 'function' ? provider : null;
@@ -36,16 +27,21 @@ const getAuthHeadersWithRetry = async (requireAdmin = false) => {
   return headers;
 };
 
-const apiGet = async (action, params = {}, { requireAdmin = true } = {}) => {
-  const authHeaders = await getAuthHeadersWithRetry(requireAdmin);
-  if (requireAdmin && !authHeaders.Authorization) {
+const getAdminAuthHeadersOrNull = async () => {
+  const authHeaders = await getAuthHeadersWithRetry(true);
+  return authHeaders.Authorization ? authHeaders : null;
+};
+
+const apiGet = async (action, params = {}, { requireAdmin = true, authHeaders = null } = {}) => {
+  const headers = authHeaders || await getAuthHeadersWithRetry(requireAdmin);
+  if (requireAdmin && !headers.Authorization) {
     throw new Error('Authorization token required');
   }
 
   const query = new URLSearchParams({ action, ...params }).toString();
   const response = await fetch(`${WORKFLOW_API_URL}?${query}`, {
     method: 'GET',
-    headers: authHeaders,
+    headers,
   });
   const json = await response.json().catch(() => null);
   if (!response.ok || !json?.success) {
@@ -54,9 +50,9 @@ const apiGet = async (action, params = {}, { requireAdmin = true } = {}) => {
   return json?.data;
 };
 
-const apiPost = async (action, payload = {}, { requireAdmin = true } = {}) => {
-  const authHeaders = await getAuthHeadersWithRetry(requireAdmin);
-  if (requireAdmin && !authHeaders.Authorization) {
+const apiPost = async (action, payload = {}, { requireAdmin = true, authHeaders = null } = {}) => {
+  const headers = authHeaders || await getAuthHeadersWithRetry(requireAdmin);
+  if (requireAdmin && !headers.Authorization) {
     throw new Error('Authorization token required');
   }
 
@@ -64,7 +60,7 @@ const apiPost = async (action, payload = {}, { requireAdmin = true } = {}) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...authHeaders,
+      ...headers,
     },
     body: JSON.stringify({ action, ...payload }),
   });
@@ -95,12 +91,13 @@ export const locationService = {
    * Returns: Array of location objects
    */
   async getLocations({ activeOnly = true } = {}) {
-    if (locationTokenProvider) {
+    const adminAuthHeaders = locationTokenProvider ? await getAdminAuthHeadersOrNull() : null;
+    if (adminAuthHeaders) {
       try {
         const data = await apiGet(
           'locations_list',
           { include_inactive: activeOnly ? '0' : '1' },
-          { requireAdmin: true }
+          { requireAdmin: true, authHeaders: adminAuthHeaders }
         );
         return Array.isArray(data?.rows) ? data.rows : [];
       } catch (apiError) {
@@ -119,8 +116,9 @@ export const locationService = {
    * Get a single location by ID
    */
   async getLocationById(id) {
-    if (locationTokenProvider) {
-      const data = await apiGet('location_by_id', { id }, { requireAdmin: true });
+    const adminAuthHeaders = locationTokenProvider ? await getAdminAuthHeadersOrNull() : null;
+    if (adminAuthHeaders) {
+      const data = await apiGet('location_by_id', { id }, { requireAdmin: true, authHeaders: adminAuthHeaders });
       return data?.row || null;
     }
 
@@ -139,11 +137,12 @@ export const locationService = {
    * Get a location by country code
    */
   async getLocationByCode(countryCode) {
-    if (locationTokenProvider) {
+    const adminAuthHeaders = locationTokenProvider ? await getAdminAuthHeadersOrNull() : null;
+    if (adminAuthHeaders) {
       const data = await apiGet(
         'location_by_code',
         { country_code: String(countryCode || '').toUpperCase() },
-        { requireAdmin: true }
+        { requireAdmin: true, authHeaders: adminAuthHeaders }
       );
       return data?.row || null;
     }
@@ -176,19 +175,8 @@ export const locationService = {
       created_by: createdBy,
     };
 
-    if (locationTokenProvider) {
-      const data = await apiPost('location_create', { payload }, { requireAdmin: true });
-      return data?.row || data;
-    }
-
-    const { data, error } = await supabase
-      .from('locations')
-      .insert(payload)
-      .select()
-      .single();
-
-    throwIfError(error, 'createLocation');
-    return data;
+    const data = await apiPost('location_create', { payload }, { requireAdmin: true });
+    return data?.row || data;
   },
 
   /**
@@ -204,20 +192,8 @@ export const locationService = {
     if (active !== undefined) payload.active = active;
     if (updatedBy !== undefined) payload.updated_by = updatedBy;
 
-    if (locationTokenProvider) {
-      const data = await apiPost('location_update', { id, patch: payload }, { requireAdmin: true });
-      return data?.row || data;
-    }
-
-    const { data, error } = await supabase
-      .from('locations')
-      .update(payload)
-      .eq('id', id)
-      .select()
-      .single();
-
-    throwIfError(error, 'updateLocation');
-    return data;
+    const data = await apiPost('location_update', { id, patch: payload }, { requireAdmin: true });
+    return data?.row || data;
   },
 
   /**
@@ -226,17 +202,7 @@ export const locationService = {
   async deleteLocation(id) {
     if (!id) throw new Error('Location ID is required');
 
-    if (locationTokenProvider) {
-      await apiPost('location_delete', { id }, { requireAdmin: true });
-      return true;
-    }
-
-    const { error } = await supabase
-      .from('locations')
-      .delete()
-      .eq('id', id);
-
-    throwIfError(error, 'deleteLocation');
+    await apiPost('location_delete', { id }, { requireAdmin: true });
     return true;
   },
 
@@ -246,17 +212,8 @@ export const locationService = {
   async toggleActive(id) {
     if (!id) throw new Error('Location ID is required');
 
-    if (locationTokenProvider) {
-      const data = await apiPost('location_toggle_active', { id }, { requireAdmin: true });
-      return data?.row || data;
-    }
-
-    // First get current status
-    const location = await this.getLocationById(id);
-    if (!location) throw new Error('Location not found');
-
-    // Toggle it
-    return await this.updateLocation(id, { active: !location.active });
+    const data = await apiPost('location_toggle_active', { id }, { requireAdmin: true });
+    return data?.row || data;
   },
 
   /**
@@ -265,23 +222,7 @@ export const locationService = {
   async reorderLocations(locationOrders) {
     const items = Array.isArray(locationOrders) ? locationOrders : [];
 
-    if (locationTokenProvider) {
-      await apiPost('locations_reorder', { items }, { requireAdmin: true });
-      return true;
-    }
-
-    // locationOrders: [{ id, display_order }]
-    const updates = items.map(({ id, display_order }) =>
-      supabase.from('locations').update({ display_order }).eq('id', id)
-    );
-    const results = await Promise.all(updates);
-
-    // Check for errors
-    const errors = results.filter(r => r.error);
-    if (errors.length > 0) {
-      throwIfError(errors[0].error, 'reorderLocations');
-    }
-
+    await apiPost('locations_reorder', { items }, { requireAdmin: true });
     return true;
   },
 };

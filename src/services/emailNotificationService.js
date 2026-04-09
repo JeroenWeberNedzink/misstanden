@@ -1,7 +1,4 @@
-import { supabase } from '../lib/supabase';
-
 const DEFAULT_EMAIL_EVENT_TYPES = [
-  // Ticket
   {
     code: 'TICKET_CREATED',
     category: 'ticket',
@@ -72,7 +69,6 @@ const DEFAULT_EMAIL_EVENT_TYPES = [
     isSystemCritical: false,
     enabledByDefault: true,
   },
-  // Handler
   {
     code: 'HANDLER_ASSIGNED',
     category: 'handler',
@@ -103,7 +99,6 @@ const DEFAULT_EMAIL_EVENT_TYPES = [
     isSystemCritical: false,
     enabledByDefault: false,
   },
-  // SLA
   {
     code: 'SLA_WARNING',
     category: 'sla',
@@ -124,7 +119,6 @@ const DEFAULT_EMAIL_EVENT_TYPES = [
     isSystemCritical: true,
     enabledByDefault: true,
   },
-  // System
   {
     code: 'SYSTEM_ERROR',
     category: 'system',
@@ -157,146 +151,137 @@ const DEFAULT_EMAIL_EVENT_TYPES = [
   },
 ];
 
-// Helper function to convert snake_case to camelCase
+const EMAIL_SETTINGS_API_URL = '/api/email-settings.api.php';
+let emailSettingsTokenProvider = null;
+
 const toCamelCase = (obj) => {
   if (!obj) return obj;
   if (Array.isArray(obj)) return obj.map(toCamelCase);
   if (typeof obj !== 'object') return obj;
 
   const camelObj = {};
-  Object.keys(obj).forEach(key => {
+  Object.keys(obj).forEach((key) => {
     const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
     camelObj[camelKey] = toCamelCase(obj[key]);
   });
   return camelObj;
 };
 
-// Helper function to convert camelCase to snake_case
 const toSnakeCase = (obj) => {
   if (!obj) return obj;
   if (Array.isArray(obj)) return obj.map(toSnakeCase);
   if (typeof obj !== 'object') return obj;
 
   const snakeObj = {};
-  Object.keys(obj).forEach(key => {
-    const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+  Object.keys(obj).forEach((key) => {
+    const snakeKey = key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
     snakeObj[snakeKey] = toSnakeCase(obj[key]);
   });
   return snakeObj;
 };
 
+const setTokenProvider = (provider) => {
+  emailSettingsTokenProvider = typeof provider === 'function' ? provider : null;
+};
+
+const getAuthHeaders = async () => {
+  if (!emailSettingsTokenProvider) return {};
+  try {
+    const token = await emailSettingsTokenProvider();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+};
+
+const getAuthHeadersWithRetry = async () => {
+  let headers = await getAuthHeaders();
+  if (!headers.Authorization) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    headers = await getAuthHeaders();
+  }
+  if (!headers.Authorization) {
+    throw new Error('Authorization token required');
+  }
+  return headers;
+};
+
+const apiGet = async (action, params = {}) => {
+  const headers = await getAuthHeadersWithRetry();
+  const query = new URLSearchParams({ action, ...params }).toString();
+  const response = await fetch(`${EMAIL_SETTINGS_API_URL}?${query}`, {
+    method: 'GET',
+    headers,
+  });
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    throw new Error(json?.message || `Email settings API error (${response.status})`);
+  }
+  return json?.data;
+};
+
+const apiPost = async (action, payload = {}) => {
+  const headers = await getAuthHeadersWithRetry();
+  const response = await fetch(EMAIL_SETTINGS_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    throw new Error(json?.message || `Email settings API error (${response.status})`);
+  }
+  return json?.data;
+};
+
 export const emailNotificationService = {
+  setTokenProvider,
+
   async getEmailEventTypesWithMeta() {
-    const { data, error } = await supabase
-      .from('email_event_types')
-      .select('*')
-      .order('category, code');
-
-    if (error) {
-      // If the table doesn't exist, throw error (don't fail silently)
-      if (error.code === 'PGRST205' || error.code === '42P01') {
-        const msg = 'Email notification tables not set up. Please run SETUP_EMAIL_NOTIFICATIONS.sql';
-        console.error('[EmailNotificationService]', msg);
-        throw new Error(msg + ' (table: email_event_types)');
-      }
-      throw error;
-    }
-
-    const rows = toCamelCase(data || []);
+    const data = await apiGet('event_types');
+    const rows = toCamelCase(data?.rows || []);
     if (rows.length > 0) {
       return { rows, fallbackActive: false };
     }
-
-    // Fallback for environments where seed data is missing or hidden by policy.
-    // Keeps handler-profile UI usable and avoids empty preference screens.
     return { rows: DEFAULT_EMAIL_EVENT_TYPES, fallbackActive: true };
   },
 
-  /**
-   * Get all email event types
-   */
   async getEmailEventTypes() {
     const result = await this.getEmailEventTypesWithMeta();
     return result.rows || [];
   },
 
-  /**
-   * Get email event types grouped by category
-   */
   async getEmailEventTypesByCategory() {
     const types = await this.getEmailEventTypes();
     const grouped = {};
-
-    types.forEach(type => {
-      if (!grouped[type.category]) {
-        grouped[type.category] = [];
-      }
+    types.forEach((type) => {
+      if (!grouped[type.category]) grouped[type.category] = [];
       grouped[type.category].push(type);
     });
-
     return grouped;
   },
 
-  /**
-   * Get admin email settings
-   */
   async getAdminEmailSettings() {
-    const { data, error } = await supabase
-      .from('email_settings_overview')
-      .select('*')
-      .order('category, code');
-
-    if (error) {
-      // If the view doesn't exist, throw error (don't fail silently)
-      if (error.code === 'PGRST205' || error.code === '42P01') {
-        const msg = 'Email notification tables not set up. Please run SETUP_EMAIL_NOTIFICATIONS.sql in your Supabase SQL Editor.';
-        console.error('[EmailNotificationService]', msg);
-        console.error('[EmailNotificationService] File location: /SETUP_EMAIL_NOTIFICATIONS.sql');
-        throw new Error(msg + ' (view: email_settings_overview)');
-      }
-      throw error;
-    }
-    return toCamelCase(data || []);
+    const data = await apiGet('admin_overview');
+    return toCamelCase(data?.rows || []);
   },
 
-  /**
-   * Update admin email settings for a specific event type
-   */
   async updateAdminEmailSetting(eventTypeCode, settings) {
-    const snakeData = toSnakeCase(settings);
-
-    const { data, error } = await supabase
-      .from('email_admin_settings')
-      .upsert({
-        event_type_code: eventTypeCode,
-        ...snakeData
-      }, {
-        onConflict: 'event_type_code'
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-    return toCamelCase(data);
+    const data = await apiPost('update_admin_setting', {
+      event_type_code: eventTypeCode,
+      settings: toSnakeCase(settings),
+    });
+    return toCamelCase(data?.row || null);
   },
 
-  /**
-   * Get handler email preferences
-   */
   async getHandlerEmailPreferences(handlerId) {
-    const { data, error } = await supabase
-      .from('handler_email_preferences')
-      .select('*')
-      .eq('handler_id', handlerId)
-      .order('created_at');
-
-    if (error && error.code !== 'PGRST116') throw error;
-    return toCamelCase(data) || [];
+    const data = await apiGet('handler_preferences', { handler_id: handlerId });
+    return toCamelCase(data?.rows || []);
   },
 
-  /**
-   * Get handler email preferences grouped by category
-   */
   async getHandlerEmailPreferencesByCategory(handlerId, options = {}) {
     const withMeta = Boolean(options?.withMeta);
     const [preferences, eventTypes] = await Promise.all([
@@ -307,100 +292,53 @@ export const emailNotificationService = {
     const typeRows = Array.isArray(eventTypes?.rows) ? eventTypes.rows : [];
     const grouped = {};
 
-    typeRows.forEach(type => {
-      if (!grouped[type.category]) {
-        grouped[type.category] = [];
-      }
-
-      const handlerPref = preferences.find(p => p.eventTypeCode === type.code);
-
+    typeRows.forEach((type) => {
+      if (!grouped[type.category]) grouped[type.category] = [];
+      const handlerPref = preferences.find((p) => p.eventTypeCode === type.code);
       grouped[type.category].push({
         ...type,
         isEnabled: handlerPref ? handlerPref.isEnabled : type.enabledByDefault,
-        hasHandlerPreference: !!handlerPref
+        hasHandlerPreference: !!handlerPref,
       });
     });
 
     if (withMeta) {
       return {
         preferencesByCategory: grouped,
-        meta: {
-          fallbackActive: Boolean(eventTypes?.fallbackActive),
-        },
+        meta: { fallbackActive: Boolean(eventTypes?.fallbackActive) },
       };
     }
 
     return grouped;
   },
 
-  /**
-   * Update handler email preference for a specific event type
-   */
   async updateHandlerEmailPreference(handlerId, eventTypeCode, isEnabled) {
-    const { data, error } = await supabase
-      .from('handler_email_preferences')
-      .upsert({
-        handler_id: handlerId,
-        event_type_code: eventTypeCode,
-        is_enabled: isEnabled
-      }, {
-        onConflict: 'handler_id,event_type_code'
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-    return toCamelCase(data);
-  },
-
-  /**
-   * Bulk update handler email preferences
-   */
-  async updateHandlerEmailPreferences(handlerId, preferences) {
-    const updates = Object.entries(preferences).map(([eventTypeCode, isEnabled]) => ({
+    const data = await apiPost('update_handler_preferences', {
       handler_id: handlerId,
-      event_type_code: eventTypeCode,
-      is_enabled: isEnabled
-    }));
-
-    const { data, error } = await supabase
-      .from('handler_email_preferences')
-      .upsert(updates, {
-        onConflict: 'handler_id,event_type_code'
-      })
-      .select();
-
-    if (error) throw error;
-    return toCamelCase(data);
+      preferences: {
+        [eventTypeCode]: Boolean(isEnabled),
+      },
+    });
+    const rows = toCamelCase(data?.rows || []);
+    return rows.find((row) => row.eventTypeCode === eventTypeCode) || null;
   },
 
-  /**
-   * Check if an email should be sent based on admin and handler settings
-   */
-  async shouldSendEmail(eventTypeCode, handlerId, recipientType = 'handler') {
-    const { data, error } = await supabase
-      .rpc('should_send_email', {
-        p_event_type_code: eventTypeCode,
-        p_handler_id: handlerId,
-        p_recipient_type: recipientType
-      });
-
-    if (error) throw error;
-    return data;
+  async updateHandlerEmailPreferences(handlerId, preferences) {
+    const data = await apiPost('update_handler_preferences', {
+      handler_id: handlerId,
+      preferences,
+    });
+    return toCamelCase(data?.rows || []);
   },
 
-  /**
-   * Reset handler preferences to defaults
-   */
-  async resetHandlerEmailPreferences(handlerId) {
-    const { error } = await supabase
-      .from('handler_email_preferences')
-      .delete()
-      .eq('handler_id', handlerId);
-
-    if (error) throw error;
+  async shouldSendEmail() {
     return true;
-  }
+  },
+
+  async resetHandlerEmailPreferences(handlerId) {
+    await apiPost('reset_handler_preferences', { handler_id: handlerId });
+    return true;
+  },
 };
 
 export default emailNotificationService;

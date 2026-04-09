@@ -1,6 +1,6 @@
 # NZ Misstanden Portal
 
-Internal whistleblower and case-management portal built with React, Supabase, Auth0, and PHP API helpers.
+Internal whistleblower and case-management portal built with React, Auth0, SQL Server, and PHP API helpers.
 
 ## At A Glance
 
@@ -36,9 +36,9 @@ This repository contains:
   - Ensures `public.ticket_handlers` exists, grants are in place, and PostgREST cache is reloaded
 - Settings API IIS hardening
   - Runtime env discovery improved for different deploy layouts
-  - Settings endpoint supports HTTP fallback if cURL is unavailable
+  - Settings endpoint supports robust IIS runtime discovery and diagnostics
   - Optional `?debug=1` on settings endpoint returns redacted error detail
-  - Server env aliases added (example: `SUPABASE_URL` can populate `VITE_SUPABASE_URL` in PHP runtime)
+  - SQL Server-backed settings loading for both local and IIS deployments
 - Settings admin module i18n cleanup
   - Module cards in Settings > Admin Center are now fully translation-key driven across locales
 - Case management update
@@ -55,7 +55,7 @@ Frontend:
 - Auth0 React SDK
 
 Data and auth:
-- Supabase (PostgREST + Storage)
+- SQL Server
 - Auth0 (login and MFA-related flows)
 
 Backend helpers:
@@ -72,13 +72,13 @@ src/
   contexts/               Global settings context
   hooks/                  Permission and utility hooks
   i18n/                   i18next config + locale JSON files
-  lib/                    Shared clients (Supabase/Auth helpers)
+  lib/                    Shared auth and utility helpers
   pages/                  Route-level pages
   services/               Domain logic + data access
   styles/                 Tailwind and global styles
 public/api/               PHP API endpoints + PHPMailer + templates
 backups/translations/     Translation API backups
-supabase/migrations/      SQL migrations
+scripts/sqlserver/        SQL Server schema/bootstrap scripts
 scripts/                  Helper scripts (including SLA backfill runner)
 run/                      Runtime cache and rate-limit state (local)
 logs/                     Local runtime logs
@@ -95,7 +95,7 @@ Main flow:
 
 Data layer:
 - Frontend domain services in `src/services`
-- Shared Supabase client in `src/lib/supabase.js`
+- PHP APIs backed by SQL Server
 
 API layer:
 - Vite proxy forwards `/api/*` to local PHP server in development
@@ -155,7 +155,7 @@ Prerequisites:
 - Node.js 18+
 - npm
 - PHP 8+ (recommended)
-- Supabase project
+- SQL Server access
 - Auth0 application and API configuration
 
 Install:
@@ -208,15 +208,19 @@ Default local URLs:
 Use `.env.local` and/or `.env`.
 
 Frontend-required (`VITE_*`):
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
 - `VITE_AUTH0_DOMAIN`
 - `VITE_AUTH0_CLIENT_ID`
 - `VITE_AUTH0_AUDIENCE`
 - `VITE_AUTH0_API_SCOPE`
+- `VITE_SUPER_ADMIN_EMAILS` (optional allowlist)
+- `VITE_SUPER_ADMIN_SUBS` (optional allowlist)
 
 Server-required (non-`VITE_*`):
-- `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SERVICE_KEY`)
+- `SQLSERVER_HOST`
+- `SQLSERVER_PORT`
+- `SQLSERVER_DATABASE`
+- `SQLSERVER_USERNAME`
+- `SQLSERVER_PASSWORD`
 
 Common server-side optional:
 - `SLA_BACKFILL_CRON_KEY`
@@ -235,10 +239,10 @@ Common server-side optional:
 Important:
 - Never put secrets in `VITE_*` variables. They are exposed to browser code.
 - PHP runtime includes env aliases for deployment compatibility:
-  - `SUPABASE_URL` -> `VITE_SUPABASE_URL`
   - `AUTH0_DOMAIN` -> `VITE_AUTH0_DOMAIN`
   - `AUTH0_CLIENT_ID` -> `VITE_AUTH0_CLIENT_ID`
   - `AUTH0_AUDIENCE` -> `VITE_AUTH0_AUDIENCE`
+  - SQL Server settings are read directly from `SQLSERVER_*`
 
 ## Automated SLA Jobs (Windows/IIS)
 
@@ -264,26 +268,11 @@ Invoke-RestMethod -Method Post -Uri "https://your-domain/api/sla-escalation.api.
 
 ## Database and Migrations
 
-Migrations live in `supabase/migrations`.
+SQL Server schema/bootstrap scripts live in `scripts/sqlserver/`.
 
-Recent key migrations:
-- `20260219_create_handlers_table.sql`
-- `20260219_create_ticket_handlers.sql`
-- `20260219_capture_policy_baseline.sql`
-- `20260219_harden_system_settings_access.sql`
-- `20260219_harden_workflow_write_access.sql`
-- `20260219_restore_workflow_read_access.sql`
-- `20260305_create_access_requests_table.sql`
-- `20260305_add_workflow_status_first_response_flag.sql`
-- `20260305_fix_ticket_handlers_api_access.sql`
-- `20260306_create_ticket_reply_tokens.sql`
-- `20260306_add_messages_visible_at.sql`
-- `20260306_extend_ticket_handlers_roles.sql`
-- `20260306_create_sla_escalations.sql`
-- `20260306_create_guest_access.sql`
-
-If production shows `ticket_handlers ... 404 Not Found`, run:
-- `20260305_fix_ticket_handlers_api_access.sql`
+Key files:
+- `bootstrap-schema.sql`
+- `bootstrap-system-settings.sql`
 
 ## IIS Deployment
 
@@ -305,14 +294,10 @@ Notes:
 
 ## Troubleshooting
 
-`/api/settings.api.php` returns 500 with `Missing required environment variable: VITE_SUPABASE_URL`:
+`/api/settings.api.php` returns 500 with `SQL Server is not configured`:
 - Ensure `.env` exists on IIS host in the deployed root
 - Ensure file permissions allow IIS to read it
-- You may also set `SUPABASE_URL` (env alias support is available)
-
-`/rest/v1/ticket_handlers ... 404 Not Found` from frontend:
-- Table or PostgREST grants/schema cache are not aligned in target Supabase environment
-- Apply `20260305_fix_ticket_handlers_api_access.sql`
+- Ensure `SQLSERVER_HOST`, `SQLSERVER_DATABASE`, `SQLSERVER_USERNAME`, and `SQLSERVER_PASSWORD` are present for PHP runtime
 
 Need deeper settings error diagnostics:
 - Call `/api/settings.api.php?debug=1` to receive redacted error detail and `error_id`
@@ -324,7 +309,7 @@ Need deeper settings error diagnostics:
 Reporter secure reply link fails with token errors:
 - Check `ticket_reply_tokens` migration is applied
 - Validate token expiry (`REPORTER_REPLY_TOKEN_TTL_DAYS`)
-- Ensure `VITE_SUPABASE_URL` and service key are present for PHP runtime
+- Ensure SQL Server connection settings are present for PHP runtime
 
 ## Security Notes
 
@@ -366,7 +351,7 @@ Quick checks before release:
 - Settings API responds in target environment
 - Access-request approval flow works end-to-end
 - Workflow admin reflects first-response status flag behavior
-- Ticket handler relation reads succeed in target Supabase project
+- Ticket handler relation reads succeed against SQL Server
 - Reporter secure reply route (`/reply/{token}`) can read/send/upload
 - Guest route (`/guest/{token}`) loads read-only ticket without internal notes
 - SLA escalation endpoint can run with cron key and records `sla_escalations`

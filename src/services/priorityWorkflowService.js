@@ -1,4 +1,3 @@
-import { supabase } from '../lib/supabase';
 import { normalizeHandlerRecord, normalizeHandlerRecords } from './utils/handlerNormalization';
 import { ticketService } from './ticketService';
 
@@ -19,52 +18,27 @@ const toCamelCase = (obj) => {
 export const priorityWorkflowService = {
   // Get urgent and high-severity cases
   async getPriorityCases(filters = {}) {
-    // Get terminal status codes to exclude
-    const { data: terminalStatuses } = await supabase
-      .from('workflow_statuses')
-      .select('code')
-      .eq('is_terminal', true);
+    const allTickets = await ticketService.getAllTickets(filters);
+    const workflowCodes = Array.from(new Set(
+      (allTickets || []).map((ticket) => String(ticket?.workflowType || ticket?.workflow_type || '').trim()).filter(Boolean)
+    ));
+    const terminalCodes = new Set();
 
-    const terminalCodes = terminalStatuses?.map(s => s.code) || [];
+    await Promise.all(
+      workflowCodes.map(async (workflowCode) => {
+        const { statuses } = await ticketService.getWorkflowStatuses(workflowCode);
+        (statuses || []).forEach((status) => {
+          if (status?.isTerminal || status?.is_terminal) {
+            terminalCodes.add(String(status?.code || '').trim());
+          }
+        });
+      })
+    );
 
-    let query = supabase
-      ?.from('tickets')
-      ?.select(`
-        *,
-        handlers:handler_id (
-          id,
-          name,
-          email,
-          roles,
-          active
-        )
-      `)
-      ?.in('severity_code', ['critical', 'high']);
-
-    // Exclude terminal statuses
-    if (terminalCodes.length > 0) {
-      query = query?.not('status_code', 'in', `(${terminalCodes.join(',')})`);
-    }
-
-    // Apply filters
-    if (filters?.severity && filters?.severity !== 'all') {
-      query = query?.eq('severity_code', filters?.severity);
-    }
-
-    if (filters?.workflowType && filters?.workflowType !== 'all') {
-      query = query?.eq('workflow_type', filters?.workflowType);
-    }
-
-    if (filters?.handlerId && filters?.handlerId !== 'all') {
-      query = query?.eq('handler_id', filters?.handlerId);
-    }
-
-    const { data, error } = await query;
-
-    if (error) throw error;
-
-    // Convert to camelCase
-    const cases = (toCamelCase(data) || []).map((ticket) => ({
+    const cases = (toCamelCase(allTickets) || [])
+      .filter((ticket) => ['critical', 'high'].includes(String(ticket?.severityCode || '').toLowerCase()))
+      .filter((ticket) => !terminalCodes.has(String(ticket?.statusCode || '').trim()))
+      .map((ticket) => ({
       ...ticket,
       handlers: ticket?.handlers ? normalizeHandlerRecord(ticket.handlers) : ticket?.handlers,
     }));
@@ -107,22 +81,12 @@ export const priorityWorkflowService = {
 
   // Get all active handlers for filter
   async getActiveHandlers() {
-    try {
-      const handlers = await ticketService.getAllHandlers({
-        includeInactive: false,
-        enrichPermissions: false,
-      });
-      return normalizeHandlerRecords(toCamelCase(handlers) || []);
-    } catch (err) {
-      const { data, error } = await supabase
-        ?.from('handlers')
-        ?.select('id, name, email, active, roles, permissions, user_id, picture, created_at, updated_at, last_login')
-        ?.eq('active', true)
-        ?.order('name');
-
-      if (error) throw err;
-      return normalizeHandlerRecords(toCamelCase(data) || []);
-    }
+    const handlers = await ticketService.getAllHandlers({
+      includeInactive: false,
+      enrichPermissions: false,
+      preferApi: true,
+    });
+    return normalizeHandlerRecords(toCamelCase(handlers) || []);
   },
 
   // Update ticket priority

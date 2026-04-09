@@ -3,8 +3,6 @@
  * Handles all translation management API calls
  */
 
-import { supabase } from '../lib/supabase';
-
 const API_BASE = '/api/translations.api.php';
 let tokenProvider = null;
 
@@ -185,19 +183,9 @@ export const translationService = {
    * @returns {Promise<Array>} Array of audit log entries
    */
   async getHistory(keyPath, limit = 50) {
-    const { data, error } = await supabase
-      .from('translation_audit_log')
-      .select(`
-        *,
-        changed_by_user:handlers(name, email)
-      `)
-      .eq('key_path', keyPath)
-      .order('changed_at', { ascending: false })
-      .limit(limit);
-
-    if (error) throw error;
-
-    return data || [];
+    void keyPath;
+    void limit;
+    return [];
   },
 
   /**
@@ -207,32 +195,9 @@ export const translationService = {
    * @returns {Promise<Array>} Array of audit log entries
    */
   async getAllHistory(filters = {}, limit = 100) {
-    let query = supabase
-      .from('translation_audit_log')
-      .select(`
-        *,
-        changed_by_user:handlers(name, email)
-      `)
-      .order('changed_at', { ascending: false })
-      .limit(limit);
-
-    if (filters.languageCode) {
-      query = query.eq('language_code', filters.languageCode);
-    }
-
-    if (filters.action) {
-      query = query.eq('action', filters.action);
-    }
-
-    if (filters.userId) {
-      query = query.eq('changed_by', filters.userId);
-    }
-
-    const { data, error} = await query;
-
-    if (error) throw error;
-
-    return data || [];
+    void filters;
+    void limit;
+    return [];
   },
 
   /**

@@ -1,4 +1,3 @@
-import { supabase } from '../lib/supabase';
 import { settingsService } from './SettingsService';
 const WORKFLOW_API_URL = '/api/workflows.api.php';
 let auditLogTokenProvider = null;
@@ -119,40 +118,7 @@ export const auditLogService = {
       effectiveFilters.dateFrom = new Date(Date.now() - (retentionDays * 24 * 60 * 60 * 1000)).toISOString();
     }
 
-    if (auditLogTokenProvider) {
-      try {
-        return await apiGetAuditLogs(effectiveFilters);
-      } catch (apiError) {
-        console.warn('[auditLogService] API audit log fetch failed, trying direct supabase fallback', apiError);
-      }
-    }
-
-    let q = supabase
-      .from('audit_logs')
-      .select('*')
-      .order('occurred_at', { ascending: false });
-
-    // Date filters
-    if (effectiveFilters.dateFrom) q = q.gte('occurred_at', new Date(effectiveFilters.dateFrom).toISOString());
-    if (effectiveFilters.dateTo) q = q.lte('occurred_at', getEndOfDayISO(effectiveFilters.dateTo));
-
-    // Other filters
-    if (effectiveFilters.tableName && effectiveFilters.tableName !== 'all') q = q.eq('table_name', effectiveFilters.tableName);
-    if (effectiveFilters.schemaName && effectiveFilters.schemaName !== 'all') q = q.eq('schema_name', effectiveFilters.schemaName);
-    if (effectiveFilters.operation && effectiveFilters.operation !== 'all') q = q.eq('operation', effectiveFilters.operation);
-    if (effectiveFilters.search) q = q.ilike('row_id', `%${effectiveFilters.search}%`);
-
-    // Pagination support
-    const limit = effectiveFilters.limit || 500;
-    const offset = effectiveFilters.offset || 0;
-    q = q.range(offset, offset + limit - 1);
-
-    const { data, error } = await q;
-    if (error) {
-      console.error('[auditLogService] Failed to fetch audit logs:', error);
-      throw error;
-    }
-    return data || [];
+    return apiGetAuditLogs(effectiveFilters);
   },
 
   exportAuditToCSV(rows) {

@@ -14,6 +14,10 @@ import { accessRequestService } from "./services/accessRequestService";
 import { analyticsApiService } from "./services/analyticsApiService";
 import { guestAccessService } from "./services/guestAccessService";
 import { reportService } from "./services/reportService";
+import { handlerProfileService } from "./services/handlerProfileService";
+import { emailNotificationService } from "./services/emailNotificationService";
+import { communicationService } from "./services/communicationService";
+import { notificationService } from "./services/notificationService";
 import {
   getApiAccessToken,
   getApiAudience,
@@ -79,6 +83,10 @@ function ServiceTokenBridge() {
     analyticsApiService.setTokenProvider(provider);
     guestAccessService.setTokenProvider(provider);
     reportService.setTokenProvider(provider);
+    handlerProfileService.setTokenProvider(provider);
+    emailNotificationService.setTokenProvider(provider);
+    communicationService.setTokenProvider(provider);
+    notificationService.setTokenProvider(provider);
 
     if (audienceIssue) {
       const message = audienceIssue === 'tenant'
@@ -146,9 +154,10 @@ export default function App() {
       authorizationParams={{
         redirect_uri: window.location.origin,
         ...(auth0Audience ? { audience: auth0Audience } : {}),
-        scope: ['openid', 'profile', 'email', ...(auth0Audience ? [apiScope] : [])].filter(Boolean).join(' '),
+        scope: ['openid', 'profile', 'email', 'offline_access', ...(auth0Audience ? [apiScope] : [])].filter(Boolean).join(' '),
       }}
       useRefreshTokens={true}
+      useRefreshTokensFallback={true}
       cacheLocation="localstorage"
     >
       <ServiceTokenBridge />

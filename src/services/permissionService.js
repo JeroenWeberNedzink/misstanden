@@ -1,4 +1,3 @@
-import { supabase } from '../lib/supabase';
 const WORKFLOW_API_URL = '/api/workflows.api.php';
 let permissionTokenProvider = null;
 
@@ -104,17 +103,8 @@ export const permissionService = {
    * Get all available permissions
    */
   async getAllPermissions() {
-    try {
-      const data = await apiGet('permissions_list');
-      return toCamelCase(data?.rows || []);
-    } catch (apiErr) {
-      const { data, error } = await supabase
-        .from('permissions')
-        .select('*')
-        .order('category, name');
-      if (error) throw apiErr;
-      return toCamelCase(data || []);
-    }
+    const data = await apiGet('permissions_list');
+    return toCamelCase(data?.rows || []);
   },
 
   /**
@@ -173,17 +163,8 @@ export const permissionService = {
    * Get all roles
    */
   async getAllRoles() {
-    try {
-      const data = await apiGet('roles_list');
-      return toCamelCase(data?.rows || []);
-    } catch (apiErr) {
-      const { data, error } = await supabase
-        .from('roles')
-        .select('*')
-        .order('name');
-      if (error) throw apiErr;
-      return toCamelCase(data || []);
-    }
+    const data = await apiGet('roles_list');
+    return toCamelCase(data?.rows || []);
   },
 
   /**
@@ -261,33 +242,16 @@ export const permissionService = {
    * Get all roles for a handler
    */
   async getHandlerRoles(handlerId) {
-    const { data, error } = await supabase
-      .from('handler_roles')
-      .select(`
-        role_id,
-        roles (
-          id,
-          code,
-          name,
-          description
-        )
-      `)
-      .eq('handler_id', handlerId);
-
-    if (error) throw error;
-
-    return toCamelCase((data || []).map(hr => hr.roles).filter(Boolean));
+    const data = await apiGet('handler_roles', { handler_id: handlerId });
+    return toCamelCase(data?.rows || []);
   },
 
   /**
    * Get all permissions for a handler (computed from their roles)
    */
   async getHandlerPermissions(handlerId) {
-    const { data, error } = await supabase
-      .rpc('get_handler_permissions', { handler_uuid: handlerId });
-
-    if (error) throw error;
-    return toCamelCase(data || []);
+    const data = await apiGet('handler_permissions', { handler_id: handlerId });
+    return toCamelCase(data?.rows || []);
   },
 
   /**
@@ -308,56 +272,21 @@ export const permissionService = {
    * Check if handler has a specific permission
    */
   async handlerHasPermission(handlerId, permissionCode) {
-    const { data, error } = await supabase
-      .rpc('handler_has_permission', {
-        handler_uuid: handlerId,
-        perm_code: permissionCode,
-      });
-
-    if (error) throw error;
-    return data === true;
+    const data = await apiGet('handler_has_permission', {
+      handler_id: handlerId,
+      permission_code: permissionCode,
+    });
+    return data?.allowed === true;
   },
 
   /**
    * Assign roles to a handler
    */
   async setHandlerRoles(handlerId, roleIds) {
-    // First, delete existing handler roles
-    const { error: deleteError } = await supabase
-      .from('handler_roles')
-      .delete()
-      .eq('handler_id', handlerId);
-
-    if (deleteError) throw deleteError;
-
-    // Then insert new roles
-    if (roleIds && roleIds.length > 0) {
-      const inserts = roleIds.map(roleId => ({
-        handler_id: handlerId,
-        role_id: roleId,
-      }));
-
-      const { error: insertError } = await supabase
-        .from('handler_roles')
-        .insert(inserts);
-
-      if (insertError) throw insertError;
-    }
-
-    // Also update the legacy roles column in handlers table for backward compatibility
-    const { data: roles } = await supabase
-      .from('roles')
-      .select('code')
-      .in('id', roleIds);
-
-    if (roles) {
-      const roleCodes = roles.map(r => r.code);
-      await supabase
-        .from('handlers')
-        .update({ roles: roleCodes })
-        .eq('id', handlerId);
-    }
-
+    await apiPost('set_handler_roles', {
+      handler_id: handlerId,
+      role_ids: Array.isArray(roleIds) ? roleIds : [],
+    });
     return { success: true };
   },
 
@@ -365,16 +294,16 @@ export const permissionService = {
    * Get handler with roles and permissions
    */
   async getHandlerWithPermissions(handlerId) {
-    const [handler, roles, permissions] = await Promise.all([
-      supabase.from('handlers').select('*').eq('id', handlerId).single(),
+    const [handlerData, roles, permissions] = await Promise.all([
+      apiGet('handlers_by_ids', { ids: String(handlerId), include_inactive: '1' }),
       this.getHandlerRoles(handlerId),
       this.getHandlerPermissionsObject(handlerId),
     ]);
-
-    if (handler.error) throw handler.error;
+    const handler = Array.isArray(handlerData?.rows) ? handlerData.rows[0] : null;
+    if (!handler) throw new Error('Handler not found');
 
     return {
-      ...toCamelCase(handler.data),
+      ...toCamelCase(handler),
       roles,
       permissions,
     };

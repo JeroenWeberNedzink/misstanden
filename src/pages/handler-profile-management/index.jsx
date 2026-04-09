@@ -11,6 +11,7 @@ import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import TwoFactorAuthPanel from './components/TwoFactorAuthPanel';
 import { getApiAccessToken } from '../../lib/auth0ApiToken';
+import { normalizeHandlerRecord } from '../../services/utils/handlerNormalization';
 
 /**
  * Single-page version:
@@ -62,6 +63,14 @@ const pickPrimaryRole = (roles = [], fallbackRole = '') => {
 
   const fallback = String(fallbackRole || '').toUpperCase().trim();
   return fallback || normalized[0] || 'HANDLER';
+};
+const readCachedHandlerProfile = () => {
+  try {
+    const cached = sessionStorage.getItem('handler_profile');
+    return cached ? normalizeHandlerRecord(JSON.parse(cached)) : null;
+  } catch {
+    return null;
+  }
 };
 
 const HandlerProfileManagement = () => {
@@ -201,15 +210,21 @@ const HandlerProfileManagement = () => {
           profile = payload.data.handler;
         }
       } catch (apiError) {
-        console.warn('[HandlerProfile] /api/me.api.php lookup failed, fallback to direct lookup:', apiError);
+        console.warn('[HandlerProfile] /api/me.api.php lookup failed, using cached handler profile if available:', apiError);
       }
 
       if (!profile) {
-        profile = await handlerProfileService?.getHandlerByUserId(user?.sub);
-      }
-
-      if (!profile && user?.email) {
-        profile = await handlerProfileService?.getHandlerByEmail(user.email);
+        const cachedProfile = readCachedHandlerProfile();
+        const cachedEmail = String(cachedProfile?.email || '').trim().toLowerCase();
+        const normalizedEmail = String(user?.email || '').trim().toLowerCase();
+        const cachedUserId = String(cachedProfile?.user_id || '').trim();
+        const normalizedSub = String(user?.sub || '').trim();
+        if (
+          (cachedUserId && normalizedSub && cachedUserId === normalizedSub) ||
+          (cachedEmail && normalizedEmail && cachedEmail === normalizedEmail)
+        ) {
+          profile = cachedProfile;
+        }
       }
 
       setHandlerProfile(profile);

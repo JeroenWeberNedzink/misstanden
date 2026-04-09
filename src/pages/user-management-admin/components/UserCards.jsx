@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
-import { supabase } from '../../../lib/supabase';
+import { workflowService } from '../../../services/workflowService';
 import PermissionGuard from '../../../components/auth/PermissionGuard';
 import { PERMISSIONS } from '../../../utils/permissions';
 
@@ -20,25 +20,16 @@ const UserTable = ({ users, onEdit, onDelete }) => {
       setIsLoadingCounts(true);
       try {
         const handlerIds = users.map((u) => u.id).filter(Boolean);
-
-        const { data: ticketAgg, error: ticketErr } = await supabase
-          .rpc('get_ticket_counts_by_handler', { handler_ids: handlerIds });
-        if (ticketErr) throw ticketErr;
-
+        const stats = await workflowService.getHandlerStats(handlerIds);
         const ticketMap = {};
-        (ticketAgg || []).forEach((row) => {
-          ticketMap[row.handler_id] = Number(row.ticket_count ?? 0);
+        const wfMap = {};
+        (stats || []).forEach((row) => {
+          const handlerId = row?.handlerId || row?.handler_id;
+          if (!handlerId) return;
+          ticketMap[handlerId] = Number(row?.ticketCount ?? row?.ticket_count ?? 0);
+          wfMap[handlerId] = Number(row?.workflowCount ?? row?.workflow_count ?? 0);
         });
         setTicketCounts(ticketMap);
-
-        const { data: wfAgg, error: wfErr } = await supabase
-          .rpc('get_workflow_counts_by_handler', { handler_ids: handlerIds });
-        if (wfErr) throw wfErr;
-
-        const wfMap = {};
-        (wfAgg || []).forEach((row) => {
-          wfMap[row.handler_id] = Number(row.workflow_count ?? 0);
-        });
         setWorkflowCounts(wfMap);
       } catch (e) {
         console.error('Error loading handler stats:', e);

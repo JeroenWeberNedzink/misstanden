@@ -1,6 +1,5 @@
-import { supabase } from '../lib/supabase';
-
 const REPORTER_REPLY_API_URL = '/api/reporter-reply.api.php';
+const FILES_API_URL = '/api/files.api.php';
 
 const toError = (message, original = null) => {
   const err = new Error(message);
@@ -66,30 +65,41 @@ export const reporterReplyService = {
     if (!token) throw new Error('token is required');
     if (!file) throw new Error('file is required');
 
-    const bucket = options?.bucket || 'attachments';
     const uid = randomId();
-    const path = `reporter-replies/${uid}_${safeFileName(file.name)}`;
+    const folder = `${options?.folder || 'attachments'}/reporter-replies`;
+    const formData = new FormData();
+    formData.append('action', 'upload');
+    formData.append('folder', folder);
+    formData.append('file', file, `${uid}_${safeFileName(file.name)}`);
 
-    const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file, {
-      cacheControl: '3600',
-      upsert: false,
-      contentType: file.type || 'application/octet-stream',
+    const uploadResponse = await fetch(FILES_API_URL, {
+      method: 'POST',
+      body: formData,
     });
-    if (uploadError) {
-      throw toError(`Failed to upload attachment: ${uploadError.message}`, uploadError);
+    const uploadJson = await uploadResponse.json().catch(() => null);
+    if (!uploadResponse.ok || !uploadJson?.success) {
+      throw toError(uploadJson?.message || `Failed to upload attachment (${uploadResponse.status})`, uploadJson);
     }
+
+    const storedPath = uploadJson?.data?.path || null;
 
     try {
       const result = await this.addAttachment(token, {
         name: file.name,
-        url: path,
+        url: storedPath,
         type: file.type || 'application/octet-stream',
         size: file.size || 0,
       });
       return result;
     } catch (error) {
       try {
-        await supabase.storage.from(bucket).remove([path]);
+        if (storedPath) {
+          await fetch(FILES_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'delete', path: storedPath }),
+          });
+        }
       } catch {
         // Ignore cleanup errors.
       }

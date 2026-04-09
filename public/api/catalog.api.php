@@ -24,7 +24,10 @@ error_reporting(E_ALL);
 
 function catalog_json(int $status, bool $success, string $message, $data = null): void {
     http_response_code($status);
-    echo json_encode(['success' => $success, 'message' => $message, 'data' => $data], JSON_UNESCAPED_UNICODE);
+    echo json_encode(
+        ['success' => $success, 'message' => $message, 'data' => $data],
+        JSON_UNESCAPED_UNICODE
+    );
     exit;
 }
 
@@ -65,7 +68,6 @@ try {
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         catalog_json(405, false, 'Method not allowed');
     }
-
     if (!sqlserver_is_configured()) {
         throw new Exception('SQL Server is not configured');
     }
@@ -75,12 +77,13 @@ try {
     if ($action === 'workflows') {
         $includeInactive = catalog_bool_query('include_inactive', false);
         $sql = 'SELECT * FROM dbo.workflows';
+        $params = [];
         if (!$includeInactive) {
             $sql .= ' WHERE active = @active';
+            $params['active'] = true;
         }
         $sql .= ' ORDER BY display_order ASC, name ASC';
-        $rows = sqlserver_query($sql, $includeInactive ? [] : ['active' => true]);
-        catalog_json(200, true, 'Workflows loaded', ['rows' => $rows]);
+        catalog_json(200, true, 'Workflows loaded', ['rows' => sqlserver_query($sql, $params)]);
     }
 
     if ($action === 'workflow_by_id') {
@@ -112,12 +115,16 @@ try {
     if ($action === 'workflow_statuses') {
         $workflowId = trim((string)($_GET['workflow_id'] ?? ''));
         $workflowCode = trim((string)($_GET['workflow_code'] ?? ''));
+
         if ($workflowId === '' && $workflowCode === '') {
             throw new Exception('workflow_id or workflow_code is required');
         }
 
         if ($workflowId === '' && $workflowCode !== '') {
-            $workflowRows = sqlserver_query('SELECT TOP 1 id FROM dbo.workflows WHERE code = @code', ['code' => $workflowCode]);
+            $workflowRows = sqlserver_query(
+                'SELECT TOP 1 id FROM dbo.workflows WHERE code = @code',
+                ['code' => $workflowCode]
+            );
             $workflowId = trim((string)($workflowRows[0]['id'] ?? ''));
         }
 
@@ -126,22 +133,26 @@ try {
         }
 
         $rows = sqlserver_query(
-            'SELECT * FROM dbo.workflow_statuses WHERE workflow_id = @workflow_id ORDER BY sort_order ASC, label ASC',
+            'SELECT * FROM dbo.workflow_statuses
+             WHERE workflow_id = @workflow_id
+             ORDER BY sort_order ASC, label ASC',
             ['workflow_id' => $workflowId]
         );
-        $rows = array_map('catalog_normalize_status_row', $rows);
-        catalog_json(200, true, 'Workflow statuses loaded', ['rows' => $rows]);
+        catalog_json(200, true, 'Workflow statuses loaded', [
+            'rows' => array_map('catalog_normalize_status_row', $rows),
+        ]);
     }
 
     if ($action === 'locations') {
         $includeInactive = catalog_bool_query('include_inactive', false);
         $sql = 'SELECT * FROM dbo.locations';
+        $params = [];
         if (!$includeInactive) {
             $sql .= ' WHERE active = @active';
+            $params['active'] = true;
         }
         $sql .= ' ORDER BY display_order ASC, country_name ASC';
-        $rows = sqlserver_query($sql, $includeInactive ? [] : ['active' => true]);
-        catalog_json(200, true, 'Locations loaded', ['rows' => $rows]);
+        catalog_json(200, true, 'Locations loaded', ['rows' => sqlserver_query($sql, $params)]);
     }
 
     if ($action === 'location_by_id') {
@@ -162,7 +173,10 @@ try {
         if ($countryCode === '') {
             throw new Exception('country_code is required');
         }
-        $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.locations WHERE country_code = @country_code', ['country_code' => $countryCode]);
+        $rows = sqlserver_query(
+            'SELECT TOP 1 * FROM dbo.locations WHERE country_code = @country_code',
+            ['country_code' => $countryCode]
+        );
         $row = $rows[0] ?? null;
         if (!$row) {
             catalog_json(404, false, 'Location not found');
@@ -171,9 +185,12 @@ try {
     }
 
     if ($action === 'severities') {
-        $rows = sqlserver_query('SELECT * FROM dbo.incident_severities WHERE active = @active ORDER BY sort_order ASC, label ASC', [
-            'active' => true,
-        ]);
+        $rows = sqlserver_query(
+            'SELECT * FROM dbo.incident_severities
+             WHERE active = @active
+             ORDER BY sort_order ASC, label ASC',
+            ['active' => true]
+        );
         catalog_json(200, true, 'Severities loaded', ['rows' => $rows]);
     }
 

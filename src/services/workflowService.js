@@ -410,6 +410,14 @@ export const workflowService = {
     const data = await apiGet('handler_workflow_ids', { handler_id: id }, { requireAdmin: true });
     return Array.isArray(data?.workflow_ids) ? data.workflow_ids : [];
   },
+  async getHandlerStats(handlerIds = []) {
+    const ids = Array.from(
+      new Set((Array.isArray(handlerIds) ? handlerIds : []).map((id) => safeTrim(id)).filter(Boolean))
+    );
+    if (ids.length === 0) return [];
+    const data = await apiGet('handler_stats', { ids: ids.join(',') }, { requireAdmin: true });
+    return toCamelCase(data?.rows || []);
+  },
   async setHandlerWorkflows(handlerId, workflowIds = []) {
     const id = safeTrim(handlerId);
     if (!id) throw new Error('handlerId is required');

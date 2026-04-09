@@ -3,9 +3,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_admin_auth.php';
-require_once __DIR__ . '/_supabase.php';
 require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
+require_once __DIR__ . '/_sqlserver.php';
 
 api_apply_security_headers([
     'allow_methods' => 'POST, OPTIONS',
@@ -32,85 +32,84 @@ function report_json(int $status, bool $success, string $message, array $data = 
     exit;
 }
 
-function report_supabase_request(string $method, string $url, string $serviceKey): array {
-    $headers = [
-        'apikey: ' . $serviceKey,
-        'Authorization: Bearer ' . $serviceKey,
-        'Content-Type: application/json',
-    ];
-
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL => $url,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_CUSTOMREQUEST => $method,
-        CURLOPT_HTTPHEADER => $headers,
-        CURLOPT_TIMEOUT => 30,
-    ]);
-
-    $resp = curl_exec($ch);
-    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    if ($resp === false) {
-        $err = curl_error($ch);
-        curl_close($ch);
-        throw new Exception('Supabase request failed: ' . $err);
-    }
-    curl_close($ch);
-
-    return [$code, json_decode($resp, true), $resp];
-}
-
-function report_first_row($decoded): ?array {
-    if (is_array($decoded) && array_is_list($decoded)) {
-        return count($decoded) > 0 && is_array($decoded[0]) ? $decoded[0] : null;
-    }
-    return is_array($decoded) ? $decoded : null;
-}
-
 function report_safe($value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+function report_parse_json($value, $fallback = []) {
+    if (is_array($value)) {
+        return $value;
+    }
+    if (!is_string($value) || trim($value) === '') {
+        return $fallback;
+    }
+    $decoded = json_decode($value, true);
+    return json_last_error() === JSON_ERROR_NONE ? $decoded : $fallback;
+}
+
 function report_format_dt($value): string {
     $raw = trim((string)$value);
-    if ($raw === '') return '-';
+    if ($raw === '') {
+        return '-';
+    }
     $ts = strtotime($raw);
-    if ($ts === false) return $raw;
+    if ($ts === false) {
+        return $raw;
+    }
     return gmdate('Y-m-d H:i:s', $ts) . ' UTC';
 }
 
-function report_build_timeline(array $ticket): array {
-    $timeline = [];
+function report_vendor_autoload_path(): ?string {
+    $candidates = [
+        __DIR__ . '/../vendor/autoload.php',
+        __DIR__ . '/../../vendor/autoload.php',
+    ];
 
-    $timeline[] = [
+    foreach ($candidates as $candidate) {
+        if (is_file($candidate)) {
+            return $candidate;
+        }
+    }
+
+    return null;
+}
+
+function report_build_timeline(array $ticket): array {
+    $timeline = [[
         'type' => 'ticket_created',
         'at' => (string)($ticket['submitted_at'] ?? ''),
         'title' => 'Ticket created',
         'description' => 'Initial report was submitted',
-    ];
+    ]];
 
-    foreach (($ticket['messages'] ?? []) as $msg) {
-        if (!is_array($msg)) continue;
+    foreach (($ticket['messages'] ?? []) as $message) {
+        if (!is_array($message)) {
+            continue;
+        }
         $timeline[] = [
             'type' => 'message',
-            'at' => (string)($msg['created_at'] ?? ''),
-            'title' => 'Message (' . report_safe((string)($msg['sender'] ?? 'unknown')) . ')',
-            'description' => (string)($msg['body'] ?? ''),
+            'at' => (string)($message['created_at'] ?? ''),
+            'title' => 'Message (' . report_safe((string)($message['sender'] ?? 'unknown')) . ')',
+            'description' => (string)($message['body'] ?? ''),
         ];
     }
 
-    foreach (($ticket['ticket_comments'] ?? []) as $note) {
-        if (!is_array($note)) continue;
+    foreach (($ticket['ticket_comments'] ?? []) as $comment) {
+        if (!is_array($comment)) {
+            continue;
+        }
         $timeline[] = [
             'type' => 'note',
-            'at' => (string)($note['created_at'] ?? ''),
+            'at' => (string)($comment['created_at'] ?? ''),
             'title' => 'Investigation note',
-            'description' => (string)($note['comment'] ?? ''),
+            'description' => (string)($comment['comment'] ?? ''),
         ];
     }
 
     foreach (($ticket['ticket_actions'] ?? []) as $action) {
-        if (!is_array($action)) continue;
+        if (!is_array($action)) {
+            continue;
+        }
         $timeline[] = [
             'type' => 'action',
             'at' => (string)($action['created_at'] ?? ''),
@@ -136,13 +135,13 @@ function report_render_html(array $ticket): string {
     $timeline = report_build_timeline($ticket);
 
     $handlerRows = '';
-    foreach ($handlers as $h) {
-        $handler = is_array($h['handlers'] ?? null) ? $h['handlers'] : [];
+    foreach ($handlers as $item) {
+        $handler = is_array($item['handler'] ?? null) ? $item['handler'] : [];
         $handlerRows .= '<tr>'
             . '<td>' . report_safe($handler['name'] ?? '-') . '</td>'
             . '<td>' . report_safe($handler['email'] ?? '-') . '</td>'
-            . '<td>' . report_safe($h['role'] ?? '-') . '</td>'
-            . '<td>' . report_format_dt($h['assigned_at'] ?? $h['created_at'] ?? null) . '</td>'
+            . '<td>' . report_safe($item['role'] ?? '-') . '</td>'
+            . '<td>' . report_format_dt($item['assigned_at'] ?? $item['created_at'] ?? null) . '</td>'
             . '</tr>';
     }
     if ($handlerRows === '') {
@@ -150,13 +149,15 @@ function report_render_html(array $ticket): string {
     }
 
     $attachmentRows = '';
-    foreach ($attachments as $att) {
-        if (!is_array($att)) continue;
+    foreach ($attachments as $attachment) {
+        if (!is_array($attachment)) {
+            continue;
+        }
         $attachmentRows .= '<tr>'
-            . '<td>' . report_safe($att['file_name'] ?? '-') . '</td>'
-            . '<td>' . report_safe($att['mime_type'] ?? '-') . '</td>'
-            . '<td>' . report_safe((string)($att['size_bytes'] ?? '-')) . '</td>'
-            . '<td>' . report_format_dt($att['created_at'] ?? null) . '</td>'
+            . '<td>' . report_safe($attachment['file_name'] ?? '-') . '</td>'
+            . '<td>' . report_safe($attachment['mime_type'] ?? '-') . '</td>'
+            . '<td>' . report_safe((string)($attachment['size_bytes'] ?? '-')) . '</td>'
+            . '<td>' . report_format_dt($attachment['created_at'] ?? null) . '</td>'
             . '</tr>';
     }
     if ($attachmentRows === '') {
@@ -165,7 +166,9 @@ function report_render_html(array $ticket): string {
 
     $notesRows = '';
     foreach ($notes as $note) {
-        if (!is_array($note)) continue;
+        if (!is_array($note)) {
+            continue;
+        }
         $notesRows .= '<tr>'
             . '<td>' . report_format_dt($note['created_at'] ?? null) . '</td>'
             . '<td>' . report_safe($note['author_name'] ?? '-') . '</td>'
@@ -251,56 +254,127 @@ function report_render_html(array $ticket): string {
 
 try {
     load_runtime_env(__DIR__);
-
     api_apply_no_store_headers();
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         report_json(405, false, 'Method not allowed');
     }
+    if (!sqlserver_is_configured()) {
+        throw new Exception('SQL Server is not configured');
+    }
 
-    $ctx = api_authz_require_admin(static function (int $status, string $message): void {
+    api_authz_require_admin(static function (int $status, string $message): void {
         report_json($status, false, $message);
     });
 
-    $baseUrl = rtrim((string)$ctx['base_url'], '/');
-    $serviceKey = (string)$ctx['service_key'];
-
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw ?? '', true);
-    if (!is_array($payload)) $payload = [];
+    if (!is_array($payload)) {
+        $payload = [];
+    }
 
     $ticketId = trim((string)($payload['ticket_id'] ?? ''));
     if ($ticketId === '') {
         report_json(400, false, 'ticket_id is required');
     }
 
-    $select = 'id,ticket_number,workflow_type,status_code,current_stage,severity_code,description,location,submitted_at,last_update_at,attachments(*),messages(*),ticket_comments(*),ticket_actions(*),ticket_handlers(id,ticket_id,handler_id,role,assigned_at,created_at,handlers:handler_id(id,name,email,roles,active))';
-    $url = $baseUrl
-        . '/rest/v1/tickets?select=' . rawurlencode($select)
-        . '&id=eq.' . rawurlencode($ticketId)
-        . '&limit=1';
-
-    [$code, $decoded, $rawResp] = report_supabase_request('GET', $url, $serviceKey);
-    if ($code < 200 || $code >= 300) {
-        $msg = is_array($decoded) ? json_encode($decoded, JSON_UNESCAPED_UNICODE) : (string)$rawResp;
-        throw new Exception('Failed to load ticket for report: ' . $msg);
-    }
-
-    $ticket = report_first_row($decoded);
+    $ticketRows = sqlserver_query(
+        'SELECT TOP 1
+            id,
+            ticket_number,
+            workflow_type,
+            status_code,
+            current_stage,
+            severity_code,
+            description,
+            location,
+            submitted_at,
+            last_update_at,
+            metadata
+         FROM dbo.tickets
+         WHERE id = @ticket_id',
+        ['ticket_id' => $ticketId]
+    );
+    $ticket = $ticketRows[0] ?? null;
     if (!$ticket) {
         report_json(404, false, 'Ticket not found');
     }
 
-    $autoloadPath = __DIR__ . '/../../vendor/autoload.php';
-    if (!is_file($autoloadPath)) {
-        report_json(500, false, 'PDF generator not installed (dompdf missing). Run composer install.');
-    }
-    require_once $autoloadPath;
-    if (!class_exists('Dompdf\\Dompdf')) {
-        report_json(500, false, 'PDF generator not available (dompdf class missing).');
-    }
+    $ticket['metadata'] = report_parse_json($ticket['metadata'] ?? null, []);
+    $ticket['attachments'] = sqlserver_query(
+        'SELECT * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at ASC',
+        ['ticket_id' => $ticketId]
+    );
+    $ticket['messages'] = sqlserver_query(
+        'SELECT * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at ASC',
+        ['ticket_id' => $ticketId]
+    );
+    $ticket['ticket_comments'] = sqlserver_query(
+        'SELECT * FROM dbo.ticket_comments WHERE ticket_id = @ticket_id ORDER BY created_at ASC',
+        ['ticket_id' => $ticketId]
+    );
+    $ticket['ticket_actions'] = sqlserver_query(
+        'SELECT * FROM dbo.ticket_actions WHERE ticket_id = @ticket_id ORDER BY created_at ASC',
+        ['ticket_id' => $ticketId]
+    );
+
+    $handlerRows = sqlserver_query(
+        'SELECT
+            th.id,
+            th.ticket_id,
+            th.handler_id,
+            th.role,
+            th.assigned_at,
+            th.created_at,
+            h.id AS handler_ref_id,
+            h.name AS handler_name,
+            h.email AS handler_email,
+            h.roles AS handler_roles,
+            h.active AS handler_active
+         FROM dbo.ticket_handlers th
+         LEFT JOIN dbo.handlers h ON h.id = th.handler_id
+         WHERE th.ticket_id = @ticket_id
+         ORDER BY th.assigned_at ASC, th.created_at ASC',
+        ['ticket_id' => $ticketId]
+    );
+
+    $ticket['ticket_handlers'] = array_map(static function (array $row): array {
+        return [
+            'id' => $row['id'] ?? null,
+            'ticket_id' => $row['ticket_id'] ?? null,
+            'handler_id' => $row['handler_id'] ?? null,
+            'role' => $row['role'] ?? null,
+            'assigned_at' => $row['assigned_at'] ?? null,
+            'created_at' => $row['created_at'] ?? null,
+            'handler' => [
+                'id' => $row['handler_ref_id'] ?? null,
+                'name' => $row['handler_name'] ?? null,
+                'email' => $row['handler_email'] ?? null,
+                'roles' => report_parse_json($row['handler_roles'] ?? null, []),
+                'active' => isset($row['handler_active']) ? (bool)$row['handler_active'] : null,
+            ],
+        ];
+    }, $handlerRows);
 
     $html = report_render_html($ticket);
+
+    $ticketNumber = preg_replace('/[^A-Za-z0-9._-]/', '_', (string)($ticket['ticket_number'] ?? $ticketId));
+    if ($ticketNumber === '' || $ticketNumber === null) {
+        $ticketNumber = $ticketId;
+    }
+
+    $autoloadPath = report_vendor_autoload_path();
+    if ($autoloadPath !== null) {
+        require_once $autoloadPath;
+    }
+
+    if (!class_exists('Dompdf\\Dompdf')) {
+        $filename = 'investigation-report-' . $ticketNumber . '.html';
+        header('Content-Type: text/html; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        echo $html;
+        exit;
+    }
 
     $dompdf = new Dompdf\Dompdf([
         'isRemoteEnabled' => false,
@@ -310,10 +384,6 @@ try {
     $dompdf->setPaper('A4', 'portrait');
     $dompdf->render();
 
-    $ticketNumber = preg_replace('/[^A-Za-z0-9._-]/', '_', (string)($ticket['ticket_number'] ?? $ticketId));
-    if ($ticketNumber === '' || $ticketNumber === null) {
-        $ticketNumber = $ticketId;
-    }
     $filename = 'investigation-report-' . $ticketNumber . '.pdf';
 
     header('Content-Type: application/pdf');

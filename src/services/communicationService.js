@@ -1,7 +1,8 @@
-import { supabase } from '../lib/supabase';
 import { format } from 'date-fns';
 import { normalizeHandlerRecords } from './utils/handlerNormalization';
 import { ticketService } from './ticketService';
+const WORKFLOW_API_URL = '/api/workflows.api.php';
+let communicationTokenProvider = null;
 
 // Helper function to convert snake_case to camelCase
 const toCamelCase = (obj) => {
@@ -17,12 +18,38 @@ const toCamelCase = (obj) => {
   return camelObj;
 };
 
-const throwIfError = (error, context = '') => {
-  if (!error) return;
-  const msg = context ? `${context}: ${error.message || error}` : (error.message || String(error));
-  const e = new Error(msg);
-  e.original = error;
-  throw e;
+const setTokenProvider = (provider) => {
+  communicationTokenProvider = typeof provider === 'function' ? provider : null;
+};
+
+const getAuthHeaders = async () => {
+  if (!communicationTokenProvider) return {};
+  try {
+    const token = await communicationTokenProvider();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+};
+
+const getLogs = async (filters = {}) => {
+  const params = new URLSearchParams({ action: 'notification_logs' });
+  if (filters?.channel && filters.channel !== 'all') params.set('channel', filters.channel);
+  if (filters?.status && filters.status !== 'all') params.set('status', filters.status);
+
+  const { fromIso, toIso } = normalizeDateRange(filters?.dateFrom, filters?.dateTo);
+  if (fromIso) params.set('date_from', fromIso);
+  if (toIso) params.set('date_to', toIso);
+
+  const response = await fetch(`${WORKFLOW_API_URL}?${params.toString()}`, {
+    method: 'GET',
+    headers: await getAuthHeaders(),
+  });
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    throw new Error(json?.message || `Workflows API error (${response.status})`);
+  }
+  return Array.isArray(json?.data?.rows) ? toCamelCase(json.data.rows) : [];
 };
 
 // Normalize date filters so you don’t accidentally exclude a whole day.
@@ -50,28 +77,18 @@ const buildHandlerLookup = (handlers) => {
 };
 
 export const communicationService = {
+  setTokenProvider,
   /**
    * Fetch handlers once (used to enrich logs).
    * Keep it small: only fields you actually render/export.
    */
   async getHandlersLite() {
-    try {
-      const handlers = await ticketService.getAllHandlers({
-        includeInactive: true,
-        enrichPermissions: false,
-      });
-      return normalizeHandlerRecords(toCamelCase(handlers || []));
-    } catch (apiFallbackErr) {
-      const { data, error } = await supabase
-        .from('handlers')
-        .select('id,name,email,phone,active,roles,permissions,user_id,picture,created_at,updated_at,last_login')
-        .order('name');
-
-      if (error) {
-        throwIfError(apiFallbackErr, 'getHandlersLite');
-      }
-      return normalizeHandlerRecords(toCamelCase(data || []));
-    }
+    const handlers = await ticketService.getAllHandlers({
+      includeInactive: true,
+      enrichPermissions: false,
+      preferApi: true,
+    });
+    return normalizeHandlerRecords(toCamelCase(handlers || []));
   },
 
   /**
@@ -79,30 +96,7 @@ export const communicationService = {
    * filters: { channel, status, dateFrom, dateTo }
    */
   async getNotificationLogs(filters = {}) {
-    let q = supabase
-      .from('notification_logs')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    // channel filter
-    if (filters?.channel && filters.channel !== 'all') {
-      q = q.eq('channel', filters.channel);
-    }
-
-    // status filter
-    if (filters?.status && filters.status !== 'all') {
-      q = q.eq('status', filters.status);
-    }
-
-    // date range filters (inclusive)
-    const { fromIso, toIso } = normalizeDateRange(filters?.dateFrom, filters?.dateTo);
-    if (fromIso) q = q.gte('created_at', fromIso);
-    if (toIso) q = q.lte('created_at', toIso);
-
-    const { data, error } = await q;
-    throwIfError(error, 'getNotificationLogs(notification_logs)');
-
-    const logs = toCamelCase(data || []);
+    const logs = await getLogs(filters);
 
     // Enrich with handler info without FK join
     // user_id is TEXT, so we match:
@@ -155,17 +149,7 @@ export const communicationService = {
    * supports channels: sms/email/both/push and statuses: success/failed/pending/retrying
    */
   async getDeliveryStats(dateFrom, dateTo) {
-    const { fromIso, toIso } = normalizeDateRange(dateFrom, dateTo);
-
-    let q = supabase.from('notification_logs').select('channel,status');
-
-    if (fromIso) q = q.gte('created_at', fromIso);
-    if (toIso) q = q.lte('created_at', toIso);
-
-    const { data, error } = await q;
-    throwIfError(error, 'getDeliveryStats(notification_logs)');
-
-    const rows = data || [];
+    const rows = await getLogs({ dateFrom, dateTo });
 
     const mk = () => ({ total: 0, success: 0, failed: 0, pending: 0, retrying: 0 });
 

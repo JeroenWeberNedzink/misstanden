@@ -1,7 +1,11 @@
 import { useAuth0 } from '@auth0/auth0-react';
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
-import { getApiAccessToken, getOptionalApiAccessToken, isValidApiAudience } from '../lib/auth0ApiToken';
+import {
+  getApiAccessToken,
+  getOptionalApiAccessToken,
+  isRecoverableAuth0SessionError,
+  isValidApiAudience,
+} from '../lib/auth0ApiToken';
 import { normalizeHandlerRecord } from '../services/utils/handlerNormalization';
 import {
   hasPermission,
@@ -11,6 +15,7 @@ import {
   hasAnyRole,
   isAdmin,
   parsePermissions,
+  resolvePermissions,
   PERMISSIONS,
   ROLES,
 } from '../utils/permissions';
@@ -21,6 +26,16 @@ const readCachedHandlerProfile = () => {
     return cached ? normalizeHandlerRecord(JSON.parse(cached)) : null;
   } catch {
     return null;
+  }
+};
+
+const readSessionRoleHints = () => {
+  try {
+    const role = String(sessionStorage.getItem('user_role') || '').trim();
+    if (!role) return [];
+    return [role.toUpperCase()];
+  } catch {
+    return [];
   }
 };
 
@@ -56,9 +71,8 @@ export const usePermissions = () => {
           error: null,
         },
         fallback: {
-          bySubCount: null,
-          byEmailCount: null,
           error: null,
+          softAuthFailure: false,
         },
       };
 
@@ -102,24 +116,36 @@ export const usePermissions = () => {
         }
 
         let apiProfile = null;
+        let softAuthFailure = false;
         bootstrapDebug.token.optionalAttempted = true;
         let token = await getOptionalApiAccessToken(getAccessTokenSilently);
         bootstrapDebug.token.acquired = Boolean(token);
         if (!token && isValidApiAudience()) {
           try {
             // Protected routes depend on handler context, so do one real token retry
-            // before falling back to direct Supabase reads that may be blocked by RLS.
+            // before treating the backend handler lookup as unavailable.
             bootstrapDebug.token.retryAttempted = true;
             token = await getApiAccessToken(getAccessTokenSilently, { cacheMode: 'off' });
             bootstrapDebug.token.acquired = Boolean(token);
           } catch (tokenError) {
-            bootstrapDebug.token.error = {
-              message: tokenError?.message || String(tokenError),
-              error: tokenError?.error || null,
-              error_description: tokenError?.error_description || null,
-            };
-            if (import.meta.env.DEV) {
-              console.debug('[Permissions] Auth0 API token retry failed, falling back to direct handler lookup', tokenError);
+            if (isRecoverableAuth0SessionError(tokenError)) {
+              softAuthFailure = true;
+              bootstrapDebug.fallback.softAuthFailure = true;
+              if (import.meta.env.DEV) {
+                console.debug('[Permissions] Auth0 API token unavailable for handler bootstrap; using cached profile/token claims instead', {
+                  message: tokenError?.message || String(tokenError),
+                  error: tokenError?.error || null,
+                });
+              }
+            } else {
+              bootstrapDebug.token.error = {
+                message: tokenError?.message || String(tokenError),
+                error: tokenError?.error || null,
+                error_description: tokenError?.error_description || null,
+              };
+              if (import.meta.env.DEV) {
+                console.debug('[Permissions] Auth0 API token retry failed; skipping legacy direct handler lookup', tokenError);
+              }
             }
           }
         }
@@ -141,65 +167,33 @@ export const usePermissions = () => {
             }
           } catch (apiError) {
             bootstrapDebug.api.error = apiError?.message || String(apiError);
-            // Fallback to direct Supabase lookup for local/dev scenarios.
-            console.warn('Handler API context lookup failed, trying direct profile lookup:', apiError);
+            console.warn('Handler API context lookup failed:', apiError);
           }
+        } else if (bootstrapDebug.token.error) {
+          bootstrapDebug.fallback.error = 'Auth0 API token unavailable';
         }
 
         if (apiProfile) {
-          setHandlerProfile(normalizeHandlerRecord(apiProfile));
+          const normalizedProfile = normalizeHandlerRecord(apiProfile);
+          setHandlerProfile(normalizedProfile);
+          try {
+            sessionStorage.setItem('handler_profile', JSON.stringify(normalizedProfile));
+          } catch {
+            // Ignore session storage write errors.
+          }
           setError(null);
           setLoading(false);
           return;
         }
 
-        let data = null;
-        let fetchError = null;
-
-        if (normalizedSub) {
-          const resultBySub = await supabase
-            .from('handlers')
-            .select('*')
-            .eq('user_id', normalizedSub)
-            .eq('active', true)
-            .maybeSingle();
-          data = resultBySub.data;
-          fetchError = resultBySub.error;
-          bootstrapDebug.fallback.bySubCount = resultBySub.data ? 1 : 0;
+        const fallbackError = softAuthFailure
+          ? null
+          : (bootstrapDebug.api.error || bootstrapDebug.token.error?.message || null);
+        if (fallbackError && import.meta.env.DEV) {
+          console.warn('Failed to load handler profile via backend handler lookup:', fallbackError);
         }
-
-        if (!data && normalizedEmail) {
-          const resultByEmail = await supabase
-            .from('handlers')
-            .select('*')
-            .ilike('email', normalizedEmail)
-            .eq('active', true)
-            .maybeSingle();
-          data = resultByEmail.data;
-          fetchError = resultByEmail.error;
-          bootstrapDebug.fallback.byEmailCount = resultByEmail.data ? 1 : 0;
-
-          if (data && normalizedSub && !data.user_id) {
-            // Best effort backfill: link handler profile to Auth0 subject for future lookups.
-            await supabase
-              .from('handlers')
-              .update({ user_id: normalizedSub })
-              .eq('id', data.id);
-          }
-        }
-
-        if (fetchError) {
-          bootstrapDebug.fallback.error = fetchError?.message || String(fetchError);
-          console.error('Failed to load handler profile:', fetchError);
-          setError(fetchError);
-          setHandlerProfile(null);
-        } else if (!data) {
-          setHandlerProfile(null);
-          setError(null);
-        } else {
-          setHandlerProfile(normalizeHandlerRecord(data));
-          setError(null);
-        }
+        setHandlerProfile(null);
+        setError(fallbackError ? new Error(fallbackError) : null);
       } catch (err) {
         console.error('Error loading handler profile:', err);
         setError(err);
@@ -211,11 +205,6 @@ export const usePermissions = () => {
 
     loadHandlerProfile();
   }, [isAuthenticated, user?.email, user?.sub, getAccessTokenSilently]);
-
-  // Parse permissions from handler profile
-  const permissions = handlerProfile?.permissions
-    ? parsePermissions(handlerProfile.permissions)
-    : null;
 
   // Get roles (prefer handler profile, fallback to Auth0 token claims)
   const profileRoles = handlerProfile?.roles || (handlerProfile?.role ? [handlerProfile.role] : null);
@@ -240,10 +229,15 @@ export const usePermissions = () => {
 
     return out.filter(Boolean);
   })();
+  const sessionRoles = readSessionRoleHints();
 
   const roles = (profileRoles && profileRoles.length > 0)
     ? profileRoles
-    : (claimRoles.length > 0 ? claimRoles : null);
+    : (claimRoles.length > 0 ? claimRoles : (sessionRoles.length > 0 ? sessionRoles : null));
+  const permissions = resolvePermissions(
+    handlerProfile?.permissions ? parsePermissions(handlerProfile.permissions) : null,
+    roles
+  );
   const isAdminRole = isAdmin(roles);
 
   if (import.meta.env.DEV && typeof window !== 'undefined') {

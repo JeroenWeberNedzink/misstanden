@@ -8,14 +8,27 @@ import TicketsTable from './components/TicketsTable';
 import QuickStats from './components/QuickStats';
 import { ticketService } from '../../services/ticketService';
 import { workflowService } from '../../services/workflowService';
-import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import Icon from '../../components/AppIcon';
 import Select from '../../components/ui/Select';
-import { getApiAccessToken } from '../../lib/auth0ApiToken';
+import {
+  getApiAccessToken,
+  getOptionalApiAccessToken,
+  isRecoverableAuth0SessionError,
+  isValidApiAudience,
+} from '../../lib/auth0ApiToken';
+import { normalizeHandlerRecord } from '../../services/utils/handlerNormalization';
 
 const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
+const readCachedHandlerProfile = () => {
+  try {
+    const cached = sessionStorage.getItem('handler_profile');
+    return cached ? normalizeHandlerRecord(JSON.parse(cached)) : null;
+  } catch {
+    return null;
+  }
+};
 const parseRoles = (rawRoles) => {
   if (Array.isArray(rawRoles)) return rawRoles.map((r) => String(r || '').trim()).filter(Boolean);
   if (typeof rawRoles === 'string') {
@@ -151,10 +164,32 @@ export default function HandlerDashboard() {
 
     try {
       let handler = null;
+      let softAuthFailure = false;
 
       // Preferred flow: resolve handler context via authenticated backend endpoint.
+      let token = await getOptionalApiAccessToken(getAccessTokenSilently);
+      if (!token && isValidApiAudience()) {
+        try {
+          token = await getApiAccessToken(getAccessTokenSilently, { cacheMode: 'off' });
+        } catch (tokenError) {
+          if (isRecoverableAuth0SessionError(tokenError)) {
+            softAuthFailure = true;
+            if (import.meta.env.DEV) {
+              console.debug('[HandlerDashboard] Auth0 API token unavailable for handler bootstrap; using cached handler profile if available', {
+                message: tokenError?.message || String(tokenError),
+                error: tokenError?.error || null,
+              });
+            }
+          } else {
+            throw tokenError;
+          }
+        }
+      }
+
       try {
-        const token = await getApiAccessToken(getAccessTokenSilently);
+        if (!token) {
+          throw new Error('Auth0 API token unavailable');
+        }
         const resp = await fetch('/api/me.api.php', {
           method: 'GET',
           headers: {
@@ -164,24 +199,29 @@ export default function HandlerDashboard() {
         const payload = await resp.json().catch(() => null);
         if (resp.ok && payload?.success && payload?.data?.handler) {
           handler = payload.data.handler;
+          try {
+            sessionStorage.setItem('handler_profile', JSON.stringify(normalizeHandlerRecord(handler)));
+          } catch {
+            // Ignore session storage write errors.
+          }
         }
       } catch (apiErr) {
-        console.warn('[HandlerDashboard] /api/me.api.php lookup failed, fallback to direct handler lookup', apiErr);
+        if (!softAuthFailure) {
+          console.warn('[HandlerDashboard] /api/me.api.php lookup failed, using cached handler profile if available', apiErr);
+        }
       }
 
-      // Fallback for local/dev where API token or endpoint may be unavailable.
-      if (!handler && user?.email) {
-        const email = safeLower(user.email);
-        const { data: directHandler, error: directHandlerError } = await supabase
-          .from('handlers')
-          .select('*')
-          .ilike('email', email)
-          .eq('active', true)
-          .maybeSingle();
-        if (directHandlerError) {
-          console.warn('[HandlerDashboard] Direct handler fallback lookup failed', directHandlerError);
-        } else {
-          handler = directHandler || null;
+      if (!handler) {
+        const cachedProfile = readCachedHandlerProfile();
+        const cachedEmail = safeLower(cachedProfile?.email);
+        const userEmail = safeLower(user?.email);
+        const cachedUserId = safeTrim(cachedProfile?.user_id);
+        const currentUserId = safeTrim(user?.sub);
+        if (
+          (cachedUserId && currentUserId && cachedUserId === currentUserId) ||
+          (cachedEmail && userEmail && cachedEmail === userEmail)
+        ) {
+          handler = cachedProfile;
         }
       }
 
@@ -214,59 +254,31 @@ export default function HandlerDashboard() {
       const isAdmin = currentHandlerRole === 'admin';
       const ticketsData = await ticketService?.getAllTickets(isAdmin ? {} : { handlerId: currentHandlerId });
 
-      let workflowsData = [];
+      const allWorkflows = await workflowService.getWorkflows(false).catch((error) => {
+        console.warn('[HandlerDashboard] Could not load workflows from API:', error);
+        return [];
+      });
+
+      let workflowsData = Array.isArray(allWorkflows) ? [...allWorkflows] : [];
       if (isAdmin) {
-        const { data: workflows, error: workflowsError } = await supabase
-          .from('workflows')
-          .select('*')
-          .eq('active', true)
-          .order('display_order');
-        if (workflowsError) {
-          console.warn('[HandlerDashboard] Could not load workflows for admin:', workflowsError);
-        } else {
-          workflowsData = ticketService.toCamelCase(workflows || []);
-        }
+        workflowsData = workflowsData.filter((workflow) => workflow?.active !== false);
       } else {
-        const { data: handlerWorkflows, error: hwError } = await supabase
-          .from('handler_workflows')
-          .select('workflow_id')
-          .eq('handler_id', currentHandlerId);
-
-        const workflowIds = (handlerWorkflows || []).map((hw) => hw.workflow_id).filter(Boolean);
-        console.log('[HandlerDashboard] Handler workflows:', workflowIds);
-
-        if (hwError) {
-          console.warn('[HandlerDashboard] Could not load handler_workflows, deriving workflows from loaded tickets:', hwError);
-        }
-
+        const workflowIds = await workflowService.getHandlerWorkflowIds(currentHandlerId).catch((error) => {
+          console.warn('[HandlerDashboard] Could not load handler workflow assignments, deriving from tickets:', error);
+          return [];
+        });
         if (workflowIds.length > 0) {
-          const { data: workflows, error: workflowsError } = await supabase
-            .from('workflows')
-            .select('*')
-            .in('id', workflowIds)
-            .eq('active', true)
-            .order('display_order');
-          if (workflowsError) {
-            console.warn('[HandlerDashboard] Could not load workflows by handler_workflows:', workflowsError);
-          } else {
-            workflowsData = ticketService.toCamelCase(workflows || []);
-          }
+          const allowedIds = new Set(workflowIds.map((id) => safeTrim(id)).filter(Boolean));
+          workflowsData = workflowsData.filter((workflow) => allowedIds.has(safeTrim(workflow?.id)));
         } else {
           const workflowCodes = Array.from(
             new Set((ticketsData || []).map((t) => safeTrim(t?.workflowType)).filter(Boolean))
           );
           if (workflowCodes.length > 0) {
-            const { data: workflowsByCode, error: workflowsByCodeError } = await supabase
-              .from('workflows')
-              .select('*')
-              .in('code', workflowCodes)
-              .eq('active', true)
-              .order('display_order');
-            if (workflowsByCodeError) {
-              console.warn('[HandlerDashboard] Could not load workflows by ticket workflow_type:', workflowsByCodeError);
-            } else {
-              workflowsData = ticketService.toCamelCase(workflowsByCode || []);
-            }
+            const allowedCodes = new Set(workflowCodes.map((code) => safeTrim(code)).filter(Boolean));
+            workflowsData = workflowsData.filter((workflow) => allowedCodes.has(safeTrim(workflow?.code)));
+          } else {
+            workflowsData = [];
           }
         }
       }

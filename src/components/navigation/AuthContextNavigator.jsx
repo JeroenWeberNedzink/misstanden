@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
-import { getApiAccessToken, getOptionalApiAccessToken, isValidApiAudience } from '../../lib/auth0ApiToken';
+import {
+  getApiAccessToken,
+  getOptionalApiAccessToken,
+  isRecoverableAuth0SessionError,
+  isValidApiAudience,
+} from '../../lib/auth0ApiToken';
 import { normalizeHandlerRecord } from '../../services/utils/handlerNormalization';
 import AnonymousNavHeader from './AnonymousNavHeader';
 import HandlerNavigation from './HandlerNavigation';
@@ -63,7 +68,14 @@ const AuthContextNavigator = ({ children }) => {
         try {
           token = await getApiAccessToken(getAccessTokenSilently, { cacheMode: 'off' });
         } catch (tokenError) {
-          if (import.meta.env.DEV) {
+          if (isRecoverableAuth0SessionError(tokenError)) {
+            if (import.meta.env.DEV) {
+              console.debug('[AuthContext] API token unavailable for handler bootstrap; using cached profile/token claims instead', {
+                message: tokenError?.message || String(tokenError),
+                error: tokenError?.error || null,
+              });
+            }
+          } else if (import.meta.env.DEV) {
             console.debug('[AuthContext] Auth0 API token retry failed, falling back to direct handler lookup', tokenError);
           }
         }

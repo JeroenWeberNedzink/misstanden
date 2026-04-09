@@ -1,222 +1,140 @@
-import { supabase } from '../lib/supabase';
+const WORKFLOW_API_URL = '/api/workflows.api.php';
+
+const apiGet = async (action, params = {}) => {
+  const query = new URLSearchParams({ action, ...params }).toString();
+  const response = await fetch(`${WORKFLOW_API_URL}?${query}`, { method: 'GET' });
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    throw new Error(json?.message || `Workflows API error (${response.status})`);
+  }
+  return json?.data || {};
+};
+
+const normalizePhase = (phase) => ({
+  ...phase,
+  phase_description: phase?.phase_description ?? phase?.description ?? null,
+});
+
+const normalizeStep = (step) => ({
+  ...step,
+  step_text: step?.step_text ?? step?.step_name ?? step?.description ?? '',
+});
+
+const normalizeContact = (contact) => ({
+  ...contact,
+  website: contact?.website ?? contact?.website_url ?? null,
+  online_form_url: contact?.online_form_url ?? null,
+});
 
 /**
  * Service for workflow timeline operations
  */
 export const workflowTimelineService = {
-  /**
-   * Get all phases for a specific workflow
-   */
   async getWorkflowPhases(workflowId) {
     try {
       console.log('[workflowTimelineService] Fetching phases for workflow:', workflowId);
-      const { data, error } = await supabase
-        .from('workflow_phases')
-        .select('*')
-        .eq('workflow_id', workflowId)
-        .order('sort_order', { ascending: true });
-
-      if (error) {
-        console.error('[workflowTimelineService] Error fetching phases:', error);
-        throw error;
-      }
-      console.log('[workflowTimelineService] Phases fetched:', data?.length || 0);
-      return data || [];
+      const data = await apiGet('workflow_phases', { workflow_id: workflowId });
+      const rows = (data?.rows || []).map(normalizePhase);
+      console.log('[workflowTimelineService] Phases fetched:', rows.length);
+      return rows;
     } catch (error) {
       console.error('[workflowTimelineService] Exception in getWorkflowPhases:', error);
       return [];
     }
   },
 
-  /**
-   * Get phases by workflow code
-   */
   async getPhasesByWorkflowCode(workflowCode) {
     try {
       console.log('[workflowTimelineService] Fetching phases by code:', workflowCode);
-      const { data, error } = await supabase
-        .from('workflow_phases')
-        .select(`
-          *,
-          workflow:workflows!inner(code, name)
-        `)
-        .eq('workflows.code', workflowCode)
-        .order('sort_order', { ascending: true });
-
-      if (error) {
-        console.error('[workflowTimelineService] Error fetching phases by code:', error);
-        throw error;
-      }
-      console.log('[workflowTimelineService] Phases by code fetched:', data?.length || 0);
-      return data || [];
+      const data = await apiGet('workflow_phases_by_code', { workflow_code: workflowCode });
+      const rows = (data?.rows || []).map(normalizePhase);
+      console.log('[workflowTimelineService] Phases by code fetched:', rows.length);
+      return rows;
     } catch (error) {
       console.error('[workflowTimelineService] Exception in getPhasesByWorkflowCode:', error);
       return [];
     }
   },
 
-  /**
-   * Get steps for a specific phase
-   */
   async getPhaseSteps(phaseId) {
     try {
       console.log('[workflowTimelineService] Fetching steps for phase:', phaseId);
-      const { data, error } = await supabase
-        .from('workflow_phase_steps')
-        .select('*')
-        .eq('phase_id', phaseId)
-        .order('sort_order', { ascending: true });
-
-      if (error) {
-        console.error('[workflowTimelineService] Error fetching steps:', error);
-        throw error;
-      }
-      console.log('[workflowTimelineService] Steps fetched:', data?.length || 0);
-      return data || [];
+      const data = await apiGet('workflow_phase_steps', { phase_id: phaseId });
+      const rows = (data?.rows || []).map(normalizeStep);
+      console.log('[workflowTimelineService] Steps fetched:', rows.length);
+      return rows;
     } catch (error) {
       console.error('[workflowTimelineService] Exception in getPhaseSteps:', error);
       return [];
     }
   },
 
-  /**
-   * Get complete timeline (phases with steps) for a workflow
-   */
   async getCompleteTimeline(workflowId) {
     try {
-      console.log('[workflowTimelineService] Fetching complete timeline for workflow:', workflowId);
-      // Get phases
       const phases = await this.getWorkflowPhases(workflowId);
-      console.log('[workflowTimelineService] Phases retrieved:', phases.length);
-
-      // Get steps for all phases
-      const phasesWithSteps = await Promise.all(
-        phases.map(async (phase) => {
-          const steps = await this.getPhaseSteps(phase.id);
-          return {
-            ...phase,
-            steps
-          };
-        })
+      return Promise.all(
+        phases.map(async (phase) => ({
+          ...phase,
+          steps: await this.getPhaseSteps(phase.id),
+        }))
       );
-
-      console.log('[workflowTimelineService] Complete timeline assembled');
-      return phasesWithSteps;
     } catch (error) {
       console.error('[workflowTimelineService] Exception in getCompleteTimeline:', error);
       return [];
     }
   },
 
-  /**
-   * Get contacts for a workflow (optionally filtered by country and phase)
-   */
   async getWorkflowContacts(workflowId, countryCode = null, phaseId = null) {
     try {
-      console.log('[workflowTimelineService] Fetching contacts for workflow:', workflowId, 'country:', countryCode, 'phase:', phaseId);
-      let query = supabase
-        .from('workflow_contacts')
-        .select('*')
-        .eq('workflow_id', workflowId)
-        .order('sort_order', { ascending: true });
-
-      if (countryCode) {
-        query = query.or(`country_code.eq.${countryCode},country_code.is.null`);
-      }
-
-      if (phaseId) {
-        query = query.eq('phase_id', phaseId);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('[workflowTimelineService] Error fetching contacts:', error);
-        throw error;
-      }
-      console.log('[workflowTimelineService] Contacts fetched:', data?.length || 0);
-      return data || [];
+      const data = await apiGet('workflow_contacts', {
+        workflow_id: workflowId,
+        ...(countryCode ? { country_code: countryCode } : {}),
+        ...(phaseId ? { phase_id: phaseId } : {}),
+      });
+      const rows = (data?.rows || []).map(normalizeContact);
+      console.log('[workflowTimelineService] Contacts fetched:', rows.length);
+      return rows;
     } catch (error) {
       console.error('[workflowTimelineService] Exception in getWorkflowContacts:', error);
       return [];
     }
   },
 
-  /**
-   * Get contacts by country
-   */
   async getContactsByCountry(countryCode) {
     try {
-      const { data, error } = await supabase
-        .from('workflow_contacts')
-        .select(`
-          *,
-          workflow:workflows(code, name)
-        `)
-        .or(`country_code.eq.${countryCode},country_code.is.null`)
-        .order('sort_order', { ascending: true });
-
-      if (error) throw error;
-      return data || [];
+      const data = await apiGet('workflow_contacts_by_country', { country_code: countryCode });
+      return (data?.rows || []).map(normalizeContact);
     } catch (error) {
       console.error('Error fetching contacts by country:', error);
       throw error;
     }
   },
 
-  /**
-   * Get advice phase contacts (internal and external advisors)
-   */
   async getAdviceContacts(countryCode = 'NL') {
     try {
-      const { data, error } = await supabase
-        .from('workflow_contacts')
-        .select(`
-          *,
-          phase:workflow_phases!inner(phase_code)
-        `)
-        .eq('workflow_phases.phase_code', 'advice')
-        .or(`country_code.eq.${countryCode},country_code.is.null`)
-        .order('sort_order', { ascending: true });
-
-      if (error) throw error;
-      return data || [];
+      const data = await apiGet('workflow_advice_contacts', { country_code: countryCode });
+      return (data?.rows || []).map(normalizeContact);
     } catch (error) {
       console.error('Error fetching advice contacts:', error);
       throw error;
     }
   },
 
-  /**
-   * Get external authorities by country
-   */
   async getExternalAuthorities(countryCode) {
     try {
-      const { data, error } = await supabase
-        .from('workflow_contacts')
-        .select('*')
-        .eq('contact_type', 'authority')
-        .eq('country_code', countryCode)
-        .order('sort_order', { ascending: true });
-
-      if (error) throw error;
-      return data || [];
+      const data = await apiGet('workflow_external_authorities', { country_code: countryCode });
+      return (data?.rows || []).map(normalizeContact);
     } catch (error) {
       console.error('Error fetching external authorities:', error);
       throw error;
     }
   },
 
-  /**
-   * Calculate ticket deadline status based on workflow phases
-   */
   async getTicketDeadlineStatus(ticket, workflow) {
     try {
       console.log('[workflowTimelineService] Calculating deadline for ticket:', ticket.id, 'workflow:', workflow.code);
       const phases = await this.getWorkflowPhases(workflow.id);
-      console.log('[workflowTimelineService] Found phases:', phases.length);
 
-      // Find the phase with the longest deadline (usually the employer position phase)
       const maxDeadlinePhase = phases.reduce((max, phase) => {
         if (!phase.deadline_days) return max;
         if (!max || phase.deadline_days > max.deadline_days) return phase;
@@ -224,17 +142,14 @@ export const workflowTimelineService = {
       }, null);
 
       if (!maxDeadlinePhase) {
-        console.log('[workflowTimelineService] No phase with deadline found for workflow:', workflow.code);
         return {
           status: 'unknown',
           daysRemaining: null,
-          daysElapsed: 0
+          daysElapsed: 0,
         };
       }
 
-      console.log('[workflowTimelineService] Max deadline phase:', maxDeadlinePhase.phase_name, 'days:', maxDeadlinePhase.deadline_days);
-
-      const createdAt = new Date(ticket.created_at);
+      const createdAt = new Date(ticket.created_at || ticket.createdAt || ticket.submitted_at || ticket.submittedAt);
       const now = new Date();
       const daysElapsed = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
       const daysRemaining = maxDeadlinePhase.deadline_days - daysElapsed;
@@ -246,28 +161,22 @@ export const workflowTimelineService = {
         status = 'approaching';
       }
 
-      console.log('[workflowTimelineService] Ticket deadline status:', {
-        ticketId: ticket.id,
-        status,
-        daysElapsed,
-        daysRemaining,
-        deadlineDays: maxDeadlinePhase.deadline_days
-      });
-
       return {
         status,
         daysRemaining,
         daysElapsed,
         deadlineDays: maxDeadlinePhase.deadline_days,
-        phaseName: maxDeadlinePhase.phase_name
+        phaseName: maxDeadlinePhase.phase_name,
       };
     } catch (error) {
       console.error('[workflowTimelineService] Exception in getTicketDeadlineStatus:', error);
       return {
         status: 'error',
         daysRemaining: null,
-        daysElapsed: 0
+        daysElapsed: 0,
       };
     }
-  }
+  },
 };
+
+export default workflowTimelineService;

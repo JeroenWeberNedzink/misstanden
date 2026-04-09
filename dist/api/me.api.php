@@ -48,10 +48,7 @@ try {
     $auth0ClientId = api_authz_env_required('VITE_AUTH0_CLIENT_ID');
     $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
 
-    $baseUrl = sqlserver_is_configured() ? '' : rtrim(api_authz_env_required('VITE_SUPABASE_URL'), '/');
-    $serviceKey = sqlserver_is_configured() ? '' : supabase_get_service_role_key();
-
-    $handler = api_authz_fetch_handler($baseUrl, $serviceKey, $claims);
+    $handler = api_authz_fetch_handler('', '', $claims);
     if (!$handler || empty($handler['active'])) {
         me_json(403, false, 'Handler account not active or not found');
     }
@@ -73,9 +70,10 @@ try {
                     'VITE_AUTH0_DOMAIN' => trim((string)(getenv('VITE_AUTH0_DOMAIN') ?: '')) !== '',
                     'VITE_AUTH0_CLIENT_ID' => trim((string)(getenv('VITE_AUTH0_CLIENT_ID') ?: '')) !== '',
                     'VITE_AUTH0_AUDIENCE' => trim((string)(getenv('VITE_AUTH0_AUDIENCE') ?: '')) !== '',
-                    'VITE_SUPABASE_URL' => trim((string)(getenv('VITE_SUPABASE_URL') ?: '')) !== '',
-                    'SUPABASE_SERVICE_ROLE_KEY' => trim((string)(getenv('SUPABASE_SERVICE_ROLE_KEY') ?: '')) !== '',
-                    'SUPABASE_SERVICE_KEY' => trim((string)(getenv('SUPABASE_SERVICE_KEY') ?: '')) !== '',
+                    'SQLSERVER_HOST' => trim((string)(getenv('SQLSERVER_HOST') ?: '')) !== '',
+                    'SQLSERVER_DATABASE' => trim((string)(getenv('SQLSERVER_DATABASE') ?: '')) !== '',
+                    'SQLSERVER_USERNAME' => trim((string)(getenv('SQLSERVER_USERNAME') ?: '')) !== '',
+                    'SQLSERVER_PASSWORD' => trim((string)(getenv('SQLSERVER_PASSWORD') ?: '')) !== '',
                 ],
             ]
         );

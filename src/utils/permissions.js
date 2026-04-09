@@ -145,6 +145,52 @@ export const isAdmin = (userRoles) => {
 };
 
 /**
+ * Derive the legacy permission object from RBAC roles.
+ * This keeps route guards working while the app transitions from direct
+ * permissions JSON to role-based permissions loaded from SQL Server.
+ *
+ * @param {string[]|string|null} userRoles
+ * @returns {object}
+ */
+export const derivePermissionsFromRoles = (userRoles) => {
+  const derived = { ...DEFAULT_PERMISSIONS };
+
+  if (hasRole(userRoles, ROLES.HANDLER)) {
+    derived[PERMISSIONS.VIEW_TICKETS] = true;
+    derived[PERMISSIONS.EDIT_TICKETS] = true;
+  }
+
+  if (hasRole(userRoles, ROLES.ADMIN) || hasRole(userRoles, ROLES.SUPER_ADMIN)) {
+    Object.keys(derived).forEach((key) => {
+      derived[key] = true;
+    });
+  }
+
+  return derived;
+};
+
+/**
+ * Merge direct permissions with any permissions implied by roles.
+ * A role-derived `true` should still grant access even if the legacy JSON
+ * object is empty or stale.
+ *
+ * @param {object|string|null} permissions
+ * @param {string[]|string|null} userRoles
+ * @returns {object}
+ */
+export const resolvePermissions = (permissions, userRoles) => {
+  const parsed = normalizePermissions(permissions);
+  const derived = derivePermissionsFromRoles(userRoles);
+  const resolved = { ...DEFAULT_PERMISSIONS };
+
+  Object.keys(resolved).forEach((key) => {
+    resolved[key] = Boolean(parsed[key]) || Boolean(derived[key]);
+  });
+
+  return resolved;
+};
+
+/**
  * Validate and normalize permissions object
  * @param {object} permissions - Permissions to validate
  * @returns {object} Normalized permissions with all keys present
