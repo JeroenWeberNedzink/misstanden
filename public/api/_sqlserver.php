@@ -127,11 +127,10 @@ function sqlserver_normalize_parameter(string $name, $value): array {
     }
 
     $stringValue = (string)$value;
-    if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $stringValue) === 1) {
-        $parameter['dbType'] = 'UniqueIdentifier';
-        $parameter['value'] = $stringValue;
-        return $parameter;
-    }
+    // Keep string parameters as NVarchar by default.
+    // OAuth subjects and similar external IDs can look like UUIDs while the
+    // SQL column is still NVarchar; auto-promoting those values to
+    // UniqueIdentifier causes SQL Server conversion errors during auth checks.
 
     if (preg_match('/^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?(?:Z|[+\-]\d{2}:\d{2})?)?$/', $stringValue) === 1) {
         $parameter['dbType'] = 'DateTime2';
@@ -139,6 +138,35 @@ function sqlserver_normalize_parameter(string $name, $value): array {
 
     $parameter['value'] = $stringValue;
     return $parameter;
+}
+
+function sqlserver_normalize_params(array $params): array {
+    $normalized = [];
+    foreach ($params as $key => $value) {
+        if (is_array($value) && array_key_exists('name', $value) && array_key_exists('dbType', $value)) {
+            $normalized[] = $value;
+            continue;
+        }
+        $normalized[] = sqlserver_normalize_parameter((string)$key, $value);
+    }
+    return $normalized;
+}
+
+function sqlserver_command(string $type, string $sql, array $params = [], int $timeout = 30): array {
+    $normalizedType = strtolower(trim($type));
+    if (!in_array($normalizedType, ['query', 'scalar', 'nonquery'], true)) {
+        throw new Exception('Unsupported SQL Server command type');
+    }
+    if (trim($sql) === '') {
+        throw new Exception('SQL Server command SQL is required');
+    }
+
+    return [
+        'type' => $normalizedType,
+        'sql' => $sql,
+        'params' => sqlserver_normalize_params($params),
+        'timeout' => $timeout,
+    ];
 }
 
 function sqlserver_run(array $commands, bool $transaction = true): array {
@@ -189,50 +217,47 @@ function sqlserver_run(array $commands, bool $transaction = true): array {
     return $decoded['results'] ?? [];
 }
 
-function sqlserver_query(string $sql, array $params = [], int $timeout = 30): array {
-    $normalizedParams = [];
-    foreach ($params as $key => $value) {
-        $normalizedParams[] = sqlserver_normalize_parameter((string)$key, $value);
+function sqlserver_run_commands(array $commands, bool $transaction = true): array {
+    $normalizedCommands = [];
+    foreach ($commands as $command) {
+        if (!is_array($command)) {
+            throw new Exception('SQL Server command must be an array');
+        }
+
+        $normalizedCommands[] = sqlserver_command(
+            (string)($command['type'] ?? 'query'),
+            (string)($command['sql'] ?? ''),
+            is_array($command['params'] ?? null) ? $command['params'] : [],
+            isset($command['timeout']) ? (int)$command['timeout'] : 30
+        );
     }
 
-    $results = sqlserver_run([[
-        'type' => 'query',
-        'sql' => $sql,
-        'params' => $normalizedParams,
-        'timeout' => $timeout,
-    ]]);
+    return sqlserver_run($normalizedCommands, $transaction);
+}
 
-    return is_array($results[0]['rows'] ?? null) ? $results[0]['rows'] : [];
+function sqlserver_result_rows(array $results, int $index = 0): array {
+    return is_array($results[$index]['rows'] ?? null) ? $results[$index]['rows'] : [];
+}
+
+function sqlserver_result_scalar(array $results, int $index = 0) {
+    return $results[$index]['value'] ?? null;
+}
+
+function sqlserver_result_affected(array $results, int $index = 0): int {
+    return (int)($results[$index]['affected'] ?? 0);
+}
+
+function sqlserver_query(string $sql, array $params = [], int $timeout = 30): array {
+    $results = sqlserver_run_commands([sqlserver_command('query', $sql, $params, $timeout)]);
+    return sqlserver_result_rows($results, 0);
 }
 
 function sqlserver_scalar(string $sql, array $params = [], int $timeout = 30) {
-    $normalizedParams = [];
-    foreach ($params as $key => $value) {
-        $normalizedParams[] = sqlserver_normalize_parameter((string)$key, $value);
-    }
-
-    $results = sqlserver_run([[
-        'type' => 'scalar',
-        'sql' => $sql,
-        'params' => $normalizedParams,
-        'timeout' => $timeout,
-    ]]);
-
-    return $results[0]['value'] ?? null;
+    $results = sqlserver_run_commands([sqlserver_command('scalar', $sql, $params, $timeout)]);
+    return sqlserver_result_scalar($results, 0);
 }
 
 function sqlserver_execute(string $sql, array $params = [], int $timeout = 30): int {
-    $normalizedParams = [];
-    foreach ($params as $key => $value) {
-        $normalizedParams[] = sqlserver_normalize_parameter((string)$key, $value);
-    }
-
-    $results = sqlserver_run([[
-        'type' => 'nonquery',
-        'sql' => $sql,
-        'params' => $normalizedParams,
-        'timeout' => $timeout,
-    ]]);
-
-    return (int)($results[0]['affected'] ?? 0);
+    $results = sqlserver_run_commands([sqlserver_command('nonquery', $sql, $params, $timeout)]);
+    return sqlserver_result_affected($results, 0);
 }

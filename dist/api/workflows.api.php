@@ -147,7 +147,7 @@ function wf_roles_array($raw): array {
 }
 
 function wf_primary_role(array $roles): ?string {
-    $priority = ['SUPER_ADMIN', 'ADMIN', 'HANDLER', 'USER'];
+    $priority = ['SUPER_ADMIN', 'ADMIN', 'PORTAL_ADMIN', 'HANDLER', 'USER'];
     foreach ($priority as $candidate) {
         if (in_array($candidate, $roles, true)) return $candidate;
     }

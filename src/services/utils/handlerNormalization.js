@@ -1,4 +1,4 @@
-const ROLE_PRIORITY = ['SUPER_ADMIN', 'ADMIN', 'HANDLER', 'USER'];
+const ROLE_PRIORITY = ['SUPER_ADMIN', 'ADMIN', 'PORTAL_ADMIN', 'HANDLER', 'USER'];
 
 const isPlainObject = (value) =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -147,4 +147,3 @@ export const normalizeHandlerRecords = (handlers = []) => {
   if (!Array.isArray(handlers)) return [];
   return handlers.map((handler) => normalizeHandlerRecord(handler));
 };
-

@@ -1574,10 +1574,8 @@ async deleteHandler(handlerId, options = {}) {
         : 'TICKET_HANDLERS_MIGRATION_REQUIRED';
       throw e;
     }
-
-    const updatedTicket = await this.updateTicket(ticketId, { handlerId: primaryHandlerId });
     const workflowRuntimeSettings = await getTicketRuntimeSettings(
-      safeTrim(ticketBefore?.workflow_type || updatedTicket?.workflowType || updatedTicket?.workflow_type)
+      safeTrim(ticketBefore?.workflowType || ticketBefore?.workflow_type || syncResult?.ticket?.workflowType || syncResult?.ticket?.workflow_type)
     );
     const shouldNotifyOnAssignment = workflowRuntimeSettings.notifyOnAssignment !== false;
 
@@ -1606,7 +1604,12 @@ async deleteHandler(handlerId, options = {}) {
       }, 'setTicketHandlers(note)');
     }
 
-    let result = await this.getTicketById(ticketId, { includeRelations: false });
+    let result = syncResult?.ticket || null;
+    if (result) {
+      result = applyTicketRuntimePolicies(result, workflowRuntimeSettings);
+    } else {
+      result = await this.getTicketById(ticketId, { includeRelations: false });
+    }
 
     // Send assignment notification only to newly added handlers.
     const addedHandlerIds = syncResult.available
@@ -1663,7 +1666,13 @@ async deleteHandler(handlerId, options = {}) {
       { requireAuth: true }
     );
 
-    const ticket = await this.getTicketById(ticketId, { includeRelations: false });
+    let ticket = toCamelCase(apiResult?.ticket || null);
+    if (ticket) {
+      const runtimeSettings = await getTicketRuntimeSettings(ticket?.workflowType || ticket?.workflow_type);
+      ticket = applyTicketRuntimePolicies(ticket, runtimeSettings);
+    } else {
+      ticket = await this.getTicketById(ticketId, { includeRelations: false });
+    }
     return {
       ticketHandler: toCamelCase(apiResult?.ticket_handler || apiResult || null),
       ticket,
@@ -1689,9 +1698,10 @@ async deleteHandler(handlerId, options = {}) {
 
     const result = toCamelCase(apiData?.comment || apiData);
     const performedBy = String(apiData?.performed_by || authorName || 'System');
-
-    const ticket = await this.getTicketById(ticketId, { includeRelations: false }).catch(() => null);
+    let ticket = toCamelCase(apiData?.ticket || null);
     if (ticket) {
+      const runtimeSettings = await getTicketRuntimeSettings(ticket?.workflowType || ticket?.workflow_type);
+      ticket = applyTicketRuntimePolicies(ticket, runtimeSettings);
       const isInternal = true;
       notificationService.notifyComment(
         ticket,
@@ -1731,9 +1741,10 @@ async deleteHandler(handlerId, options = {}) {
       (isHandlerSender && discloseHandlerIdentity
         ? (apiData?.public_handler_name || null)
         : null);
-
-    const ticket = await this.getTicketById(ticketId, { includeRelations: false }).catch(() => null);
+    let ticket = toCamelCase(apiData?.ticket || null);
     if (ticket) {
+      const runtimeSettings = await getTicketRuntimeSettings(ticket?.workflowType || ticket?.workflow_type);
+      ticket = applyTicketRuntimePolicies(ticket, runtimeSettings);
       notificationService.notifyMessage(
         ticket,
         sender,
@@ -1890,6 +1901,7 @@ async deleteHandler(handlerId, options = {}) {
     let handlerApiError = null;
     let reporterApiAttempted = false;
     let reporterApiError = null;
+    let ticketForNotification = null;
 
     if (currentHandlerId) {
       handlerApiAttempted = true;
@@ -1908,6 +1920,7 @@ async deleteHandler(handlerId, options = {}) {
           { requireAuth: true }
         );
         attachment = toCamelCase(apiData?.attachment || apiData);
+        ticketForNotification = toCamelCase(apiData?.ticket || null);
         attachmentCreatedViaApi = true;
       } catch (apiError) {
         handlerApiError = apiError;
@@ -1987,7 +2000,13 @@ async deleteHandler(handlerId, options = {}) {
 
     if (notifyReporter && !isInternal) {
       try {
-        const ticket = await this.getTicketById(ticketId, { includeRelations: false }).catch(() => null);
+        let ticket = ticketForNotification;
+        if (ticket) {
+          const runtimeSettings = await getTicketRuntimeSettings(ticket?.workflowType || ticket?.workflow_type);
+          ticket = applyTicketRuntimePolicies(ticket, runtimeSettings);
+        } else {
+          ticket = await this.getTicketById(ticketId, { includeRelations: false }).catch(() => null);
+        }
         if (ticket) {
           notificationService.notifyAttachmentAdded(
             ticket,

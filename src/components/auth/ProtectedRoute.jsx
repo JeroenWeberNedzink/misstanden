@@ -3,6 +3,7 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { Navigate } from 'react-router-dom';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useSettings } from '../../contexts/SettingsContext';
+import NoAccessPage from './NoAccessPage';
 
 /**
  * Protected route component that checks authentication and optionally permissions/roles
@@ -29,6 +30,7 @@ const ProtectedRoute = ({
 }) => {
   const { isAuthenticated, isLoading: auth0Loading } = useAuth0();
   const {
+    handlerProfile,
     hasPermission: checkPermission,
     hasAnyPermission,
     hasAllPermissions,
@@ -117,6 +119,9 @@ const ProtectedRoute = ({
   if (!hasAccess) {
     if (import.meta.env.DEV) {
       console.debug('[ProtectedRoute] Access denied', window.__nzProtectedRouteDebug, window.__nzPermissionsDebug);
+    }
+    if (showAccessDenied && !handlerProfile?.id) {
+      return <NoAccessPage />;
     }
     if (showAccessDenied) {
       return (

@@ -42,7 +42,9 @@ const fetchJson = async (url, options = {}) => {
   const response = await fetch(url, options);
   const json = await response.json().catch(() => null);
   if (!response.ok || !json?.success) {
-    throw new Error(json?.message || `Access request API error (${response.status})`);
+    const errorId = String(json?.error_id || json?.errorId || '').trim();
+    const baseMessage = json?.message || `Access request API error (${response.status})`;
+    throw new Error(errorId ? `${baseMessage} [error_id: ${errorId}]` : baseMessage);
   }
   return toCamelCase(json);
 };
@@ -142,6 +144,40 @@ export const accessRequestService = {
       request: payload?.request || null,
       handler: payload?.handler || null,
       warnings: Array.isArray(payload?.warnings) ? payload.warnings : [],
+    };
+  },
+
+  async grantAccess({ email, name = '', roles = ['HANDLER'], workflowIds = null, note = '' } = {}) {
+    const authHeaders = await getAuthHeadersWithRetry(true);
+    if (!authHeaders.Authorization) {
+      throw new Error('Authorization token required');
+    }
+
+    const normalizedRoles = Array.isArray(roles)
+      ? roles.map((role) => String(role || '').trim()).filter(Boolean)
+      : ['HANDLER'];
+
+    const payload = await fetchJson(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
+      body: JSON.stringify({
+        action: 'grant_access',
+        email: String(email || '').trim(),
+        name: String(name || '').trim(),
+        roles: normalizedRoles.length > 0 ? normalizedRoles : ['HANDLER'],
+        ...(Array.isArray(workflowIds) ? { workflow_ids: workflowIds } : {}),
+        review_notes: String(note || '').trim(),
+      }),
+    });
+
+    return {
+      request: payload?.request || null,
+      handler: payload?.handler || null,
+      warnings: Array.isArray(payload?.warnings) ? payload.warnings : [],
+      createdRequest: Boolean(payload?.createdRequest),
     };
   },
 

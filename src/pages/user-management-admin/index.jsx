@@ -24,6 +24,7 @@ const hasRole = (user, role) => {
 
 const computePrimaryRole = (user) => {
   if (hasRole(user, 'ADMIN')) return 'admin';
+  if (hasRole(user, 'PORTAL_ADMIN')) return 'portal_admin';
   if (hasRole(user, 'HANDLER')) return 'handler';
   if (hasRole(user, 'USER')) return 'user';
   return null;
@@ -39,13 +40,14 @@ const normalizeUser = (u) => ({
 const getRoleBadgeStyle = (role) => {
   const styles = {
     admin: 'bg-primary/10 text-primary border border-primary/20',
+    portal_admin: 'bg-amber-100 text-amber-800 border border-amber-200',
     handler: 'bg-accent/10 text-accent border border-accent/20',
   };
   return styles[role] || 'bg-muted text-muted-foreground border border-border';
 };
 
 const getRoleLabel = (role) => {
-  const labels = { admin: 'Admin', handler: 'Handler' };
+  const labels = { admin: 'Admin', portal_admin: 'Portaalbeheer', handler: 'Handler' };
   return labels[role] || role;
 };
 

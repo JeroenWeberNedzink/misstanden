@@ -131,12 +131,34 @@ function ticket_register_failed_auth_attempt(string $ticketInput): void {
 function ticket_reset_failed_auth_attempts(string $ticketInput): void { ticket_rate_limit_reset('tickets:auth_fail:' . ticket_client_fingerprint() . ':' . ticket_hash_scope_part('ticket:' . ticket_limit_scope_suffix($ticketInput))); }
 
 function ticket_setting_unwrap_value($raw) { return is_array($raw) && array_key_exists('value', $raw) ? $raw['value'] : $raw; }
+function ticket_system_settings_cache_file(): string {
+    $dir = sqlserver_project_root() . DIRECTORY_SEPARATOR . 'run' . DIRECTORY_SEPARATOR . 'cache';
+    if (!is_dir($dir)) @mkdir($dir, 0755, true);
+    return $dir . DIRECTORY_SEPARATOR . 'ticket-system-settings.json';
+}
+function ticket_invalidate_system_settings_cache(): void {
+    $file = ticket_system_settings_cache_file();
+    if (is_file($file)) @unlink($file);
+}
 function ticket_load_system_settings(): array {
-    static $cache = null; if (is_array($cache)) return $cache; $cache = [];
+    static $cache = null; if (is_array($cache)) return $cache;
+    $cacheTtl = max(5, (int)(getenv('TICKET_SETTINGS_CACHE_TTL_SECONDS') ?: 60));
+    $cacheFile = ticket_system_settings_cache_file();
+    if (is_file($cacheFile) && (time() - (int)@filemtime($cacheFile)) <= $cacheTtl) {
+        $raw = @file_get_contents($cacheFile);
+        $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+        if (is_array($decoded)) {
+            $cache = $decoded;
+            return $cache;
+        }
+    }
+
+    $cache = [];
     foreach (sqlserver_query('SELECT setting_key, setting_value FROM dbo.system_settings ORDER BY setting_key ASC') as $row) {
         $key = trim((string)($row['setting_key'] ?? '')); if ($key === '') continue;
         $cache[$key] = ticket_setting_unwrap_value(ticket_parse_json($row['setting_value'] ?? null, $row['setting_value'] ?? null));
     }
+    @file_put_contents($cacheFile, json_encode($cache, JSON_UNESCAPED_UNICODE), LOCK_EX);
     return $cache;
 }
 function ticket_setting_value(array $settings, array $aliases, $default = null) { foreach ($aliases as $key) if (array_key_exists($key, $settings)) return $settings[$key]; return $default; }
@@ -187,32 +209,201 @@ function ticket_load_workflow_status_rows(string $workflowType): array {
     return array_map(static function (array $row): array { $row['next_codes'] = ticket_parse_json($row['next_codes'] ?? null, []); return $row; }, $rows);
 }
 
+function ticket_normalize_ticket_row(array $row): array {
+    $row['metadata'] = ticket_parse_json($row['metadata'] ?? null, []);
+    return $row;
+}
+
+function ticket_handler_summary(array $row, string $prefix = 'handler_'): ?array {
+    $id = trim((string)($row[$prefix . 'id'] ?? ''));
+    if ($id === '') return null;
+
+    return [
+        'id' => $id,
+        'name' => $row[$prefix . 'name'] ?? null,
+        'email' => $row[$prefix . 'email'] ?? null,
+        'roles' => ticket_parse_json($row[$prefix . 'roles'] ?? null, []),
+        'active' => isset($row[$prefix . 'active']) ? (bool)$row[$prefix . 'active'] : null,
+    ];
+}
+
+function ticket_normalize_ticket_with_handler_row(array $row): array {
+    $ticket = ticket_normalize_ticket_row($row);
+    $ticket['email_notify'] = isset($row['email_notify']) ? (bool)$row['email_notify'] : false;
+    $ticket['status_email_notify'] = isset($row['status_email_notify']) ? (bool)$row['status_email_notify'] : true;
+    $ticket['is_anonymous'] = isset($row['is_anonymous']) ? (bool)$row['is_anonymous'] : false;
+    $ticket['handlers'] = ticket_handler_summary($row);
+    unset(
+        $ticket['handler_name'],
+        $ticket['handler_email'],
+        $ticket['handler_roles'],
+        $ticket['handler_active']
+    );
+    return $ticket;
+}
+
+function ticket_ticket_handlers_from_rows(array $rows): array {
+    return array_values(array_map(static function (array $row): array {
+        return [
+            'id' => $row['id'] ?? null,
+            'ticket_id' => $row['ticket_id'] ?? null,
+            'handler_id' => $row['handler_id'] ?? null,
+            'role' => $row['role'] ?? null,
+            'assigned_at' => $row['assigned_at'] ?? null,
+            'created_at' => $row['created_at'] ?? null,
+            'handler' => [
+                'id' => $row['handler_id_ref'] ?? null,
+                'name' => $row['handler_name'] ?? null,
+                'email' => $row['handler_email'] ?? null,
+                'roles' => ticket_parse_json($row['handler_roles'] ?? null, []),
+                'active' => isset($row['handler_active']) ? (bool)$row['handler_active'] : null,
+            ],
+        ];
+    }, $rows));
+}
+
+function ticket_with_handlers_from_results(array $results, int $ticketIndex, int $ticketHandlersIndex): ?array {
+    $ticketRow = sqlserver_result_rows($results, $ticketIndex)[0] ?? null;
+    if (!is_array($ticketRow)) {
+        return null;
+    }
+
+    $ticket = ticket_normalize_ticket_with_handler_row($ticketRow);
+    $ticket['ticket_handlers'] = ticket_ticket_handlers_from_rows(sqlserver_result_rows($results, $ticketHandlersIndex));
+    return $ticket;
+}
+
+function ticket_ticket_with_handler_command(string $ticketId, int $timeout = 30): array {
+    return sqlserver_command(
+        'query',
+        'SELECT TOP 1
+            t.*,
+            h.id AS handler_id,
+            h.name AS handler_name,
+            h.email AS handler_email,
+            h.roles AS handler_roles,
+            h.active AS handler_active
+         FROM dbo.tickets t
+         LEFT JOIN dbo.handlers h ON h.id = t.handler_id
+         WHERE t.id = @ticket_id',
+        ['ticket_id' => $ticketId],
+        $timeout
+    );
+}
+
+function ticket_ticket_handlers_command(string $ticketId, int $timeout = 30): array {
+    return sqlserver_command(
+        'query',
+        'SELECT
+            th.*,
+            h.id AS handler_id_ref,
+            h.name AS handler_name,
+            h.email AS handler_email,
+            h.roles AS handler_roles,
+            h.active AS handler_active
+         FROM dbo.ticket_handlers th
+         LEFT JOIN dbo.handlers h ON h.id = th.handler_id
+         WHERE th.ticket_id = @ticket_id
+         ORDER BY th.assigned_at ASC, th.created_at ASC',
+        ['ticket_id' => $ticketId],
+        $timeout
+    );
+}
+
 function ticket_load_ticket_row_by_id(string $ticketId): ?array {
     $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.tickets WHERE id = @id', ['id' => $ticketId]);
-    $row = $rows[0] ?? null; if (!$row) return null; $row['metadata'] = ticket_parse_json($row['metadata'] ?? null, []); return $row;
+    $row = $rows[0] ?? null; if (!$row) return null; return ticket_normalize_ticket_row($row);
 }
 
 function ticket_load_relations(string $ticketId): array {
+    $results = sqlserver_run_commands([
+        sqlserver_command('query', 'SELECT * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]),
+        sqlserver_command('query', 'SELECT * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]),
+        sqlserver_command('query', 'SELECT * FROM dbo.ticket_actions WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]),
+        sqlserver_command('query', 'SELECT * FROM dbo.ticket_comments WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]),
+    ], false);
+
     return [
-        'attachments' => sqlserver_query('SELECT * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]),
-        'messages' => sqlserver_query('SELECT * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]),
-        'ticket_actions' => sqlserver_query('SELECT * FROM dbo.ticket_actions WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]),
-        'ticket_comments' => sqlserver_query('SELECT * FROM dbo.ticket_comments WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]),
+        'attachments' => sqlserver_result_rows($results, 0),
+        'messages' => sqlserver_result_rows($results, 1),
+        'ticket_actions' => sqlserver_result_rows($results, 2),
+        'ticket_comments' => sqlserver_result_rows($results, 3),
+    ];
+}
+
+function ticket_reporter_relations_from_results(array $results, int $startIndex = 0): array {
+    return [
+        'attachments' => sqlserver_result_rows($results, $startIndex),
+        'messages' => sqlserver_result_rows($results, $startIndex + 1),
+        'ticket_actions' => sqlserver_result_rows($results, $startIndex + 2),
+        'ticket_comments' => sqlserver_result_rows($results, $startIndex + 3),
+    ];
+}
+
+function ticket_reporter_relation_commands(string $ticketId, int $timeout = 30): array {
+    return [
+        sqlserver_command('query', 'SELECT * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId], $timeout),
+        sqlserver_command('query', 'SELECT * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId], $timeout),
+        sqlserver_command('query', 'SELECT * FROM dbo.ticket_actions WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId], $timeout),
+        sqlserver_command('query', 'SELECT * FROM dbo.ticket_comments WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId], $timeout),
+    ];
+}
+
+function ticket_reporter_ticket_by_id_from_results(array $results, int $ticketIndex, int $relationsStartIndex): ?array {
+    $ticketRow = sqlserver_result_rows($results, $ticketIndex)[0] ?? null;
+    if (!is_array($ticketRow)) {
+        return null;
+    }
+
+    return array_merge(
+        ticket_normalize_ticket_row($ticketRow),
+        ticket_reporter_relations_from_results($results, $relationsStartIndex)
+    );
+}
+
+function ticket_lookup_by_credentials(string $ticketInput, string $accessCode): ?array {
+    $meta = normalize_ticket_input($ticketInput);
+    if (!$meta['ok'] || $accessCode === '') return null;
+
+    return [
+        'where_sql' => ($meta['is_uuid'] ? 't.id = @ticket_value' : 't.ticket_number = @ticket_value') . ' AND t.access_code = @access_code',
+        'params' => ['ticket_value' => $meta['value'], 'access_code' => $accessCode],
+    ];
+}
+
+function ticket_command_by_credentials(array $lookup, int $timeout = 30): array {
+    return sqlserver_command(
+        'query',
+        'SELECT TOP 1 * FROM dbo.tickets t WHERE ' . $lookup['where_sql'],
+        $lookup['params'],
+        $timeout
+    );
+}
+
+function ticket_reporter_relation_commands_for_lookup(array $lookup, int $timeout = 30): array {
+    $idSubquery = 'SELECT TOP 1 t.id FROM dbo.tickets t WHERE ' . $lookup['where_sql'];
+
+    return [
+        sqlserver_command('query', 'SELECT * FROM dbo.attachments WHERE ticket_id = (' . $idSubquery . ') ORDER BY created_at ASC', $lookup['params'], $timeout),
+        sqlserver_command('query', 'SELECT * FROM dbo.messages WHERE ticket_id = (' . $idSubquery . ') ORDER BY created_at ASC', $lookup['params'], $timeout),
+        sqlserver_command('query', 'SELECT * FROM dbo.ticket_actions WHERE ticket_id = (' . $idSubquery . ') ORDER BY created_at DESC', $lookup['params'], $timeout),
+        sqlserver_command('query', 'SELECT * FROM dbo.ticket_comments WHERE ticket_id = (' . $idSubquery . ') ORDER BY created_at ASC', $lookup['params'], $timeout),
     ];
 }
 
 function ticket_load_ticket_by_credentials(string $ticketInput, string $accessCode): ?array {
-    $meta = normalize_ticket_input($ticketInput);
-    if (!$meta['ok'] || $accessCode === '') return null;
-    $sql = $meta['is_uuid']
-        ? 'SELECT TOP 1 * FROM dbo.tickets WHERE id = @ticket_value AND access_code = @access_code'
-        : 'SELECT TOP 1 * FROM dbo.tickets WHERE ticket_number = @ticket_value AND access_code = @access_code';
-    $rows = sqlserver_query($sql, ['ticket_value' => $meta['value'], 'access_code' => $accessCode]);
-    $ticket = $rows[0] ?? null;
-    if (!$ticket) return null;
-    $ticket['metadata'] = ticket_parse_json($ticket['metadata'] ?? null, []);
-    $ticket = array_merge($ticket, ticket_load_relations((string)$ticket['id']));
-    return $ticket;
+    $lookup = ticket_lookup_by_credentials($ticketInput, $accessCode);
+    if (!$lookup) return null;
+
+    $results = sqlserver_run_commands(
+        array_merge(
+            [ticket_command_by_credentials($lookup)],
+            ticket_reporter_relation_commands_for_lookup($lookup)
+        ),
+        false
+    );
+
+    return ticket_reporter_ticket_by_id_from_results($results, 0, 1);
 }
 
 function ticket_sanitize_reporter_ticket(array $ticket, array $settings): array {
@@ -242,9 +433,10 @@ function ticket_require_active_handler_context(): array {
     return ['claims' => (array)($ctx['claims'] ?? []), 'handler' => (array)($ctx['handler'] ?? [])];
 }
 
-function ticket_insert_action(array $payload, array $settings): void {
-    if (!ticket_action_logging_enabled($settings)) return;
-    sqlserver_execute(
+function ticket_action_command(array $payload, array $settings): ?array {
+    if (!ticket_action_logging_enabled($settings)) return null;
+    return sqlserver_command(
+        'nonquery',
         'INSERT INTO dbo.ticket_actions (ticket_id, action_type, action, description, handler_id, handler_name, handler_email, performed_by, created_at)
          VALUES (@ticket_id, @action_type, @action, @description, @handler_id, @handler_name, @handler_email, @performed_by, COALESCE(@created_at, SYSUTCDATETIME()))',
         [
@@ -259,6 +451,12 @@ function ticket_insert_action(array $payload, array $settings): void {
             'created_at' => $payload['created_at'] ?? null,
         ]
     );
+}
+
+function ticket_insert_action(array $payload, array $settings): void {
+    $command = ticket_action_command($payload, $settings);
+    if (!$command) return;
+    sqlserver_run_commands([$command], true);
 }
 
 function ticket_try_auto_assign_handler(string $ticketId, string $workflowType): ?array {
@@ -343,15 +541,48 @@ function handle_reporter_message(array $data): void {
     if ($body === '') api_json(400, false, 'Message body is required');
     if (ticket_strlen($body) > 1000) api_json(400, false, 'Message body exceeds 1000 characters');
     ticket_enforce_request_rate_limit('message', $ticketInput);
-    $ticket = ticket_load_ticket_by_credentials($ticketInput, $accessCode);
+    $lookup = ticket_lookup_by_credentials($ticketInput, $accessCode);
+    $lookupResults = $lookup ? sqlserver_run_commands([ticket_command_by_credentials($lookup)], false) : [];
+    $ticketRow = sqlserver_result_rows($lookupResults, 0)[0] ?? null;
+    $ticket = is_array($ticketRow) ? ticket_normalize_ticket_row($ticketRow) : null;
     if (!$ticket) { ticket_register_failed_auth_attempt($ticketInput); usleep(random_int(150000, 350000)); api_json(401, false, 'Invalid ticket ID or access code'); }
     ticket_reset_failed_auth_attempts($ticketInput);
+    $settings = ticket_load_system_settings();
     $ticketId = (string)($ticket['id'] ?? ''); if (!ticket_is_uuid($ticketId)) throw new Exception('Ticket lookup returned invalid data');
-    sqlserver_execute('INSERT INTO dbo.messages (ticket_id, sender, body, is_internal, visible_at, created_at) VALUES (@ticket_id, @sender, @body, @is_internal, SYSUTCDATETIME(), SYSUTCDATETIME())', ['ticket_id' => $ticketId, 'sender' => 'reporter', 'body' => $body, 'is_internal' => false]);
-    sqlserver_execute('UPDATE dbo.tickets SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id', ['id' => $ticketId]);
-    $messageRows = sqlserver_query('SELECT TOP 1 * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
-    try { ticket_insert_action(['ticket_id' => $ticketId, 'action_type' => 'message_sent', 'action' => 'Message Sent', 'description' => 'Reporter sent a message', 'performed_by' => trim((string)($ticket['reporter_name'] ?? '')) ?: 'Reporter'], ticket_load_system_settings()); } catch (Throwable $e) {}
-    api_json(200, true, 'Message sent', ['message' => $messageRows[0] ?? null, 'ticket' => ticket_sanitize_reporter_ticket(ticket_load_ticket_by_credentials($ticketInput, $accessCode) ?: $ticket, ticket_load_system_settings())]);
+
+    $commands = [
+        sqlserver_command(
+            'nonquery',
+            'INSERT INTO dbo.messages (ticket_id, sender, body, is_internal, visible_at, created_at) VALUES (@ticket_id, @sender, @body, @is_internal, SYSUTCDATETIME(), SYSUTCDATETIME())',
+            ['ticket_id' => $ticketId, 'sender' => 'reporter', 'body' => $body, 'is_internal' => false]
+        ),
+        sqlserver_command(
+            'nonquery',
+            'UPDATE dbo.tickets SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id',
+            ['id' => $ticketId]
+        ),
+    ];
+    $actionCommand = ticket_action_command([
+        'ticket_id' => $ticketId,
+        'action_type' => 'message_sent',
+        'action' => 'Message Sent',
+        'description' => 'Reporter sent a message',
+        'performed_by' => trim((string)($ticket['reporter_name'] ?? '')) ?: 'Reporter',
+    ], $settings);
+    if ($actionCommand) $commands[] = $actionCommand;
+
+    $messageIndex = count($commands);
+    $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
+    $ticketIndex = count($commands);
+    $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.tickets WHERE id = @id', ['id' => $ticketId]);
+    $relationsStartIndex = count($commands);
+    foreach (ticket_reporter_relation_commands($ticketId) as $command) $commands[] = $command;
+
+    $results = sqlserver_run_commands($commands, true);
+    $messageRow = sqlserver_result_rows($results, $messageIndex)[0] ?? null;
+    $updatedTicket = ticket_reporter_ticket_by_id_from_results($results, $ticketIndex, $relationsStartIndex) ?: $ticket;
+
+    api_json(200, true, 'Message sent', ['message' => $messageRow, 'ticket' => ticket_sanitize_reporter_ticket($updatedTicket, $settings)]);
 }
 
 function handle_handler_update_ticket(array $data): void {
@@ -379,11 +610,41 @@ function handle_handler_add_comment(array $data): void {
     if (ticket_strlen($comment) > 4000) api_json(400, false, 'comment exceeds 4000 characters');
     ticket_enforce_handler_mutation_rate_limit('add_comment', $handler, $ticketId);
     $performedBy = trim((string)($data['author_name'] ?? $handler['name'] ?? '')) ?: 'System';
-    sqlserver_execute('INSERT INTO dbo.ticket_comments (ticket_id, comment, author_name, created_at, updated_at) VALUES (@ticket_id, @comment, @author_name, SYSUTCDATETIME(), SYSUTCDATETIME())', ['ticket_id' => $ticketId, 'comment' => $comment, 'author_name' => $performedBy]);
-    $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.ticket_comments WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
-    sqlserver_execute('UPDATE dbo.tickets SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id', ['id' => $ticketId]);
-    try { ticket_insert_action(['ticket_id' => $ticketId, 'action_type' => 'note_added', 'action' => 'Note Added', 'description' => 'Added investigation note: ' . ticket_substr($comment, 0, 100) . '...', 'handler_id' => trim((string)($handler['id'] ?? '')) ?: null, 'handler_name' => $performedBy, 'handler_email' => trim((string)($handler['email'] ?? '')) ?: null, 'performed_by' => $performedBy], $settings); } catch (Throwable $e) {}
-    api_json(200, true, 'Comment added', ['comment' => $rows[0] ?? null, 'performed_by' => $performedBy]);
+    $commands = [
+        sqlserver_command(
+            'nonquery',
+            'INSERT INTO dbo.ticket_comments (ticket_id, comment, author_name, created_at, updated_at) VALUES (@ticket_id, @comment, @author_name, SYSUTCDATETIME(), SYSUTCDATETIME())',
+            ['ticket_id' => $ticketId, 'comment' => $comment, 'author_name' => $performedBy]
+        ),
+        sqlserver_command(
+            'nonquery',
+            'UPDATE dbo.tickets SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id',
+            ['id' => $ticketId]
+        ),
+    ];
+    $actionCommand = ticket_action_command([
+        'ticket_id' => $ticketId,
+        'action_type' => 'note_added',
+        'action' => 'Note Added',
+        'description' => 'Added investigation note: ' . ticket_substr($comment, 0, 100) . '...',
+        'handler_id' => trim((string)($handler['id'] ?? '')) ?: null,
+        'handler_name' => $performedBy,
+        'handler_email' => trim((string)($handler['email'] ?? '')) ?: null,
+        'performed_by' => $performedBy,
+    ], $settings);
+    if ($actionCommand) $commands[] = $actionCommand;
+
+    $commentIndex = count($commands);
+    $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.ticket_comments WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
+    $ticketIndex = count($commands);
+    $commands[] = ticket_ticket_with_handler_command($ticketId);
+    $ticketHandlersIndex = count($commands);
+    $commands[] = ticket_ticket_handlers_command($ticketId);
+
+    $results = sqlserver_run_commands($commands, true);
+    $commentRow = sqlserver_result_rows($results, $commentIndex)[0] ?? null;
+    $ticket = ticket_with_handlers_from_results($results, $ticketIndex, $ticketHandlersIndex);
+    api_json(200, true, 'Comment added', ['comment' => $commentRow, 'performed_by' => $performedBy, 'ticket' => $ticket]);
 }
 
 function handle_handler_add_message(array $data): void {
@@ -394,15 +655,50 @@ function handle_handler_add_message(array $data): void {
     if ($sender === '') api_json(400, false, 'sender is required'); if ($body === '') api_json(400, false, 'body is required'); if (ticket_strlen($body) > 4000) api_json(400, false, 'body exceeds 4000 characters');
     $isInternal = !empty($data['is_internal']); $publicName = ($sender === 'handler' && !empty($data['disclose_handler_identity'])) ? (trim((string)($handler['name'] ?? '')) ?: 'System') : null;
     $performedBy = trim((string)($handler['name'] ?? '')) ?: 'System';
-    sqlserver_execute(
-        'INSERT INTO dbo.messages (ticket_id, sender, body, is_internal, visible_at, created_at, handler_id, handler_name)
-         VALUES (@ticket_id, @sender, @body, @is_internal, @visible_at, SYSUTCDATETIME(), @handler_id, @handler_name)',
-        ['ticket_id' => $ticketId, 'sender' => $sender, 'body' => $body, 'is_internal' => $isInternal, 'visible_at' => ticket_handler_message_visible_at($isInternal, $sender), 'handler_id' => trim((string)($handler['id'] ?? '')) ?: null, 'handler_name' => $publicName]
-    );
-    sqlserver_execute('UPDATE dbo.tickets SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id', ['id' => $ticketId]);
-    $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
-    try { ticket_insert_action(['ticket_id' => $ticketId, 'action_type' => 'message_sent', 'action' => 'Message Sent', 'description' => 'Sent message: ' . ticket_substr($body, 0, 100) . '...', 'handler_id' => trim((string)($handler['id'] ?? '')) ?: null, 'handler_name' => $performedBy, 'handler_email' => trim((string)($handler['email'] ?? '')) ?: null, 'performed_by' => $performedBy], $settings); } catch (Throwable $e) {}
-    api_json(200, true, 'Message added', ['message' => $rows[0] ?? null, 'performed_by' => $performedBy, 'public_handler_name' => $publicName]);
+    $commands = [
+        sqlserver_command(
+            'nonquery',
+            'INSERT INTO dbo.messages (ticket_id, sender, body, is_internal, visible_at, created_at, handler_id, handler_name)
+             VALUES (@ticket_id, @sender, @body, @is_internal, @visible_at, SYSUTCDATETIME(), @handler_id, @handler_name)',
+            [
+                'ticket_id' => $ticketId,
+                'sender' => $sender,
+                'body' => $body,
+                'is_internal' => $isInternal,
+                'visible_at' => ticket_handler_message_visible_at($isInternal, $sender),
+                'handler_id' => trim((string)($handler['id'] ?? '')) ?: null,
+                'handler_name' => $publicName,
+            ]
+        ),
+        sqlserver_command(
+            'nonquery',
+            'UPDATE dbo.tickets SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id',
+            ['id' => $ticketId]
+        ),
+    ];
+    $actionCommand = ticket_action_command([
+        'ticket_id' => $ticketId,
+        'action_type' => 'message_sent',
+        'action' => 'Message Sent',
+        'description' => 'Sent message: ' . ticket_substr($body, 0, 100) . '...',
+        'handler_id' => trim((string)($handler['id'] ?? '')) ?: null,
+        'handler_name' => $performedBy,
+        'handler_email' => trim((string)($handler['email'] ?? '')) ?: null,
+        'performed_by' => $performedBy,
+    ], $settings);
+    if ($actionCommand) $commands[] = $actionCommand;
+
+    $messageIndex = count($commands);
+    $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
+    $ticketIndex = count($commands);
+    $commands[] = ticket_ticket_with_handler_command($ticketId);
+    $ticketHandlersIndex = count($commands);
+    $commands[] = ticket_ticket_handlers_command($ticketId);
+
+    $results = sqlserver_run_commands($commands, true);
+    $messageRow = sqlserver_result_rows($results, $messageIndex)[0] ?? null;
+    $ticket = ticket_with_handlers_from_results($results, $ticketIndex, $ticketHandlersIndex);
+    api_json(200, true, 'Message added', ['message' => $messageRow, 'performed_by' => $performedBy, 'public_handler_name' => $publicName, 'ticket' => $ticket]);
 }
 
 function handle_reporter_add_attachment(array $data): void {
@@ -413,15 +709,40 @@ function handle_reporter_add_attachment(array $data): void {
     if ($fileName === '' || ticket_strlen($fileName) > 255) api_json(400, false, 'file_name is required and must be <= 255 chars');
     if ($fileUrl === '') api_json(400, false, 'file_url is required');
     ticket_validate_attachment_policy($settings, $fileName, $sizeBytes); ticket_enforce_request_rate_limit('attachment', $ticketInput);
-    $ticket = ticket_load_ticket_by_credentials($ticketInput, $accessCode);
+    $lookup = ticket_lookup_by_credentials($ticketInput, $accessCode);
+    $lookupResults = $lookup ? sqlserver_run_commands([ticket_command_by_credentials($lookup)], false) : [];
+    $ticketRow = sqlserver_result_rows($lookupResults, 0)[0] ?? null;
+    $ticket = is_array($ticketRow) ? ticket_normalize_ticket_row($ticketRow) : null;
     if (!$ticket) { ticket_register_failed_auth_attempt($ticketInput); usleep(random_int(150000, 350000)); api_json(401, false, 'Invalid ticket ID or access code'); }
     ticket_reset_failed_auth_attempts($ticketInput);
     $ticketId = trim((string)($ticket['id'] ?? '')); if (!ticket_is_uuid($ticketId)) throw new Exception('Ticket lookup returned invalid data');
-    sqlserver_execute('INSERT INTO dbo.attachments (ticket_id, file_name, file_url, mime_type, size_bytes, is_internal, note_id, created_at) VALUES (@ticket_id, @file_name, @file_url, @mime_type, @size_bytes, @is_internal, @note_id, SYSUTCDATETIME())', ['ticket_id' => $ticketId, 'file_name' => $fileName, 'file_url' => $fileUrl, 'mime_type' => $mimeType !== '' ? $mimeType : 'application/octet-stream', 'size_bytes' => $sizeBytes, 'is_internal' => false, 'note_id' => null]);
-    sqlserver_execute('UPDATE dbo.tickets SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id', ['id' => $ticketId]);
-    $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
-    try { ticket_insert_action(['ticket_id' => $ticketId, 'action_type' => 'attachment_added', 'action' => 'Attachment Added', 'description' => 'Reporter uploaded file: ' . ticket_substr($fileName, 0, 200), 'performed_by' => trim((string)($ticket['reporter_name'] ?? '')) ?: 'Reporter'], $settings); } catch (Throwable $e) {}
-    api_json(200, true, 'Attachment added', ['attachment' => $rows[0] ?? null]);
+    $commands = [
+        sqlserver_command(
+            'nonquery',
+            'INSERT INTO dbo.attachments (ticket_id, file_name, file_url, mime_type, size_bytes, is_internal, note_id, created_at) VALUES (@ticket_id, @file_name, @file_url, @mime_type, @size_bytes, @is_internal, @note_id, SYSUTCDATETIME())',
+            ['ticket_id' => $ticketId, 'file_name' => $fileName, 'file_url' => $fileUrl, 'mime_type' => $mimeType !== '' ? $mimeType : 'application/octet-stream', 'size_bytes' => $sizeBytes, 'is_internal' => false, 'note_id' => null]
+        ),
+        sqlserver_command(
+            'nonquery',
+            'UPDATE dbo.tickets SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id',
+            ['id' => $ticketId]
+        ),
+    ];
+    $actionCommand = ticket_action_command([
+        'ticket_id' => $ticketId,
+        'action_type' => 'attachment_added',
+        'action' => 'Attachment Added',
+        'description' => 'Reporter uploaded file: ' . ticket_substr($fileName, 0, 200),
+        'performed_by' => trim((string)($ticket['reporter_name'] ?? '')) ?: 'Reporter',
+    ], $settings);
+    if ($actionCommand) $commands[] = $actionCommand;
+
+    $attachmentIndex = count($commands);
+    $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
+
+    $results = sqlserver_run_commands($commands, true);
+    $attachmentRow = sqlserver_result_rows($results, $attachmentIndex)[0] ?? null;
+    api_json(200, true, 'Attachment added', ['attachment' => $attachmentRow]);
 }
 
 function handle_handler_add_attachment(array $data): void {
@@ -431,11 +752,42 @@ function handle_handler_add_attachment(array $data): void {
     $fileName = trim((string)($data['file_name'] ?? '')); $fileUrl = trim((string)($data['file_url'] ?? '')); $mimeType = trim((string)($data['mime_type'] ?? 'application/octet-stream')); $sizeBytes = isset($data['size_bytes']) ? (int)$data['size_bytes'] : null; $isInternal = !empty($data['is_internal']); $noteId = trim((string)($data['note_id'] ?? ''));
     if ($fileName === '' || ticket_strlen($fileName) > 255) api_json(400, false, 'file_name is required and must be <= 255 chars'); if ($fileUrl === '') api_json(400, false, 'file_url is required');
     ticket_validate_attachment_policy($settings, $fileName, $sizeBytes);
-    sqlserver_execute('INSERT INTO dbo.attachments (ticket_id, file_name, file_url, mime_type, size_bytes, is_internal, note_id, created_at) VALUES (@ticket_id, @file_name, @file_url, @mime_type, @size_bytes, @is_internal, @note_id, SYSUTCDATETIME())', ['ticket_id' => $ticketId, 'file_name' => $fileName, 'file_url' => $fileUrl, 'mime_type' => $mimeType !== '' ? $mimeType : 'application/octet-stream', 'size_bytes' => $sizeBytes, 'is_internal' => $isInternal, 'note_id' => ticket_is_uuid($noteId) ? $noteId : null]);
-    sqlserver_execute('UPDATE dbo.tickets SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id', ['id' => $ticketId]);
-    $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
-    try { ticket_insert_action(['ticket_id' => $ticketId, 'action_type' => 'attachment_added', 'action' => 'Attachment Added', 'description' => 'Uploaded file: ' . ticket_substr($fileName, 0, 200), 'handler_id' => trim((string)($handler['id'] ?? '')) ?: null, 'handler_name' => trim((string)($handler['name'] ?? '')) ?: 'System', 'handler_email' => trim((string)($handler['email'] ?? '')) ?: null, 'performed_by' => trim((string)($handler['name'] ?? '')) ?: 'System'], $settings); } catch (Throwable $e) {}
-    api_json(200, true, 'Attachment added', ['attachment' => $rows[0] ?? null, 'performed_by' => trim((string)($handler['name'] ?? '')) ?: 'System']);
+    $performedBy = trim((string)($handler['name'] ?? '')) ?: 'System';
+    $commands = [
+        sqlserver_command(
+            'nonquery',
+            'INSERT INTO dbo.attachments (ticket_id, file_name, file_url, mime_type, size_bytes, is_internal, note_id, created_at) VALUES (@ticket_id, @file_name, @file_url, @mime_type, @size_bytes, @is_internal, @note_id, SYSUTCDATETIME())',
+            ['ticket_id' => $ticketId, 'file_name' => $fileName, 'file_url' => $fileUrl, 'mime_type' => $mimeType !== '' ? $mimeType : 'application/octet-stream', 'size_bytes' => $sizeBytes, 'is_internal' => $isInternal, 'note_id' => ticket_is_uuid($noteId) ? $noteId : null]
+        ),
+        sqlserver_command(
+            'nonquery',
+            'UPDATE dbo.tickets SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id',
+            ['id' => $ticketId]
+        ),
+    ];
+    $actionCommand = ticket_action_command([
+        'ticket_id' => $ticketId,
+        'action_type' => 'attachment_added',
+        'action' => 'Attachment Added',
+        'description' => 'Uploaded file: ' . ticket_substr($fileName, 0, 200),
+        'handler_id' => trim((string)($handler['id'] ?? '')) ?: null,
+        'handler_name' => $performedBy,
+        'handler_email' => trim((string)($handler['email'] ?? '')) ?: null,
+        'performed_by' => $performedBy,
+    ], $settings);
+    if ($actionCommand) $commands[] = $actionCommand;
+
+    $attachmentIndex = count($commands);
+    $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
+    $ticketIndex = count($commands);
+    $commands[] = ticket_ticket_with_handler_command($ticketId);
+    $ticketHandlersIndex = count($commands);
+    $commands[] = ticket_ticket_handlers_command($ticketId);
+
+    $results = sqlserver_run_commands($commands, true);
+    $attachmentRow = sqlserver_result_rows($results, $attachmentIndex)[0] ?? null;
+    $ticket = ticket_with_handlers_from_results($results, $ticketIndex, $ticketHandlersIndex);
+    api_json(200, true, 'Attachment added', ['attachment' => $attachmentRow, 'performed_by' => $performedBy, 'ticket' => $ticket]);
 }
 
 function handle_handler_log_action(array $data): void {
@@ -456,14 +808,68 @@ function handle_handler_set_ticket_handler_role(array $data): void {
     $ticketId = trim((string)($data['ticket_id'] ?? '')); $handlerId = trim((string)($data['handler_id'] ?? '')); $role = strtolower(trim((string)($data['role'] ?? '')));
     if (!ticket_is_uuid($ticketId)) api_json(400, false, 'ticket_id must be a valid UUID'); if (!ticket_is_uuid($handlerId)) api_json(400, false, 'handler_id must be a valid UUID'); if (!in_array($role, ['primary','secondary','legal','observer'], true)) api_json(400, false, 'role must be one of: primary, secondary, legal, observer');
     ticket_enforce_handler_mutation_rate_limit('set_handler_role', $handler, $ticketId);
-    if ($role === 'primary') sqlserver_execute('UPDATE dbo.ticket_handlers SET role = @next_role WHERE ticket_id = @ticket_id AND handler_id <> @handler_id AND role = @current_role', ['next_role' => 'secondary', 'ticket_id' => $ticketId, 'handler_id' => $handlerId, 'current_role' => 'primary']);
-    $existing = sqlserver_scalar('SELECT TOP 1 id FROM dbo.ticket_handlers WHERE ticket_id = @ticket_id AND handler_id = @handler_id', ['ticket_id' => $ticketId, 'handler_id' => $handlerId]);
-    if ($existing) sqlserver_execute('UPDATE dbo.ticket_handlers SET role = @role, assigned_at = COALESCE(assigned_at, SYSUTCDATETIME()) WHERE id = @id', ['role' => $role, 'id' => $existing]);
-    else sqlserver_execute('INSERT INTO dbo.ticket_handlers (ticket_id, handler_id, role, assigned_at, created_at) VALUES (@ticket_id, @handler_id, @role, SYSUTCDATETIME(), SYSUTCDATETIME())', ['ticket_id' => $ticketId, 'handler_id' => $handlerId, 'role' => $role]);
-    if ($role === 'primary') sqlserver_execute('UPDATE dbo.tickets SET handler_id = @handler_id, last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id', ['handler_id' => $handlerId, 'id' => $ticketId]);
-    try { ticket_insert_action(['ticket_id' => $ticketId, 'action_type' => 'assignment_role_updated', 'action' => 'Assignment Role Updated', 'description' => sprintf('Updated assignment role for handler %s to %s', $handlerId, $role), 'handler_id' => trim((string)($handler['id'] ?? '')) ?: null, 'handler_name' => trim((string)($handler['name'] ?? '')) ?: 'System', 'handler_email' => trim((string)($handler['email'] ?? '')) ?: null, 'performed_by' => trim((string)($handler['name'] ?? '')) ?: 'System'], $settings); } catch (Throwable $e) {}
-    $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.ticket_handlers WHERE ticket_id = @ticket_id AND handler_id = @handler_id', ['ticket_id' => $ticketId, 'handler_id' => $handlerId]);
-    api_json(200, true, 'Ticket handler role updated', ['ticket_handler' => $rows[0] ?? null]);
+    $commands = [
+        sqlserver_command(
+            'nonquery',
+            'IF @role = @primary_role
+             BEGIN
+                 UPDATE dbo.ticket_handlers
+                 SET role = @next_role
+                 WHERE ticket_id = @ticket_id
+                   AND handler_id <> @handler_id
+                   AND role = @current_role;
+             END;
+
+             MERGE dbo.ticket_handlers AS target
+             USING (SELECT @ticket_id AS ticket_id, @handler_id AS handler_id) AS source
+             ON target.ticket_id = source.ticket_id AND target.handler_id = source.handler_id
+             WHEN MATCHED THEN
+                 UPDATE SET
+                     role = @role,
+                     assigned_at = ISNULL(target.assigned_at, SYSUTCDATETIME())
+             WHEN NOT MATCHED THEN
+                 INSERT (ticket_id, handler_id, role, assigned_at, created_at)
+                 VALUES (@ticket_id, @handler_id, @role, SYSUTCDATETIME(), SYSUTCDATETIME());
+
+             IF @role = @primary_role
+             BEGIN
+                 UPDATE dbo.tickets
+                 SET handler_id = @handler_id, last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME()
+                 WHERE id = @ticket_id;
+             END;',
+            [
+                'ticket_id' => $ticketId,
+                'handler_id' => $handlerId,
+                'role' => $role,
+                'primary_role' => 'primary',
+                'next_role' => 'secondary',
+                'current_role' => 'primary',
+            ]
+        ),
+    ];
+    $actionCommand = ticket_action_command([
+        'ticket_id' => $ticketId,
+        'action_type' => 'assignment_role_updated',
+        'action' => 'Assignment Role Updated',
+        'description' => sprintf('Updated assignment role for handler %s to %s', $handlerId, $role),
+        'handler_id' => trim((string)($handler['id'] ?? '')) ?: null,
+        'handler_name' => trim((string)($handler['name'] ?? '')) ?: 'System',
+        'handler_email' => trim((string)($handler['email'] ?? '')) ?: null,
+        'performed_by' => trim((string)($handler['name'] ?? '')) ?: 'System',
+    ], $settings);
+    if ($actionCommand) $commands[] = $actionCommand;
+
+    $ticketHandlerIndex = count($commands);
+    $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.ticket_handlers WHERE ticket_id = @ticket_id AND handler_id = @handler_id', ['ticket_id' => $ticketId, 'handler_id' => $handlerId]);
+    $ticketIndex = count($commands);
+    $commands[] = ticket_ticket_with_handler_command($ticketId);
+    $ticketHandlersIndex = count($commands);
+    $commands[] = ticket_ticket_handlers_command($ticketId);
+
+    $results = sqlserver_run_commands($commands, true);
+    $ticketHandlerRow = sqlserver_result_rows($results, $ticketHandlerIndex)[0] ?? null;
+    $ticket = ticket_with_handlers_from_results($results, $ticketIndex, $ticketHandlersIndex);
+    api_json(200, true, 'Ticket handler role updated', ['ticket_handler' => $ticketHandlerRow, 'ticket' => $ticket]);
 }
 
 try {

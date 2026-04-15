@@ -232,7 +232,7 @@ export default function HandlerDashboard() {
       }
 
       const roles = parseRoles(handler.roles);
-      const role = roles.some((r) => r.toUpperCase() === 'ADMIN') ? 'admin' : 'handler';
+      const role = roles.some((r) => ['ADMIN', 'SUPER_ADMIN'].includes(r.toUpperCase())) ? 'admin' : 'handler';
       setCurrentHandlerId(handler.id);
       setCurrentHandlerName(String(handler?.name || user?.name || user?.email || '').trim());
       setCurrentHandlerRole(role);

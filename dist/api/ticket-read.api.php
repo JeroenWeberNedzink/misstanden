@@ -63,6 +63,31 @@ function ticket_read_ticket(array $row): array {
     return $ticket;
 }
 
+function ticket_read_ticket_handlers_from_rows(array $rows): array {
+    $map = [];
+    foreach ($rows as $row) {
+        $ticketId = (string)($row['ticket_id'] ?? '');
+        if ($ticketId === '') continue;
+        if (!isset($map[$ticketId])) $map[$ticketId] = [];
+        $map[$ticketId][] = [
+            'id' => $row['id'] ?? null,
+            'ticket_id' => $row['ticket_id'] ?? null,
+            'handler_id' => $row['handler_id'] ?? null,
+            'role' => $row['role'] ?? null,
+            'assigned_at' => $row['assigned_at'] ?? null,
+            'created_at' => $row['created_at'] ?? null,
+            'handler' => [
+                'id' => $row['handler_id_ref'] ?? null,
+                'name' => $row['handler_name'] ?? null,
+                'email' => $row['handler_email'] ?? null,
+                'roles' => ticket_read_parse_json($row['handler_roles'] ?? null, []),
+                'active' => isset($row['handler_active']) ? (bool)$row['handler_active'] : null,
+            ],
+        ];
+    }
+    return $map;
+}
+
 function ticket_read_ticket_handlers(array $ticketIds): array {
     if (!$ticketIds) return [];
     $params = [];
@@ -88,28 +113,7 @@ function ticket_read_ticket_handlers(array $ticketIds): array {
         $params
     );
 
-    $map = [];
-    foreach ($rows as $row) {
-        $ticketId = (string)($row['ticket_id'] ?? '');
-        if ($ticketId === '') continue;
-        if (!isset($map[$ticketId])) $map[$ticketId] = [];
-        $map[$ticketId][] = [
-            'id' => $row['id'] ?? null,
-            'ticket_id' => $row['ticket_id'] ?? null,
-            'handler_id' => $row['handler_id'] ?? null,
-            'role' => $row['role'] ?? null,
-            'assigned_at' => $row['assigned_at'] ?? null,
-            'created_at' => $row['created_at'] ?? null,
-            'handler' => [
-                'id' => $row['handler_id_ref'] ?? null,
-                'name' => $row['handler_name'] ?? null,
-                'email' => $row['handler_email'] ?? null,
-                'roles' => ticket_read_parse_json($row['handler_roles'] ?? null, []),
-                'active' => isset($row['handler_active']) ? (bool)$row['handler_active'] : null,
-            ],
-        ];
-    }
-    return $map;
+    return ticket_read_ticket_handlers_from_rows($rows);
 }
 
 try {
@@ -120,10 +124,9 @@ try {
         throw new Exception('SQL Server is not configured');
     }
 
-    $handler = api_authz_require_active_handler(static function (int $status, string $message): void {
+    api_authz_require_active_handler(static function (int $status, string $message): void {
         ticket_read_json($status, false, $message);
     });
-    $handlerId = trim((string)($handler['id'] ?? ''));
 
     $action = strtolower(trim((string)($_GET['action'] ?? 'list')));
 
@@ -210,26 +213,44 @@ try {
             ticket_read_json(400, false, 'ticket_id is required');
         }
 
-        $rows = sqlserver_query(
-            'SELECT TOP 1
-                t.*,
-                h.id AS handler_id,
-                h.name AS handler_name,
-                h.email AS handler_email,
-                h.roles AS handler_roles,
-                h.active AS handler_active
-             FROM dbo.tickets t
-             LEFT JOIN dbo.handlers h ON h.id = t.handler_id
-             WHERE t.id = @ticket_id',
-            ['ticket_id' => $ticketId]
-        );
-        $row = $rows[0] ?? null;
+        $results = sqlserver_run_commands([
+            sqlserver_command(
+                'query',
+                'SELECT TOP 1
+                    t.*,
+                    h.id AS handler_id,
+                    h.name AS handler_name,
+                    h.email AS handler_email,
+                    h.roles AS handler_roles,
+                    h.active AS handler_active
+                 FROM dbo.tickets t
+                 LEFT JOIN dbo.handlers h ON h.id = t.handler_id
+                 WHERE t.id = @ticket_id',
+                ['ticket_id' => $ticketId]
+            ),
+            sqlserver_command(
+                'query',
+                'SELECT
+                    th.*,
+                    h.id AS handler_id_ref,
+                    h.name AS handler_name,
+                    h.email AS handler_email,
+                    h.roles AS handler_roles,
+                    h.active AS handler_active
+                 FROM dbo.ticket_handlers th
+                 LEFT JOIN dbo.handlers h ON h.id = th.handler_id
+                 WHERE th.ticket_id = @ticket_id
+                 ORDER BY th.assigned_at ASC, th.created_at ASC',
+                ['ticket_id' => $ticketId]
+            ),
+        ], false);
+        $row = sqlserver_result_rows($results, 0)[0] ?? null;
         if (!$row) {
             ticket_read_json(404, false, 'Ticket not found');
         }
 
         $ticket = ticket_read_ticket($row);
-        $ticketHandlersMap = ticket_read_ticket_handlers([$ticketId]);
+        $ticketHandlersMap = ticket_read_ticket_handlers_from_rows(sqlserver_result_rows($results, 1));
         $ticket['ticket_handlers'] = $ticketHandlersMap[$ticketId] ?? [];
         ticket_read_json(200, true, 'Ticket loaded', ['data' => ['row' => $ticket]]);
     }
@@ -240,22 +261,24 @@ try {
             ticket_read_json(400, false, 'ticket_id is required');
         }
 
-        $attachments = sqlserver_query('SELECT * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]);
-        $messages = sqlserver_query('SELECT * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]);
-        $comments = sqlserver_query('SELECT * FROM dbo.ticket_comments WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]);
-        $actions = sqlserver_query('SELECT * FROM dbo.ticket_actions WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]);
+        $results = sqlserver_run_commands([
+            sqlserver_command('query', 'SELECT * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]),
+            sqlserver_command('query', 'SELECT * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]),
+            sqlserver_command('query', 'SELECT * FROM dbo.ticket_comments WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]),
+            sqlserver_command('query', 'SELECT * FROM dbo.ticket_actions WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]),
+        ], false);
 
         ticket_read_json(200, true, 'Ticket relations loaded', ['data' => [
             'attachments' => array_map(static function (array $row): array {
                 $row['is_internal'] = isset($row['is_internal']) ? (bool)$row['is_internal'] : false;
                 return $row;
-            }, $attachments),
+            }, sqlserver_result_rows($results, 0)),
             'messages' => array_map(static function (array $row): array {
                 $row['is_internal'] = isset($row['is_internal']) ? (bool)$row['is_internal'] : false;
                 return $row;
-            }, $messages),
-            'ticket_comments' => $comments,
-            'ticket_actions' => $actions,
+            }, sqlserver_result_rows($results, 1)),
+            'ticket_comments' => sqlserver_result_rows($results, 2),
+            'ticket_actions' => sqlserver_result_rows($results, 3),
         ]]);
     }
 

@@ -63,9 +63,7 @@ function ar_role_list($raw): array {
         $value = strtoupper(trim((string)$item));
         if ($value !== '' && preg_match('/^[A-Z0-9_:-]+$/', $value) === 1 && !in_array($value, $roles, true)) $roles[] = $value;
     }
-    if (!$roles) $roles = ['HANDLER'];
-    if (!in_array('HANDLER', $roles, true)) array_unshift($roles, 'HANDLER');
-    return array_values(array_unique($roles));
+    return $roles ?: ['HANDLER'];
 }
 
 function ar_parse_email_list(string $raw): array {
@@ -105,19 +103,80 @@ function ar_mail_api_url(): string {
     return $base !== '' ? ($base . '/api/mail.api.php') : '';
 }
 
+function ar_mail_api_candidate_urls(): array {
+    $candidates = [];
+
+    foreach ([ar_env_optional('MAIL_API_INTERNAL_URL', ''), ar_env_optional('PHP_MAIL_API_URL', '')] as $explicit) {
+        $url = trim($explicit);
+        if ($url !== '' && !in_array($url, $candidates, true)) {
+            $candidates[] = $url;
+        }
+    }
+
+    $base = ar_server_base_url();
+    if ($base !== '') {
+        $publicUrl = $base . '/api/mail.api.php';
+        if (!in_array($publicUrl, $candidates, true)) {
+            $candidates[] = $publicUrl;
+        }
+    }
+
+    $serverPort = (int)($_SERVER['SERVER_PORT'] ?? 0);
+    $localPort = ($serverPort > 0 && !in_array($serverPort, [80, 443], true)) ? (':' . $serverPort) : '';
+    foreach (['http://127.0.0.1', 'http://localhost'] as $host) {
+        $localUrl = $host . $localPort . '/api/mail.api.php';
+        if (!in_array($localUrl, $candidates, true)) {
+            $candidates[] = $localUrl;
+        }
+    }
+
+    if (!$candidates) {
+        $candidates[] = 'http://127.0.0.1:8081/api/mail.api.php';
+    }
+
+    return $candidates;
+}
+
 function ar_send_mail(array $to, string $subject, string $html, string $text = '', array $bcc = []): array {
     $to = array_values(array_filter(array_unique(array_map('ar_normalize_email', $to)), 'ar_valid_email'));
     $bcc = array_values(array_filter(array_unique(array_map('ar_normalize_email', $bcc)), 'ar_valid_email'));
     if (!$to) return ['success' => false, 'message' => 'No valid recipient email'];
-    $url = ar_mail_api_url();
-    if ($url === '') return ['success' => false, 'message' => 'Could not resolve mail.api endpoint'];
     $payload = ['to' => $to, 'bcc' => $bcc, 'subject' => trim($subject), 'html' => $html, 'text' => $text !== '' ? $text : strip_tags(str_replace(['<br>', '<br/>', '<br />'], "\n", $html))];
-    $ch = curl_init();
-    curl_setopt_array($ch, [CURLOPT_URL => $url, CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE), CURLOPT_TIMEOUT => 20]);
-    $resp = curl_exec($ch); $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE); $err = curl_error($ch); curl_close($ch);
-    if ($resp === false) return ['success' => false, 'message' => 'mail.api call failed: ' . $err];
-    $decoded = json_decode($resp, true);
-    return ($code >= 200 && $code < 300 && is_array($decoded) && !empty($decoded['success'])) ? ['success' => true] : ['success' => false, 'message' => is_array($decoded) ? (string)($decoded['message'] ?? 'mail.api error') : ('mail.api error HTTP ' . $code)];
+    $errors = [];
+
+    foreach (ar_mail_api_candidate_urls() as $url) {
+        $ch = curl_init();
+        $curlOptions = [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            CURLOPT_TIMEOUT => 20,
+        ];
+        if (function_exists('auth0_apply_ssl_options')) {
+            auth0_apply_ssl_options($curlOptions, $url);
+        }
+        curl_setopt_array($ch, $curlOptions);
+
+        $resp = curl_exec($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = trim((string)curl_error($ch));
+        curl_close($ch);
+
+        if ($resp !== false) {
+            $decoded = json_decode($resp, true);
+            if ($code >= 200 && $code < 300 && is_array($decoded) && !empty($decoded['success'])) {
+                return ['success' => true];
+            }
+            $errors[] = $url . ' -> ' . (is_array($decoded) ? (string)($decoded['message'] ?? 'mail.api error') : ('HTTP ' . $code));
+            continue;
+        }
+
+        $errors[] = $url . ' -> ' . ($err !== '' ? $err : 'unknown curl error');
+    }
+
+    return ['success' => false, 'message' => 'mail.api call failed: ' . implode(' | ', $errors)];
 }
 
 function ar_auth_claims(): array {
@@ -125,7 +184,7 @@ function ar_auth_claims(): array {
     if ($token === '') ar_json(401, false, 'Authorization token required');
     $claims = auth0_verify_access_token($token, trim((string)(getenv('VITE_AUTH0_DOMAIN') ?: '')), auth0_expected_api_audience(), trim((string)(getenv('VITE_AUTH0_CLIENT_ID') ?: '')));
     if (trim((string)($claims['sub'] ?? '')) === '') ar_json(403, false, 'Invalid authenticated subject');
-    return $claims;
+    return function_exists('api_authz_enrich_identity_claims') ? api_authz_enrich_identity_claims($claims) : $claims;
 }
 
 function ar_require_admin_context(array $scopes = []): array {
@@ -299,17 +358,21 @@ function ar_notify_requester_decision(array $requestRow, string $decision): arra
 }
 
 function ar_approve_request(array $requestRow, array $roles, ?array $workflowIds, string $reviewNotes, string $reviewedBy): array {
+    $requestMetadata = is_array($requestRow['metadata'] ?? null) ? $requestRow['metadata'] : [];
+    $requestSource = strtolower(trim((string)($requestMetadata['source'] ?? '')));
+    $rawRequestUserId = trim((string)($requestRow['user_id'] ?? ''));
+    $requestUserId = ($requestSource === 'admin_grant' && str_starts_with($rawRequestUserId, 'admin-grant:')) ? '' : $rawRequestUserId;
     $warnings = []; $handler = ar_find_handler_for_request($requestRow);
     if ($handler) {
         $finalRoles = $roles ?: ar_role_list($handler['roles'] ?? []);
         $patch = ['active' => true, 'roles' => $finalRoles];
-        if (trim((string)($handler['user_id'] ?? '')) === '' && trim((string)($requestRow['user_id'] ?? '')) !== '') $patch['user_id'] = trim((string)$requestRow['user_id']);
+        if (trim((string)($handler['user_id'] ?? '')) === '' && $requestUserId !== '') $patch['user_id'] = $requestUserId;
         if (ar_normalize_email((string)($handler['email'] ?? '')) === '' && ar_normalize_email((string)($requestRow['email'] ?? '')) !== '') $patch['email'] = ar_normalize_email((string)$requestRow['email']);
         if (trim((string)($handler['name'] ?? '')) === '') $patch['name'] = ar_default_handler_name($requestRow);
         if (trim((string)($handler['picture'] ?? '')) === '' && trim((string)($requestRow['picture'] ?? '')) !== '') $patch['picture'] = trim((string)$requestRow['picture']);
         $handler = ar_update_handler((string)$handler['id'], $patch);
     } else {
-        $handler = ar_create_handler(['name' => ar_default_handler_name($requestRow), 'email' => ar_normalize_email((string)($requestRow['email'] ?? '')) ?: null, 'user_id' => trim((string)($requestRow['user_id'] ?? '')) ?: null, 'picture' => trim((string)($requestRow['picture'] ?? '')) ?: null, 'active' => true, 'roles' => $roles ?: ['HANDLER'], 'permissions' => new stdClass()]);
+        $handler = ar_create_handler(['name' => ar_default_handler_name($requestRow), 'email' => ar_normalize_email((string)($requestRow['email'] ?? '')) ?: null, 'user_id' => $requestUserId !== '' ? $requestUserId : null, 'picture' => trim((string)($requestRow['picture'] ?? '')) ?: null, 'active' => true, 'roles' => $roles ?: ['HANDLER'], 'permissions' => new stdClass()]);
     }
     $handlerId = trim((string)($handler['id'] ?? ''));
     if ($handlerId === '' || !ar_uuid($handlerId)) throw new Exception('Approved handler missing valid id');
@@ -331,6 +394,33 @@ function ar_reject_request(array $requestRow, string $reviewNotes, string $revie
     );
     $row = ar_load_request_by_id((string)$requestRow['id'], false);
     if (!$row) throw new Exception('Reject access request failed: no updated request returned');
+    return $row;
+}
+
+function ar_create_admin_grant_request(string $email, string $name, string $userId, string $picture, string $reviewNotes, string $reviewedBy, array $roles): array {
+    $requestId = ar_uuid4();
+    $syntheticUserId = $userId !== '' ? $userId : ('admin-grant:' . $email);
+    sqlserver_execute(
+        'INSERT INTO dbo.access_requests (id, user_id, email, name, picture, status, request_message, metadata, created_at, updated_at)
+         VALUES (@id, @user_id, @email, @name, @picture, @status, @request_message, @metadata, SYSUTCDATETIME(), SYSUTCDATETIME())',
+        [
+            'id' => $requestId,
+            'user_id' => $syntheticUserId,
+            'email' => $email !== '' ? $email : null,
+            'name' => $name !== '' ? $name : null,
+            'picture' => $picture !== '' ? $picture : null,
+            'status' => 'pending',
+            'request_message' => null,
+            'metadata' => json_encode([
+                'source' => 'admin_grant',
+                'review_notes' => $reviewNotes,
+                'reviewed_by' => ar_uuid($reviewedBy) ? $reviewedBy : null,
+                'granted_roles' => array_values(ar_role_list($roles)),
+            ], JSON_UNESCAPED_UNICODE),
+        ]
+    );
+    $row = ar_load_request_by_id($requestId, false);
+    if (!$row) throw new Exception('Create admin grant request failed: no row returned');
     return $row;
 }
 
@@ -453,6 +543,53 @@ try {
             $result['warnings'][] = 'Aanvraag goedgekeurd, maar e-mail aan gebruiker is mislukt.';
         }
         ar_json(200, true, 'Access request approved', $result);
+    }
+
+    if ($action === 'grant_access') {
+        $ctx = ar_require_admin_context(ACCESS_REQUESTS_SCOPES_ADMIN_WRITE);
+        $handlerId = trim((string)($ctx['handler']['id'] ?? ''));
+        $claimSub = trim((string)($ctx['claims']['sub'] ?? ''));
+        $actorRaw = $handlerId !== '' ? $handlerId : ($claimSub !== '' ? $claimSub : 'unknown');
+        $actorKey = api_rate_limit_hash('access_request_admin_actor:' . $actorRaw);
+        $clientKey = api_rate_limit_client_fingerprint();
+        api_rate_limit_enforce('access-requests:admin:actor:' . $actorKey, 120, 3600, static function (int $retryAfter): void { ar_json(429, false, 'Too many requests. Try again later.', ['retry_after' => $retryAfter]); });
+        api_rate_limit_enforce('access-requests:admin:client:' . $clientKey, 300, 3600, static function (int $retryAfter): void { ar_json(429, false, 'Too many requests. Try again later.', ['retry_after' => $retryAfter]); });
+
+        $email = ar_normalize_email((string)($body['email'] ?? ''));
+        if ($email === '' || !ar_valid_email($email)) ar_json(400, false, 'A valid email address is required');
+
+        $name = trim((string)($body['name'] ?? ''));
+        $userId = trim((string)($body['user_id'] ?? ''));
+        $picture = trim((string)($body['picture'] ?? ''));
+        $reviewNotes = trim((string)($body['review_notes'] ?? $body['note'] ?? ''));
+        $roles = ar_role_list($body['roles'] ?? ['HANDLER']);
+        $workflowIds = array_key_exists('workflow_ids', $body) ? ar_uuid_list($body['workflow_ids']) : null;
+
+        if ($userId === '' && function_exists('api_authz_fetch_auth0_user_by_email')) {
+            $auth0User = api_authz_fetch_auth0_user_by_email($email);
+            if (is_array($auth0User) && !empty($auth0User['user_id'])) {
+                $userId = trim((string)$auth0User['user_id']);
+                if ($name === '') $name = trim((string)($auth0User['name'] ?? ''));
+                if ($picture === '') $picture = trim((string)($auth0User['picture'] ?? ''));
+            }
+        }
+
+        $pendingRow = ar_request_for_identity($userId, $email, 'pending');
+        $createdRequest = false;
+        if (!$pendingRow) {
+            $pendingRow = ar_create_admin_grant_request($email, $name, $userId, $picture, $reviewNotes, $handlerId, $roles);
+            $createdRequest = true;
+        }
+
+        $result = ar_approve_request($pendingRow, $roles, $workflowIds, $reviewNotes, $handlerId);
+        try {
+            $mailResult = ar_notify_requester_decision($result['request'] ?? $pendingRow, 'approved');
+            if (empty($mailResult['success'])) $result['warnings'][] = 'Toegang verleend, maar e-mail aan gebruiker is niet verstuurd: ' . (string)($mailResult['message'] ?? 'unknown');
+        } catch (Throwable $mailErr) {
+            $result['warnings'][] = 'Toegang verleend, maar e-mail aan gebruiker is mislukt.';
+        }
+
+        ar_json(200, true, 'Access granted', array_merge($result, ['created_request' => $createdRequest]));
     }
 
     ar_json(400, false, 'Unsupported action');

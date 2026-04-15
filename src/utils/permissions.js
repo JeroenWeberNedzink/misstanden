@@ -11,6 +11,7 @@ export const PERMISSIONS = {
 // Role constants
 export const ROLES = {
   ADMIN: 'ADMIN',
+  PORTAL_ADMIN: 'PORTAL_ADMIN',
   SUPER_ADMIN: 'SUPER_ADMIN',
   HANDLER: 'HANDLER',
   USER: 'USER',
@@ -158,6 +159,11 @@ export const derivePermissionsFromRoles = (userRoles) => {
   if (hasRole(userRoles, ROLES.HANDLER)) {
     derived[PERMISSIONS.VIEW_TICKETS] = true;
     derived[PERMISSIONS.EDIT_TICKETS] = true;
+  }
+
+  if (hasRole(userRoles, ROLES.PORTAL_ADMIN)) {
+    derived[PERMISSIONS.MANAGE_USERS] = true;
+    derived[PERMISSIONS.MANAGE_WORKFLOWS] = true;
   }
 
   if (hasRole(userRoles, ROLES.ADMIN) || hasRole(userRoles, ROLES.SUPER_ADMIN)) {

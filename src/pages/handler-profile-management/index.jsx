@@ -12,6 +12,12 @@ import Input from '../../components/ui/Input';
 import TwoFactorAuthPanel from './components/TwoFactorAuthPanel';
 import { getApiAccessToken } from '../../lib/auth0ApiToken';
 import { normalizeHandlerRecord } from '../../services/utils/handlerNormalization';
+import {
+  computeAccessCapabilities,
+  findMatchingAccessProfile,
+  getAccessProfiles,
+  summarizeCapabilities,
+} from '../../utils/accessMatrix';
 
 /**
  * Single-page version:
@@ -31,11 +37,12 @@ const permissionLabelMap = {
 
 const roleLabelMap = {
   ADMIN: 'Administrator',
+  PORTAL_ADMIN: 'Portaalbeheerder',
   HANDLER: 'Handler',
   SUPER_ADMIN: 'Super Admin',
   USER: 'Gebruiker',
 };
-const rolePriority = ['SUPER_ADMIN', 'ADMIN', 'HANDLER', 'USER'];
+const rolePriority = ['SUPER_ADMIN', 'ADMIN', 'PORTAL_ADMIN', 'HANDLER', 'USER'];
 
 const formatRoleLabel = (role) => {
   const code = String(role || '').toUpperCase().trim();
@@ -112,6 +119,28 @@ const HandlerProfileManagement = () => {
   const enabledPermissionLabels = useMemo(
     () => summarizePermissions(handlerProfile?.permissions),
     [handlerProfile?.permissions]
+  );
+
+  const accessProfiles = useMemo(
+    () =>
+      getAccessProfiles({
+        availableRoles: roles.map((code) => ({ code })),
+      }),
+    [roles]
+  );
+
+  const accessCapabilities = useMemo(
+    () =>
+      computeAccessCapabilities({
+        roles,
+        permissions: handlerProfile?.permissions,
+      }),
+    [roles, handlerProfile?.permissions]
+  );
+
+  const matchingAccessProfile = useMemo(
+    () => findMatchingAccessProfile(roles, accessProfiles),
+    [roles, accessProfiles]
   );
 
   useEffect(() => {
@@ -364,12 +393,14 @@ const HandlerProfileManagement = () => {
               </div>
 
               <div className="space-y-6">
-                {/* <AccessSummaryPanel
+                <AccessSummaryPanel
                   user={user}
                   roles={roles}
                   enabledPermissionLabels={enabledPermissionLabels}
+                  accessCapabilities={accessCapabilities}
+                  matchingAccessProfile={matchingAccessProfile}
                   handlerProfile={handlerProfile}
-                /> */}
+                />
 
                 <TwoFactorAuthPanel />
 
@@ -623,8 +654,16 @@ const AccountOverviewPanel = ({
   );
 };
 
-const AccessSummaryPanel = ({ user, roles, enabledPermissionLabels, handlerProfile }) => {
+const AccessSummaryPanel = ({
+  user,
+  roles,
+  enabledPermissionLabels,
+  accessCapabilities,
+  matchingAccessProfile,
+  handlerProfile,
+}) => {
   const roleList = roles?.length ? roles : ['HANDLER'];
+  const capabilityLabels = summarizeCapabilities(accessCapabilities);
 
   return (
     <section className="rounded-xl border border-border bg-card shadow-sm p-5">
@@ -634,6 +673,16 @@ const AccessSummaryPanel = ({ user, roles, enabledPermissionLabels, handlerProfi
       </div>
 
       <div className="space-y-4">
+        <div className="rounded-lg border border-sky-200 bg-sky-50/40 p-3">
+          <p className="text-xs uppercase tracking-wide text-sky-800">Toegangsprofiel</p>
+          <p className="text-sm font-semibold text-foreground mt-1">
+            {matchingAccessProfile?.label || 'Maatwerk rolcombinatie'}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {matchingAccessProfile?.description || 'Uw account gebruikt een aangepaste combinatie van rollen en rechten.'}
+          </p>
+        </div>
+
         <div>
           <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Rollen</p>
           <div className="flex flex-wrap gap-2">
@@ -645,6 +694,25 @@ const AccessSummaryPanel = ({ user, roles, enabledPermissionLabels, handlerProfi
                 {formatRoleLabel(role)}
               </span>
             ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Effectieve toegang</p>
+          <div className="flex flex-wrap gap-2">
+            {capabilityLabels.length > 0 ? (
+              capabilityLabels.map((label) => (
+                <span
+                  key={label}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border border-emerald-200 bg-emerald-50 text-emerald-800"
+                >
+                  <Icon name="CheckCircle2" size={12} />
+                  {label}
+                </span>
+              ))
+            ) : (
+              <span className="text-sm text-muted-foreground">Geen extra toegang actief.</span>
+            )}
           </div>
         </div>
 

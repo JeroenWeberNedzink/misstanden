@@ -174,6 +174,21 @@ function settings_normalize_item(array $item, string $updatedBy): array {
     ];
 }
 
+function settings_ticket_system_settings_cache_file(): string {
+    $dir = sqlserver_project_root() . DIRECTORY_SEPARATOR . 'run' . DIRECTORY_SEPARATOR . 'cache';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    return $dir . DIRECTORY_SEPARATOR . 'ticket-system-settings.json';
+}
+
+function settings_invalidate_ticket_settings_cache(): void {
+    $file = settings_ticket_system_settings_cache_file();
+    if (is_file($file)) {
+        @unlink($file);
+    }
+}
+
 function settings_upsert_one(array $payload): array {
     $encodedValue = json_encode($payload['setting_value'] ?? [], JSON_UNESCAPED_UNICODE);
     if ($encodedValue === false) {
@@ -347,8 +362,10 @@ function settings_handle_post(): void {
         if (!is_array($item)) {
             throw new Exception('item object is required for upsert');
         }
+        $row = settings_upsert_one(settings_normalize_item($item, $handlerId));
+        settings_invalidate_ticket_settings_cache();
         settings_api_json(200, true, 'Setting saved', [
-            'row' => settings_upsert_one(settings_normalize_item($item, $handlerId)),
+            'row' => $row,
         ]);
     }
 
@@ -362,6 +379,7 @@ function settings_handle_post(): void {
         foreach ($items as $item) {
             $rows[] = settings_upsert_one(settings_normalize_item((array)$item, $handlerId));
         }
+        settings_invalidate_ticket_settings_cache();
 
         settings_api_json(200, true, 'Settings saved', ['rows' => $rows]);
     }

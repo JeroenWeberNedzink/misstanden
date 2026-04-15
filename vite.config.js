@@ -25,6 +25,31 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, './src'),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return null;
+            if (id.includes('/recharts/')) {
+              return 'vendor-charts';
+            }
+            if (id.includes('/i18next/') || id.includes('/react-i18next/')) {
+              return 'vendor-i18n';
+            }
+            if (id.includes('/@auth0/')) {
+              return 'vendor-auth';
+            }
+            if (id.includes('/date-fns/')) {
+              return 'vendor-date';
+            }
+            if (id.includes('/@fortawesome/')) {
+              return 'vendor-icons';
+            }
+            return 'vendor';
+          },
+        },
+      },
+    },
     server: {
       port: 3000,
       // Proxy API requests to PHP development server

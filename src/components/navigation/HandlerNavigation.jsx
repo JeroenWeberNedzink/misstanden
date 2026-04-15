@@ -7,9 +7,8 @@ import Button from '../ui/Button';
 import SecureSessionIndicator from './SecureSessionIndicator';
 import LanguageSwitcher from '../LanguageSwitcher';
 import { usePermissions } from '../../hooks/usePermissions';
-import { PERMISSIONS, ROLES } from '../../utils/permissions';
 
-const HandlerNavigation = ({ userRole, onLogout }) => {
+const HandlerNavigation = ({ onLogout }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
@@ -21,10 +20,9 @@ const HandlerNavigation = ({ userRole, onLogout }) => {
   const {
     canViewTickets,
     canManageUsers,
-    canManageWorkflows,
-    canExportData,
-    isAdmin,
+    isAdmin: checkIsAdmin,
   } = usePermissions();
+  const isAdminUser = checkIsAdmin();
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -116,14 +114,16 @@ const HandlerNavigation = ({ userRole, onLogout }) => {
 
   // Get role display name
   const getRoleDisplay = () => {
-    if (isAdmin) return 'Administrator';
+    if (isAdminUser) return 'Administrator';
+    if (canManageUsers && !canViewTickets) return 'Portaalbeheerder';
     if (canManageUsers) return 'Manager';
     return 'Handler';
   };
 
   // Get role badge color
   const getRoleBadgeColor = () => {
-    if (isAdmin) return 'bg-sky-100 text-sky-700 dark:bg-sky-50/30 dark:text-purple-300';
+    if (isAdminUser) return 'bg-sky-100 text-sky-700 dark:bg-sky-50/30 dark:text-purple-300';
+    if (canManageUsers && !canViewTickets) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
     if (canManageUsers) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
     return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300';
   };
@@ -230,22 +230,24 @@ const HandlerNavigation = ({ userRole, onLogout }) => {
                       <Icon name="ChevronRight" size={16} className="text-muted-foreground" />
                     </button>
 
-                    <button
-                      onClick={() => {
-                        navigate('/settings');
-                        setShowUserMenu(false);
-                      }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-muted transition-smooth text-left group"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center group-hover:bg-accent/20 transition-colors">
-                        <Icon name="Settings" size={16} className="text-accent" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-foreground">Settings</p>
-                        <p className="text-xs text-muted-foreground">Preferences & options</p>
-                      </div>
-                      <Icon name="ChevronRight" size={16} className="text-muted-foreground" />
-                    </button>
+                    {canManageUsers && (
+                      <button
+                        onClick={() => {
+                          navigate('/settings?mode=admin');
+                          setShowUserMenu(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-muted transition-smooth text-left group"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center group-hover:bg-accent/20 transition-colors">
+                          <Icon name="Settings" size={16} className="text-accent" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-foreground">Admin Center</p>
+                          <p className="text-xs text-muted-foreground">Users, workflows & settings</p>
+                        </div>
+                        <Icon name="ChevronRight" size={16} className="text-muted-foreground" />
+                      </button>
+                    )}
                   </div>
 
                   {/* Divider */}
