@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
+require_once __DIR__ . '/_ticket_crypto.php';
 require_once __DIR__ . '/_admin_auth.php';
 require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
@@ -64,7 +65,7 @@ function ticket_assignment_handler(array $row, string $prefix = 'handler_'): ?ar
 }
 
 function ticket_assignment_ticket(array $row): array {
-    $ticket = $row;
+    $ticket = ticket_crypto_decrypt_ticket_row($row, true);
     $ticket['metadata'] = ticket_assignment_parse_json($row['metadata'] ?? null, []);
     $ticket['email_notify'] = isset($row['email_notify']) ? (bool)$row['email_notify'] : false;
     $ticket['status_email_notify'] = isset($row['status_email_notify']) ? (bool)$row['status_email_notify'] : true;

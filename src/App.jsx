@@ -47,24 +47,29 @@ function ServiceTokenBridge() {
     let cachedToken = '';
     let cachedExpMs = 0;
     const audienceIssue = getApiAudienceIssue();
-    const provider = async () => {
+    const provider = async (options = {}) => {
       if (audienceIssue) {
         return null;
       }
 
+      const forceRefresh = options?.forceRefresh === true;
       const now = Date.now();
-      if (cachedToken && cachedExpMs - now > 30_000) {
+      if (!forceRefresh && cachedToken && cachedExpMs - now > 30_000) {
         return cachedToken;
       }
 
       let token = '';
-      try {
-        token = await getOptionalApiAccessToken(getAccessTokenSilently);
-        if (!token) {
-          return null;
-        }
-      } catch {
+      if (forceRefresh) {
         token = await getApiAccessToken(getAccessTokenSilently, { cacheMode: 'off' });
+      } else {
+        try {
+          token = await getOptionalApiAccessToken(getAccessTokenSilently);
+          if (!token) {
+            return null;
+          }
+        } catch {
+          token = await getApiAccessToken(getAccessTokenSilently, { cacheMode: 'off' });
+        }
       }
 
       cachedToken = token;

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
 require_once __DIR__ . '/_auth0.php';
+require_once __DIR__ . '/_admin_auth.php';
 require_once __DIR__ . '/_scopes.php';
 require_once __DIR__ . '/_sqlserver.php';
 require_once __DIR__ . '/_errors.php';
@@ -282,57 +283,11 @@ function wf_sql_sync_handler_roles(string $handlerId, array $roleCodes): void {
 }
 
 function wf_require_admin(string $baseUrl, string $serviceKey, array $requiredScopes = []): array {
-    $token = auth0_get_bearer_token();
-    if ($token === '') wf_json(401, false, 'Authorization token required');
-    $auth0Domain = wf_env('VITE_AUTH0_DOMAIN');
-    $auth0Audience = auth0_expected_api_audience();
-
-    $claims = auth0_verify_access_token(
-        $token,
-        $auth0Domain,
-        $auth0Audience,
-        wf_env('VITE_AUTH0_CLIENT_ID')
-    );
-    $sub = trim((string)($claims['sub'] ?? ''));
-    $email = trim((string)($claims['email'] ?? ''));
-
-    $handler = null;
-    if (sqlserver_is_configured()) {
-        if ($sub !== '') {
-            $rows = sqlserver_query(
-                'SELECT TOP 1 id, name, email, user_id, active, roles, permissions FROM dbo.handlers WHERE user_id = @user_id',
-                ['user_id' => $sub]
-            );
-            $handler = $rows[0] ?? null;
-        }
-        if (!$handler && $email !== '') {
-            $rows = sqlserver_query(
-                'SELECT TOP 1 id, name, email, user_id, active, roles, permissions FROM dbo.handlers WHERE LOWER(email) = LOWER(@email)',
-                ['email' => $email]
-            );
-            $handler = $rows[0] ?? null;
-        }
-        if (is_array($handler)) {
-            $handler = wf_sql_normalize_handler_row($handler);
-        }
-    } else {
-        if ($sub !== '') {
-            [$c1, $d1, $r1] = wf_req('GET', $baseUrl . '/rest/v1/handlers?select=id,name,email,user_id,active,roles,permissions&user_id=eq.' . rawurlencode($sub) . '&limit=1', $serviceKey);
-            $arr = wf_or_fail('Load handler by sub', $c1, $d1, $r1);
-            $handler = wf_row($arr);
-        }
-        if (!$handler && $email !== '') {
-            [$c2, $d2, $r2] = wf_req('GET', $baseUrl . '/rest/v1/handlers?select=id,name,email,user_id,active,roles,permissions&email=ilike.' . rawurlencode($email) . '&limit=1', $serviceKey);
-            $arr = wf_or_fail('Load handler by email', $c2, $d2, $r2);
-            $handler = wf_row($arr);
-        }
-    }
-    if (!$handler || empty($handler['active'])) wf_json(403, false, 'Handler account not active or not found');
-    if (!wf_is_admin($handler)) wf_json(403, false, 'Admin permissions required');
-    require_scopes($claims, $requiredScopes, static function (int $status, string $message): void {
+    unset($baseUrl, $serviceKey);
+    $ctx = api_authz_require_admin(static function (int $status, string $message): void {
         wf_json($status, false, $message);
-    });
-    return $handler;
+    }, $requiredScopes);
+    return is_array($ctx['handler'] ?? null) ? $ctx['handler'] : [];
 }
 
 function wf_status_list(string $baseUrl, string $serviceKey, string $workflowId): array {
@@ -443,10 +398,25 @@ try {
                 $rows = sqlserver_query(
                     'SELECT
                         w.*,
-                        (SELECT COUNT(*) FROM dbo.workflow_statuses ws WHERE ws.workflow_id = w.id) AS status_count,
-                        (SELECT COUNT(*) FROM dbo.tickets t WHERE t.workflow_type = w.code) AS ticket_count,
-                        (SELECT COUNT(*) FROM dbo.handler_workflows hw WHERE hw.workflow_id = w.id) AS handler_count
+                        COALESCE(ws.status_count, 0) AS status_count,
+                        COALESCE(t.ticket_count, 0) AS ticket_count,
+                        COALESCE(hw.handler_count, 0) AS handler_count
                     FROM dbo.workflows w
+                    LEFT JOIN (
+                        SELECT workflow_id, COUNT(*) AS status_count
+                        FROM dbo.workflow_statuses
+                        GROUP BY workflow_id
+                    ) ws ON ws.workflow_id = w.id
+                    LEFT JOIN (
+                        SELECT workflow_type, COUNT(*) AS ticket_count
+                        FROM dbo.tickets
+                        GROUP BY workflow_type
+                    ) t ON t.workflow_type = w.code
+                    LEFT JOIN (
+                        SELECT workflow_id, COUNT(*) AS handler_count
+                        FROM dbo.handler_workflows
+                        GROUP BY workflow_id
+                    ) hw ON hw.workflow_id = w.id
                     ORDER BY w.display_order ASC, w.name ASC'
                 );
                 $rows = array_map(static function (array $row): array {
@@ -2227,6 +2197,9 @@ try {
         if (!wf_uuid($workflowId)) throw new Exception('workflow_id must be UUID');
         $statuses = is_array($body['statuses'] ?? null) ? $body['statuses'] : [];
         $deleteIds = is_array($body['delete_ids'] ?? null) ? $body['delete_ids'] : [];
+        if (count($statuses) === 0) {
+            throw new Exception('A workflow must keep at least one status');
+        }
         $codeSet = [];
         $rows = [];
         foreach ($statuses as $i => $s) {
@@ -2280,6 +2253,7 @@ try {
         $workflowExists = sqlserver_scalar('SELECT TOP 1 id FROM dbo.workflows WHERE id = @id', ['id' => $workflowId]);
         if (!$workflowExists) throw new Exception('Workflow not found');
 
+        $commands = [];
         $del = array_values(array_filter(array_map(static fn($x) => trim((string)$x), $deleteIds), static fn($x) => wf_uuid($x)));
         if ($del) {
             $params = ['workflow_id' => $workflowId];
@@ -2289,13 +2263,13 @@ try {
                 $params[$key] = $deleteId;
                 $placeholders[] = '@' . $key;
             }
-            sqlserver_execute(
+            $commands[] = sqlserver_command(
+                'nonquery',
                 'DELETE FROM dbo.workflow_statuses WHERE workflow_id = @workflow_id AND id IN (' . implode(', ', $placeholders) . ')',
                 $params
             );
         }
         foreach ($upsert as $row) {
-            $existing = sqlserver_scalar('SELECT TOP 1 id FROM dbo.workflow_statuses WHERE id = @id', ['id' => $row['id']]);
             $params = [
                 'id' => $row['id'],
                 'workflow_id' => $row['workflow_id'],
@@ -2313,44 +2287,69 @@ try {
                 'contact_person_phone' => $row['contact_person_phone'],
                 'contact_notes' => $row['contact_notes'],
             ];
-            if ($existing) {
-                sqlserver_execute(
-                    'UPDATE dbo.workflow_statuses
-                     SET workflow_id = @workflow_id,
-                         code = @code,
-                         label = @label,
-                         description = @description,
-                         color = @color,
-                         sort_order = @sort_order,
-                         is_terminal = @is_terminal,
-                         is_first_response = @is_first_response,
-                         next_codes = @next_codes,
-                         expected_duration_days = @expected_duration_days,
-                         contact_person_name = @contact_person_name,
-                         contact_person_email = @contact_person_email,
-                         contact_person_phone = @contact_person_phone,
-                         contact_notes = @contact_notes,
+            $commands[] = sqlserver_command(
+                'nonquery',
+                'MERGE dbo.workflow_statuses AS target
+                 USING (
+                     SELECT
+                         @id AS id,
+                         @workflow_id AS workflow_id,
+                         @code AS code,
+                         @label AS label,
+                         @description AS description,
+                         @color AS color,
+                         @sort_order AS sort_order,
+                         @is_terminal AS is_terminal,
+                         @is_first_response AS is_first_response,
+                         @next_codes AS next_codes,
+                         @expected_duration_days AS expected_duration_days,
+                         @contact_person_name AS contact_person_name,
+                         @contact_person_email AS contact_person_email,
+                         @contact_person_phone AS contact_person_phone,
+                         @contact_notes AS contact_notes
+                 ) AS source
+                 ON target.workflow_id = source.workflow_id
+                    AND (target.id = source.id OR target.code = source.code)
+                 WHEN MATCHED THEN
+                     UPDATE SET
+                         code = source.code,
+                         label = source.label,
+                         description = source.description,
+                         color = source.color,
+                         sort_order = source.sort_order,
+                         is_terminal = source.is_terminal,
+                         is_first_response = source.is_first_response,
+                         next_codes = source.next_codes,
+                         expected_duration_days = source.expected_duration_days,
+                         contact_person_name = source.contact_person_name,
+                         contact_person_email = source.contact_person_email,
+                         contact_person_phone = source.contact_person_phone,
+                         contact_notes = source.contact_notes,
                          updated_at = SYSUTCDATETIME()
-                     WHERE id = @id',
-                    $params
-                );
-            } else {
-                sqlserver_execute(
-                    'INSERT INTO dbo.workflow_statuses (
-                        id, workflow_id, code, label, description, color, sort_order, is_terminal, is_first_response,
-                        next_codes, expected_duration_days, contact_person_name, contact_person_email, contact_person_phone,
-                        contact_notes, created_at, updated_at
-                    )
-                    VALUES (
-                        @id, @workflow_id, @code, @label, @description, @color, @sort_order, @is_terminal, @is_first_response,
-                        @next_codes, @expected_duration_days, @contact_person_name, @contact_person_email, @contact_person_phone,
-                        @contact_notes, SYSUTCDATETIME(), SYSUTCDATETIME()
-                    )',
-                    $params
-                );
-            }
+                 WHEN NOT MATCHED THEN
+                     INSERT (
+                         id, workflow_id, code, label, description, color, sort_order, is_terminal, is_first_response,
+                         next_codes, expected_duration_days, contact_person_name, contact_person_email, contact_person_phone,
+                         contact_notes, created_at, updated_at
+                     )
+                     VALUES (
+                         source.id, source.workflow_id, source.code, source.label, source.description, source.color,
+                         source.sort_order, source.is_terminal, source.is_first_response, source.next_codes,
+                         source.expected_duration_days, source.contact_person_name, source.contact_person_email,
+                         source.contact_person_phone, source.contact_notes, SYSUTCDATETIME(), SYSUTCDATETIME()
+                     );',
+                $params
+            );
         }
-        wf_json(200, true, 'Statuses saved', wf_status_list($baseUrl, $serviceKey, $workflowId));
+        $commands[] = sqlserver_command(
+            'query',
+            'SELECT * FROM dbo.workflow_statuses WHERE workflow_id = @workflow_id ORDER BY sort_order ASC, label ASC',
+            ['workflow_id' => $workflowId]
+        );
+
+        $results = sqlserver_run_commands($commands, true);
+        $finalRows = sqlserver_result_rows($results, count($commands) - 1);
+        wf_json(200, true, 'Statuses saved', ['rows' => array_map('wf_sql_normalize_status_row', $finalRows)]);
     }
 
     wf_json(400, false, 'Unsupported action');

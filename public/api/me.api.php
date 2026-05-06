@@ -38,20 +38,11 @@ try {
         me_json(405, false, 'Method not allowed');
     }
 
-    $token = auth0_get_bearer_token();
-    if ($token === '') {
-        me_json(401, false, 'Authorization token required');
-    }
-
-    $auth0Domain = api_authz_env_required('VITE_AUTH0_DOMAIN');
-    $auth0Audience = auth0_expected_api_audience();
-    $auth0ClientId = api_authz_env_required('VITE_AUTH0_CLIENT_ID');
-    $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
-
-    $handler = api_authz_fetch_handler('', '', $claims);
-    if (!$handler || empty($handler['active'])) {
-        me_json(403, false, 'Handler account not active or not found');
-    }
+    $ctx = api_authz_require_active_handler(static function (int $status, string $message): void {
+        me_json($status, false, $message);
+    });
+    $claims = (array)($ctx['claims'] ?? []);
+    $handler = (array)($ctx['handler'] ?? []);
 
     me_json(200, true, 'Handler context loaded', [
         'handler' => $handler,

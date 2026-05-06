@@ -157,7 +157,7 @@ const LocationManagementPanel = () => {
         <div>
           <h3 className="text-lg font-semibold text-foreground">Location Management</h3>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage countries available for incident reporting
+            Manage countries available for misconduct reporting
           </p>
         </div>
         <Button

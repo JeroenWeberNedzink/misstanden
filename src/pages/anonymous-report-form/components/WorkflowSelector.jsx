@@ -107,6 +107,7 @@ const WorkflowSelector = ({ value, onChange, workflows, error }) => {
   const resolveWorkflowText = (workflow) => {
     const code = safeTrim(workflow?.code);
     const name = safeTrim(workflow?.name);
+    const adminDescription = safeTrim(workflow?.description);
 
     const candidates = Array.from(
       new Set([
@@ -120,15 +121,18 @@ const WorkflowSelector = ({ value, onChange, workflows, error }) => {
       const translatedName = t(`reportForm.workflowOptions.${candidate}.name`, { defaultValue: '' });
       if (translatedName) {
         const translatedDescription = t(`reportForm.workflowOptions.${candidate}.description`, {
-          defaultValue: safeTrim(workflow?.description) || t('reportForm.noDescription'),
+          defaultValue: '',
         });
-        return { name: translatedName, description: translatedDescription };
+        return {
+          name: translatedName,
+          description: adminDescription || translatedDescription || t('reportForm.noDescription'),
+        };
       }
     }
 
     return {
       name: name || code,
-      description: safeTrim(workflow?.description) || t('reportForm.noDescription'),
+      description: adminDescription || t('reportForm.noDescription'),
     };
   };
 

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
+require_once __DIR__ . '/_ticket_crypto.php';
 require_once __DIR__ . '/_admin_auth.php';
 require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
@@ -75,7 +76,7 @@ function guest_access_assert_valid(array $row): void {
 function guest_access_fetch_ticket(string $ticketId): ?array {
     $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.tickets WHERE id = @ticket_id', ['ticket_id' => $ticketId]);
     if (!$rows) return null;
-    $ticket = $rows[0];
+    $ticket = ticket_crypto_decrypt_ticket_row($rows[0], true);
     $ticket['metadata'] = guest_access_parse_json($ticket['metadata'] ?? null, []);
     $ticket['email_notify'] = isset($ticket['email_notify']) ? (bool)$ticket['email_notify'] : false;
     $ticket['status_email_notify'] = isset($ticket['status_email_notify']) ? (bool)$ticket['status_email_notify'] : true;
@@ -84,15 +85,24 @@ function guest_access_fetch_ticket(string $ticketId): ?array {
         'SELECT * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at ASC',
         ['ticket_id' => $ticketId]
     );
-    $ticket['messages'] = sqlserver_query(
+    $ticket['messages'] = array_map('ticket_crypto_decrypt_message_row', sqlserver_query(
         'SELECT * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at ASC',
         ['ticket_id' => $ticketId]
-    );
+    ));
     return $ticket;
 }
 
 function guest_access_sanitize_ticket(array $ticket): array {
-    unset($ticket['access_code'], $ticket['reporter_email'], $ticket['reporter_email_encrypted'], $ticket['reporter_email_hash']);
+    unset(
+        $ticket['access_code'],
+        $ticket['reporter_email'],
+        $ticket['reporter_email_encrypted'],
+        $ticket['reporter_email_hash'],
+        $ticket['description_encrypted'],
+        $ticket['location_encrypted'],
+        $ticket['reporter_name_encrypted'],
+        $ticket['reporter_phone_encrypted']
+    );
 
     $attachments = is_array($ticket['attachments'] ?? null) ? $ticket['attachments'] : [];
     $ticket['attachments'] = array_values(array_filter(array_map(static function ($att) {

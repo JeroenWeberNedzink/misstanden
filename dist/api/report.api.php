@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
+require_once __DIR__ . '/_ticket_crypto.php';
 require_once __DIR__ . '/_admin_auth.php';
 require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
@@ -287,7 +288,9 @@ try {
             current_stage,
             severity_code,
             description,
+            description_encrypted,
             location,
+            location_encrypted,
             submitted_at,
             last_update_at,
             metadata
@@ -300,23 +303,24 @@ try {
         report_json(404, false, 'Ticket not found');
     }
 
+    $ticket = ticket_crypto_decrypt_ticket_row($ticket, true);
     $ticket['metadata'] = report_parse_json($ticket['metadata'] ?? null, []);
     $ticket['attachments'] = sqlserver_query(
         'SELECT * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at ASC',
         ['ticket_id' => $ticketId]
     );
-    $ticket['messages'] = sqlserver_query(
+    $ticket['messages'] = array_map('ticket_crypto_decrypt_message_row', sqlserver_query(
         'SELECT * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at ASC',
         ['ticket_id' => $ticketId]
-    );
-    $ticket['ticket_comments'] = sqlserver_query(
+    ));
+    $ticket['ticket_comments'] = array_map('ticket_crypto_decrypt_comment_row', sqlserver_query(
         'SELECT * FROM dbo.ticket_comments WHERE ticket_id = @ticket_id ORDER BY created_at ASC',
         ['ticket_id' => $ticketId]
-    );
-    $ticket['ticket_actions'] = sqlserver_query(
+    ));
+    $ticket['ticket_actions'] = array_map('ticket_crypto_decrypt_action_row', sqlserver_query(
         'SELECT * FROM dbo.ticket_actions WHERE ticket_id = @ticket_id ORDER BY created_at ASC',
         ['ticket_id' => $ticketId]
-    );
+    ));
 
     $handlerRows = sqlserver_query(
         'SELECT

@@ -150,6 +150,21 @@ function api_authz_auth0_domain(): string {
     return $domain;
 }
 
+function api_authz_fetch_auth0_userinfo(string $accessToken): ?array {
+    $accessToken = trim($accessToken);
+    if ($accessToken === '') {
+        return null;
+    }
+    try {
+        $domain = api_authz_auth0_domain();
+        [$code, $decoded] = api_authz_auth0_request('GET', 'https://' . $domain . '/userinfo', $accessToken);
+        return ($code >= 200 && $code < 300 && is_array($decoded)) ? $decoded : null;
+    } catch (Throwable $e) {
+        error_log('Auth0 userinfo lookup failed: ' . $e->getMessage());
+        return null;
+    }
+}
+
 function api_authz_fetch_auth0_user_by_id(string $userId): ?array {
     $userId = trim($userId);
     if ($userId === '') {
@@ -214,15 +229,121 @@ function api_authz_fetch_auth0_user_by_email(string $email): ?array {
     }
 }
 
+function api_authz_claim_string(array $claims, array $keys): string {
+    foreach ($keys as $key) {
+        $value = $claims[$key] ?? null;
+        if (is_string($value) && trim($value) !== '') {
+            return trim($value);
+        }
+    }
+
+    $normalizedKeys = array_map(static fn($key) => strtolower(trim((string)$key)), $keys);
+    foreach ($claims as $rawKey => $value) {
+        if (!is_string($value) || trim($value) === '') {
+            continue;
+        }
+        $key = strtolower(trim((string)$rawKey));
+        foreach ($normalizedKeys as $candidate) {
+            if ($candidate === '') {
+                continue;
+            }
+            if ($key === $candidate || str_ends_with($key, '/' . $candidate) || str_ends_with($key, ':' . $candidate) || str_ends_with($key, '#' . $candidate)) {
+                return trim($value);
+            }
+        }
+    }
+
+    return '';
+}
+
+function api_authz_claim_email(array $claims): string {
+    $emails = $claims['emails'] ?? null;
+    if (is_array($emails)) {
+        foreach ($emails as $email) {
+            $normalized = trim((string)$email);
+            if ($normalized !== '' && str_contains($normalized, '@')) {
+                return $normalized;
+            }
+        }
+    }
+
+    $email = api_authz_claim_string($claims, ['email', 'preferred_username', 'upn', 'unique_name', 'mail']);
+    return str_contains($email, '@') ? $email : '';
+}
+
+function api_authz_claim_name(array $claims): string {
+    $name = api_authz_claim_string($claims, ['name', 'nickname', 'preferred_username']);
+    if ($name !== '') {
+        return $name;
+    }
+
+    $givenName = api_authz_claim_string($claims, ['given_name']);
+    $familyName = api_authz_claim_string($claims, ['family_name']);
+    return trim($givenName . ' ' . $familyName);
+}
+
+function api_authz_claim_picture(array $claims): string {
+    return api_authz_claim_string($claims, ['picture', 'avatar_url']);
+}
+
+function api_authz_apply_claim_identity_defaults(array $claims): array {
+    if (trim((string)($claims['email'] ?? '')) === '') {
+        $email = api_authz_claim_email($claims);
+        if ($email !== '') {
+            $claims['email'] = $email;
+        }
+    }
+
+    if (trim((string)($claims['name'] ?? '')) === '') {
+        $name = api_authz_claim_name($claims);
+        if ($name !== '') {
+            $claims['name'] = $name;
+        }
+    }
+
+    if (trim((string)($claims['picture'] ?? '')) === '') {
+        $picture = api_authz_claim_picture($claims);
+        if ($picture !== '') {
+            $claims['picture'] = $picture;
+        }
+    }
+
+    return $claims;
+}
+
 function api_authz_has_verified_email(array $auth0User): bool {
-    $email = trim((string)($auth0User['email'] ?? ''));
+    $email = api_authz_claim_email($auth0User);
     if ($email === '') {
         return false;
     }
     return !array_key_exists('email_verified', $auth0User) || !empty($auth0User['email_verified']);
 }
 
-function api_authz_enrich_identity_claims(array $claims): array {
+function api_authz_subject_allows_email_link(string $subject): bool {
+    $subject = trim($subject);
+    if ($subject === '' || !str_contains($subject, '|')) {
+        return false;
+    }
+
+    $provider = strtolower(trim((string)explode('|', $subject, 2)[0]));
+    return $provider !== '' && !in_array($provider, ['auth0', 'email', 'sms'], true);
+}
+
+function api_authz_can_use_email_match(array $identity): bool {
+    $email = api_authz_claim_email($identity);
+    if ($email === '') {
+        return false;
+    }
+    if (!array_key_exists('email_verified', $identity) || !empty($identity['email_verified'])) {
+        return true;
+    }
+
+    $subject = trim((string)($identity['sub'] ?? ($identity['user_id'] ?? '')));
+    return api_authz_subject_allows_email_link($subject);
+}
+
+function api_authz_enrich_identity_claims(array $claims, string $accessToken = ''): array {
+    $claims = api_authz_apply_claim_identity_defaults($claims);
     if (trim((string)($claims['email'] ?? '')) !== '') {
         return $claims;
     }
@@ -232,10 +353,14 @@ function api_authz_enrich_identity_claims(array $claims): array {
         return $claims;
     }
 
-    $auth0User = api_authz_fetch_auth0_user_by_id($sub);
-    if (!$auth0User || !api_authz_has_verified_email($auth0User)) {
+    $auth0User = api_authz_fetch_auth0_userinfo($accessToken);
+    if ((!$auth0User || !api_authz_can_use_email_match($auth0User)) && $sub !== '') {
+        $auth0User = api_authz_fetch_auth0_user_by_id($sub);
+    }
+    if (!$auth0User || !api_authz_can_use_email_match($auth0User)) {
         return $claims;
     }
+    $auth0User = api_authz_apply_claim_identity_defaults($auth0User);
 
     foreach (['email', 'name', 'picture', 'email_verified'] as $key) {
         if (array_key_exists($key, $auth0User)) {
@@ -407,8 +532,10 @@ function api_authz_maybe_link_handler_identity(array $row, array $claims): array
     $currentUserId = trim((string)($row['user_id'] ?? ''));
     $matchedEmail = trim((string)($row['email'] ?? ''));
     $claimSub = trim((string)($claims['sub'] ?? ''));
-    $claimEmail = trim((string)($claims['email'] ?? ''));
-    $emailVerified = !array_key_exists('email_verified', $claims) || !empty($claims['email_verified']);
+    $claimEmail = api_authz_claim_email($claims);
+    $emailVerified = !array_key_exists('email_verified', $claims)
+        || !empty($claims['email_verified'])
+        || api_authz_subject_allows_email_link($claimSub);
 
     if (
         $handlerId === ''
@@ -436,7 +563,7 @@ function api_authz_fetch_handler(string $baseUrl, string $serviceKey, array $cla
     unset($baseUrl, $serviceKey);
 
     $sub = trim((string)($claims['sub'] ?? ''));
-    $email = trim((string)($claims['email'] ?? ''));
+    $email = api_authz_claim_email($claims);
     if ($sub === '' && $email === '') {
         return null;
     }
@@ -450,7 +577,7 @@ function api_authz_fetch_handler(string $baseUrl, string $serviceKey, array $cla
 
     if ($email === '' && $sub !== '') {
         $claims = api_authz_enrich_identity_claims($claims);
-        $email = trim((string)($claims['email'] ?? ''));
+        $email = api_authz_claim_email($claims);
     }
 
     if ($email !== '') {
@@ -473,6 +600,7 @@ function api_authz_require_admin(callable $deny, array $requiredScopes = []): ar
     $auth0Audience = auth0_expected_api_audience();
     $auth0ClientId = api_authz_env_required('VITE_AUTH0_CLIENT_ID');
     $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
+    $claims = api_authz_enrich_identity_claims($claims, $token);
 
     $handler = api_authz_fetch_handler('', '', $claims);
     if (!$handler || empty($handler['active'])) {
@@ -501,6 +629,7 @@ function api_authz_require_active_handler(callable $deny): array {
     $auth0Audience = auth0_expected_api_audience();
     $auth0ClientId = api_authz_env_required('VITE_AUTH0_CLIENT_ID');
     $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
+    $claims = api_authz_enrich_identity_claims($claims, $token);
 
     $handler = api_authz_fetch_handler('', '', $claims);
     if (!$handler || empty($handler['active'])) {

@@ -12,6 +12,7 @@ const LocationManagementPanel = lazy(() => import('./LocationManagementPanel'));
 import { ticketService } from '../../../services/ticketService';
 import { workflowService } from '../../../services/workflowService';
 import { permissionService } from '../../../services/permissionService';
+import { translationService } from '../../../services/translationService';
 
 const MODULE_ACCENT_STYLES = {
   color: 'from-sky-600 to-sky-700',
@@ -25,27 +26,29 @@ const withModuleAccent = (meta) => ({
   ...MODULE_ACCENT_STYLES,
 });
 
-const getModuleMeta = (t, usersCount, workflowsCount) => ({
+const metaCount = (count) => (Number.isFinite(count) ? count : '...');
+
+const getModuleMeta = (t, { usersCount, workflowsCount, languagesCount }) => ({
   users: withModuleAccent({
     label: t('settings.adminModules.modules.users.title'),
     icon: 'Users',
     priority: 1,
     description: t('settings.adminModules.modules.users.description'),
-    meta: t('settings.adminModules.modules.users.meta', { count: usersCount }),
+    meta: t('settings.adminModules.modules.users.meta', { count: metaCount(usersCount) }),
   }),
   workflows: withModuleAccent({
     label: t('settings.adminModules.modules.workflows.title'),
     icon: 'GitBranch',
     priority: 2,
     description: t('settings.adminModules.modules.workflows.description'),
-    meta: t('settings.adminModules.modules.workflows.meta', { count: workflowsCount }),
+    meta: t('settings.adminModules.modules.workflows.meta', { count: metaCount(workflowsCount) }),
   }),
   translations: withModuleAccent({
     label: t('settings.adminModules.modules.translations.title'),
     icon: 'Languages',
     priority: 3,
     description: t('settings.adminModules.modules.translations.description'),
-    meta: t('settings.adminModules.modules.translations.meta', { count: 4 }),
+    meta: t('settings.adminModules.modules.translations.meta', { count: metaCount(languagesCount) }),
   }),
   locations: withModuleAccent({
     label: t('settings.adminModules.modules.locations.title'),
@@ -72,15 +75,22 @@ const AdminModulesPanel = () => {
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [workflows, setWorkflows] = useState([]);
+  const [overviewStats, setOverviewStats] = useState({
+    users: null,
+    workflows: null,
+    languages: null,
+  });
   const [loadedDatasets, setLoadedDatasets] = useState({
     users: false,
     roles: false,
     workflows: false,
+    languages: false,
   });
   const inflightRequestsRef = useRef({
     users: null,
     roles: null,
     workflows: null,
+    languages: null,
   });
 
   const runDatasetRequest = useCallback(async (key, loader, onSuccess, { force = false } = {}) => {
@@ -109,7 +119,11 @@ const AdminModulesPanel = () => {
       runDatasetRequest(
         'users',
         () => ticketService.getAllHandlers({ enrichPermissions: false, preferApi: true }),
-        setUsers,
+        (value) => {
+          const items = Array.isArray(value) ? value : [];
+          setUsers(items);
+          setOverviewStats((prev) => ({ ...prev, users: items.length }));
+        },
         options
       ),
     [runDatasetRequest]
@@ -123,7 +137,30 @@ const AdminModulesPanel = () => {
 
   const loadWorkflows = useCallback(
     (options = {}) =>
-      runDatasetRequest('workflows', () => workflowService.getWorkflowsWithStats(), setWorkflows, options),
+      runDatasetRequest(
+        'workflows',
+        () => workflowService.getWorkflowsWithStats(),
+        (value) => {
+          const items = Array.isArray(value) ? value : [];
+          setWorkflows(items);
+          setOverviewStats((prev) => ({ ...prev, workflows: items.length }));
+        },
+        options
+      ),
+    [runDatasetRequest]
+  );
+
+  const loadLanguages = useCallback(
+    (options = {}) =>
+      runDatasetRequest(
+        'languages',
+        () => translationService.getSupportedLanguages(),
+        (value) => {
+          const items = Array.isArray(value) ? value : [];
+          setOverviewStats((prev) => ({ ...prev, languages: items.length }));
+        },
+        options
+      ),
     [runDatasetRequest]
   );
 
@@ -163,6 +200,32 @@ const AdminModulesPanel = () => {
   const noopRefresh = useCallback(async () => {}, []);
 
   useEffect(() => {
+    const preloadOverviewData = async () => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const results = await Promise.allSettled([
+          loadUsers(),
+          loadWorkflows(),
+          loadLanguages(),
+        ]);
+
+        const failed = results.filter((result) => result.status === 'rejected');
+        if (failed.length === 0) {
+          return;
+        }
+
+        if (attempt === 2) {
+          console.error('Failed to preload admin overview stats:', failed);
+          return;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    };
+
+    preloadOverviewData();
+  }, [loadLanguages, loadUsers, loadWorkflows]);
+
+  useEffect(() => {
     if (!activeModule) return;
     loadModuleData(activeModule);
   }, [activeModule, loadModuleData]);
@@ -178,8 +241,12 @@ const AdminModulesPanel = () => {
   }, []);
 
   const moduleMeta = useMemo(
-    () => getModuleMeta(t, users.length, workflows.length),
-    [t, users.length, workflows.length]
+    () => getModuleMeta(t, {
+      usersCount: overviewStats.users,
+      workflowsCount: overviewStats.workflows,
+      languagesCount: overviewStats.languages,
+    }),
+    [overviewStats.languages, overviewStats.users, overviewStats.workflows, t]
   );
 
   const modules = useMemo(

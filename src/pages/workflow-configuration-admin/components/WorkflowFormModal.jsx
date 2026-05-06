@@ -109,14 +109,14 @@ export default function WorkflowFormModal({ workflow, onClose, onSubmit }) {
                 required
                 value={formData?.name}
                 onChange={(e) => handleChange('name', e?.target?.value)}
-                placeholder="bijv. IT Incident"
+                placeholder="bijv. IT Misstand"
               />
               <Input
                 label="Workflow Code"
                 required
                 value={formData?.code}
                 onChange={(e) => handleChange('code', e?.target?.value)}
-                placeholder="bijv. it_incident"
+                placeholder="bijv. it_misstand"
                 description="Alleen kleine letters, cijfers en underscores"
                 disabled={isEdit}
               />

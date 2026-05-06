@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
+require_once __DIR__ . '/_ticket_crypto.php';
 require_once __DIR__ . '/_auth0.php';
 require_once __DIR__ . '/_admin_auth.php';
 require_once __DIR__ . '/_errors.php';
@@ -210,6 +211,7 @@ function ticket_load_workflow_status_rows(string $workflowType): array {
 }
 
 function ticket_normalize_ticket_row(array $row): array {
+    $row = ticket_crypto_decrypt_ticket_row($row, true);
     $row['metadata'] = ticket_parse_json($row['metadata'] ?? null, []);
     return $row;
 }
@@ -325,18 +327,18 @@ function ticket_load_relations(string $ticketId): array {
 
     return [
         'attachments' => sqlserver_result_rows($results, 0),
-        'messages' => sqlserver_result_rows($results, 1),
-        'ticket_actions' => sqlserver_result_rows($results, 2),
-        'ticket_comments' => sqlserver_result_rows($results, 3),
+        'messages' => array_map('ticket_crypto_decrypt_message_row', sqlserver_result_rows($results, 1)),
+        'ticket_actions' => array_map('ticket_crypto_decrypt_action_row', sqlserver_result_rows($results, 2)),
+        'ticket_comments' => array_map('ticket_crypto_decrypt_comment_row', sqlserver_result_rows($results, 3)),
     ];
 }
 
 function ticket_reporter_relations_from_results(array $results, int $startIndex = 0): array {
     return [
         'attachments' => sqlserver_result_rows($results, $startIndex),
-        'messages' => sqlserver_result_rows($results, $startIndex + 1),
-        'ticket_actions' => sqlserver_result_rows($results, $startIndex + 2),
-        'ticket_comments' => sqlserver_result_rows($results, $startIndex + 3),
+        'messages' => array_map('ticket_crypto_decrypt_message_row', sqlserver_result_rows($results, $startIndex + 1)),
+        'ticket_actions' => array_map('ticket_crypto_decrypt_action_row', sqlserver_result_rows($results, $startIndex + 2)),
+        'ticket_comments' => array_map('ticket_crypto_decrypt_comment_row', sqlserver_result_rows($results, $startIndex + 3)),
     ];
 }
 
@@ -407,7 +409,16 @@ function ticket_load_ticket_by_credentials(string $ticketInput, string $accessCo
 }
 
 function ticket_sanitize_reporter_ticket(array $ticket, array $settings): array {
-    unset($ticket['access_code'], $ticket['reporter_email'], $ticket['reporter_email_encrypted'], $ticket['reporter_email_hash']);
+    unset(
+        $ticket['access_code'],
+        $ticket['reporter_email'],
+        $ticket['reporter_email_encrypted'],
+        $ticket['reporter_email_hash'],
+        $ticket['description_encrypted'],
+        $ticket['location_encrypted'],
+        $ticket['reporter_name_encrypted'],
+        $ticket['reporter_phone_encrypted']
+    );
     $statusCode = strtolower(trim((string)($ticket['status_code'] ?? '')));
     if (ticket_setting_bool($settings, ['compliance.anonymize_closed_tickets'], false) && in_array($statusCode, ['closed', 'gesloten', 'resolved', 'opgelost'], true)) {
         $ticket['reporter_name'] = null; $ticket['reporter_phone'] = null;
@@ -435,15 +446,17 @@ function ticket_require_active_handler_context(): array {
 
 function ticket_action_command(array $payload, array $settings): ?array {
     if (!ticket_action_logging_enabled($settings)) return null;
+    $description = $payload['description'] ?? null;
     return sqlserver_command(
         'nonquery',
-        'INSERT INTO dbo.ticket_actions (ticket_id, action_type, action, description, handler_id, handler_name, handler_email, performed_by, created_at)
-         VALUES (@ticket_id, @action_type, @action, @description, @handler_id, @handler_name, @handler_email, @performed_by, COALESCE(@created_at, SYSUTCDATETIME()))',
+        'INSERT INTO dbo.ticket_actions (ticket_id, action_type, action, description, description_encrypted, handler_id, handler_name, handler_email, performed_by, created_at)
+         VALUES (@ticket_id, @action_type, @action, @description, @description_encrypted, @handler_id, @handler_name, @handler_email, @performed_by, COALESCE(@created_at, SYSUTCDATETIME()))',
         [
             'ticket_id' => $payload['ticket_id'] ?? null,
             'action_type' => $payload['action_type'] ?? null,
             'action' => $payload['action'] ?? null,
-            'description' => $payload['description'] ?? null,
+            'description' => null,
+            'description_encrypted' => ticket_crypto_encrypt_nullable($description),
             'handler_id' => $payload['handler_id'] ?? null,
             'handler_name' => $payload['handler_name'] ?? null,
             'handler_email' => $payload['handler_email'] ?? null,
@@ -490,30 +503,45 @@ function handle_create(array $data): void {
     if (ticket_setting_bool($settings, ['tickets.require_email_verification'], true) && $email === '') throw new Exception('reporter_email is required by system policy');
     $severityCode = ticket_normalize_severity((string)($data['severity_code'] ?? ''), ticket_normalize_severity(ticket_setting_string($settings, ['tickets.default_priority', 'workflow.default_priority', 'portal.default_priority'], 'low'), 'low'));
     $workflowType = trim((string)($data['workflow_type'] ?? ''));
+    $cryptoKey = get_email_crypto_key();
     $payload = [
         'id' => ticket_uuid4(),
         'ticket_number' => trim((string)($data['ticket_number'] ?? '')) ?: ticket_generate_ticket_number(ticket_sanitize_prefix(ticket_setting_string($settings, ['tickets.ticket_number_prefix'], 'NZ'), 'NZ')),
         'access_code' => normalize_access_code($data['access_code'] ?? '') ?: ticket_generate_access_code(),
-        'description' => $data['description'] ?? null,
-        'location' => $data['location'] ?? null,
+        'description' => null,
+        'description_encrypted' => ticket_crypto_encrypt_nullable($data['description'] ?? null, $cryptoKey, false),
+        'location' => null,
+        'location_encrypted' => ticket_crypto_encrypt_nullable($data['location'] ?? null, $cryptoKey),
         'workflow_type' => $workflowType,
         'severity_code' => $severityCode,
-        'reporter_name' => $data['reporter_name'] ?? null,
-        'reporter_phone' => $data['reporter_phone'] ?? null,
+        'reporter_name' => null,
+        'reporter_name_encrypted' => ticket_crypto_encrypt_nullable($data['reporter_name'] ?? null, $cryptoKey),
+        'reporter_phone' => null,
+        'reporter_phone_encrypted' => ticket_crypto_encrypt_nullable($data['reporter_phone'] ?? null, $cryptoKey),
         'email_notify' => $email !== '' ? !empty($data['email_notify']) : false,
         'status_email_notify' => array_key_exists('status_email_notify', $data) ? ($email !== '' ? !empty($data['status_email_notify']) : false) : ($email !== ''),
         'status_code' => $data['status_code'] ?? null,
         'current_stage' => $data['current_stage'] ?? null,
         'metadata' => json_encode(is_array($data['metadata'] ?? null) ? $data['metadata'] : [], JSON_UNESCAPED_UNICODE),
-        'reporter_email' => ($isAnonymous || $email === '') ? null : $email,
-        'reporter_email_encrypted' => $email ? encrypt_email($email, get_email_crypto_key()) : null,
+        'reporter_email' => null,
+        'reporter_email_encrypted' => $email ? encrypt_email($email, $cryptoKey) : null,
         'reporter_email_hash' => $email ? hash_email($email) : null,
         'next_step_due' => $data['next_step_due'] ?? null,
         'is_anonymous' => $isAnonymous,
     ];
     sqlserver_execute(
-        'INSERT INTO dbo.tickets (id, ticket_number, access_code, description, location, workflow_type, severity_code, reporter_name, reporter_phone, email_notify, status_email_notify, status_code, current_stage, metadata, reporter_email, reporter_email_encrypted, reporter_email_hash, next_step_due, is_anonymous, submitted_at, created_at, updated_at)
-         VALUES (@id, @ticket_number, @access_code, @description, @location, @workflow_type, @severity_code, @reporter_name, @reporter_phone, @email_notify, @status_email_notify, @status_code, @current_stage, @metadata, @reporter_email, @reporter_email_encrypted, @reporter_email_hash, @next_step_due, @is_anonymous, SYSUTCDATETIME(), SYSUTCDATETIME(), SYSUTCDATETIME())',
+        'INSERT INTO dbo.tickets (
+            id, ticket_number, access_code, description, description_encrypted, location, location_encrypted,
+            workflow_type, severity_code, reporter_name, reporter_name_encrypted, reporter_phone, reporter_phone_encrypted,
+            email_notify, status_email_notify, status_code, current_stage, metadata, reporter_email, reporter_email_encrypted,
+            reporter_email_hash, next_step_due, is_anonymous, submitted_at, created_at, updated_at
+        )
+         VALUES (
+            @id, @ticket_number, @access_code, @description, @description_encrypted, @location, @location_encrypted,
+            @workflow_type, @severity_code, @reporter_name, @reporter_name_encrypted, @reporter_phone, @reporter_phone_encrypted,
+            @email_notify, @status_email_notify, @status_code, @current_stage, @metadata, @reporter_email, @reporter_email_encrypted,
+            @reporter_email_hash, @next_step_due, @is_anonymous, SYSUTCDATETIME(), SYSUTCDATETIME(), SYSUTCDATETIME()
+        )',
         $payload
     );
     $row = ticket_load_ticket_row_by_id((string)$payload['id']); if (!$row) throw new Exception('Ticket create failed');
@@ -553,8 +581,14 @@ function handle_reporter_message(array $data): void {
     $commands = [
         sqlserver_command(
             'nonquery',
-            'INSERT INTO dbo.messages (ticket_id, sender, body, is_internal, visible_at, created_at) VALUES (@ticket_id, @sender, @body, @is_internal, SYSUTCDATETIME(), SYSUTCDATETIME())',
-            ['ticket_id' => $ticketId, 'sender' => 'reporter', 'body' => $body, 'is_internal' => false]
+            'INSERT INTO dbo.messages (ticket_id, sender, body, body_encrypted, is_internal, visible_at, created_at) VALUES (@ticket_id, @sender, @body, @body_encrypted, @is_internal, SYSUTCDATETIME(), SYSUTCDATETIME())',
+            [
+                'ticket_id' => $ticketId,
+                'sender' => 'reporter',
+                'body' => TICKET_ENCRYPTED_PLACEHOLDER,
+                'body_encrypted' => ticket_crypto_encrypt_nullable($body, null, false),
+                'is_internal' => false,
+            ]
         ),
         sqlserver_command(
             'nonquery',
@@ -580,6 +614,7 @@ function handle_reporter_message(array $data): void {
 
     $results = sqlserver_run_commands($commands, true);
     $messageRow = sqlserver_result_rows($results, $messageIndex)[0] ?? null;
+    if (is_array($messageRow)) $messageRow = ticket_crypto_decrypt_message_row($messageRow);
     $updatedTicket = ticket_reporter_ticket_by_id_from_results($results, $ticketIndex, $relationsStartIndex) ?: $ticket;
 
     api_json(200, true, 'Message sent', ['message' => $messageRow, 'ticket' => ticket_sanitize_reporter_ticket($updatedTicket, $settings)]);
@@ -590,10 +625,38 @@ function handle_handler_update_ticket(array $data): void {
     $ticketId = trim((string)($data['ticket_id'] ?? '')); if (!ticket_is_uuid($ticketId)) api_json(400, false, 'ticket_id must be a valid UUID');
     ticket_enforce_handler_mutation_rate_limit('update_ticket', $handler, $ticketId);
     $updates = is_array($data['updates'] ?? null) ? $data['updates'] : [];
-    $allowed = ['description','location','workflow_type','severity_code','reporter_name','reporter_phone','email_notify','status_email_notify','status_code','current_stage','metadata','handler_id','next_step_due','last_update_at','location_id'];
+    $allowed = ['description','location','workflow_type','severity_code','reporter_name','reporter_email','reporter_phone','email_notify','status_email_notify','status_code','current_stage','metadata','handler_id','next_step_due','last_update_at','location_id'];
+    $encryptedFieldByPlainField = [
+        'description' => 'description_encrypted',
+        'location' => 'location_encrypted',
+        'reporter_name' => 'reporter_name_encrypted',
+        'reporter_phone' => 'reporter_phone_encrypted',
+    ];
     $sets = ['updated_at = SYSUTCDATETIME()']; $params = ['id' => $ticketId];
+    $cryptoKey = null;
     foreach ($allowed as $field) {
         if (!array_key_exists($field, $updates)) continue;
+        if (isset($encryptedFieldByPlainField[$field])) {
+            $cryptoKey = $cryptoKey ?? get_email_crypto_key();
+            $encryptedField = $encryptedFieldByPlainField[$field];
+            $sets[] = $field . ' = @' . $field;
+            $sets[] = $encryptedField . ' = @' . $encryptedField;
+            $params[$field] = null;
+            $params[$encryptedField] = ticket_crypto_encrypt_nullable($updates[$field], $cryptoKey, $field === 'description' ? false : true);
+            continue;
+        }
+        if ($field === 'reporter_email') {
+            $email = strtolower(trim((string)($updates[$field] ?? '')));
+            if ($email !== '' && !ticket_valid_email($email)) api_json(400, false, 'reporter_email must be a valid email address');
+            $cryptoKey = $cryptoKey ?? get_email_crypto_key();
+            $sets[] = 'reporter_email = @reporter_email';
+            $sets[] = 'reporter_email_encrypted = @reporter_email_encrypted';
+            $sets[] = 'reporter_email_hash = @reporter_email_hash';
+            $params['reporter_email'] = null;
+            $params['reporter_email_encrypted'] = $email !== '' ? encrypt_email($email, $cryptoKey) : null;
+            $params['reporter_email_hash'] = $email !== '' ? hash_email($email) : null;
+            continue;
+        }
         $sets[] = $field . ' = @' . $field;
         $params[$field] = $field === 'metadata' ? json_encode(is_array($updates[$field]) ? $updates[$field] : [], JSON_UNESCAPED_UNICODE) : $updates[$field];
     }
@@ -613,8 +676,13 @@ function handle_handler_add_comment(array $data): void {
     $commands = [
         sqlserver_command(
             'nonquery',
-            'INSERT INTO dbo.ticket_comments (ticket_id, comment, author_name, created_at, updated_at) VALUES (@ticket_id, @comment, @author_name, SYSUTCDATETIME(), SYSUTCDATETIME())',
-            ['ticket_id' => $ticketId, 'comment' => $comment, 'author_name' => $performedBy]
+            'INSERT INTO dbo.ticket_comments (ticket_id, comment, comment_encrypted, author_name, created_at, updated_at) VALUES (@ticket_id, @comment, @comment_encrypted, @author_name, SYSUTCDATETIME(), SYSUTCDATETIME())',
+            [
+                'ticket_id' => $ticketId,
+                'comment' => TICKET_ENCRYPTED_PLACEHOLDER,
+                'comment_encrypted' => ticket_crypto_encrypt_nullable($comment, null, false),
+                'author_name' => $performedBy,
+            ]
         ),
         sqlserver_command(
             'nonquery',
@@ -643,6 +711,7 @@ function handle_handler_add_comment(array $data): void {
 
     $results = sqlserver_run_commands($commands, true);
     $commentRow = sqlserver_result_rows($results, $commentIndex)[0] ?? null;
+    if (is_array($commentRow)) $commentRow = ticket_crypto_decrypt_comment_row($commentRow);
     $ticket = ticket_with_handlers_from_results($results, $ticketIndex, $ticketHandlersIndex);
     api_json(200, true, 'Comment added', ['comment' => $commentRow, 'performed_by' => $performedBy, 'ticket' => $ticket]);
 }
@@ -658,12 +727,13 @@ function handle_handler_add_message(array $data): void {
     $commands = [
         sqlserver_command(
             'nonquery',
-            'INSERT INTO dbo.messages (ticket_id, sender, body, is_internal, visible_at, created_at, handler_id, handler_name)
-             VALUES (@ticket_id, @sender, @body, @is_internal, @visible_at, SYSUTCDATETIME(), @handler_id, @handler_name)',
+            'INSERT INTO dbo.messages (ticket_id, sender, body, body_encrypted, is_internal, visible_at, created_at, handler_id, handler_name)
+             VALUES (@ticket_id, @sender, @body, @body_encrypted, @is_internal, @visible_at, SYSUTCDATETIME(), @handler_id, @handler_name)',
             [
                 'ticket_id' => $ticketId,
                 'sender' => $sender,
-                'body' => $body,
+                'body' => TICKET_ENCRYPTED_PLACEHOLDER,
+                'body_encrypted' => ticket_crypto_encrypt_nullable($body, null, false),
                 'is_internal' => $isInternal,
                 'visible_at' => ticket_handler_message_visible_at($isInternal, $sender),
                 'handler_id' => trim((string)($handler['id'] ?? '')) ?: null,
@@ -697,6 +767,7 @@ function handle_handler_add_message(array $data): void {
 
     $results = sqlserver_run_commands($commands, true);
     $messageRow = sqlserver_result_rows($results, $messageIndex)[0] ?? null;
+    if (is_array($messageRow)) $messageRow = ticket_crypto_decrypt_message_row($messageRow);
     $ticket = ticket_with_handlers_from_results($results, $ticketIndex, $ticketHandlersIndex);
     api_json(200, true, 'Message added', ['message' => $messageRow, 'performed_by' => $performedBy, 'public_handler_name' => $publicName, 'ticket' => $ticket]);
 }
@@ -800,7 +871,9 @@ function handle_handler_log_action(array $data): void {
     if ($description !== '' && ticket_strlen($description) > 4000) api_json(400, false, 'description must be <= 4000 chars');
     ticket_insert_action(['ticket_id' => $ticketId, 'action_type' => $actionType, 'action' => $action, 'description' => $description !== '' ? $description : null, 'handler_id' => trim((string)($handler['id'] ?? '')) ?: null, 'handler_name' => trim((string)($data['handler_name'] ?? $handler['name'] ?? 'System')) ?: 'System', 'handler_email' => trim((string)($handler['email'] ?? '')) ?: null, 'performed_by' => trim((string)($handler['name'] ?? '')) ?: 'System', 'created_at' => gmdate('c')], $settings);
     $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.ticket_actions WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
-    api_json(200, true, 'Action logged', ['ticket_action' => $rows[0] ?? null]);
+    $row = $rows[0] ?? null;
+    if (is_array($row)) $row = ticket_crypto_decrypt_action_row($row);
+    api_json(200, true, 'Action logged', ['ticket_action' => $row]);
 }
 
 function handle_handler_set_ticket_handler_role(array $data): void {

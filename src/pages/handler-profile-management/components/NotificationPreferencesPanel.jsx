@@ -31,19 +31,19 @@ const NotificationPreferencesPanel = ({ notifications, setNotifications, contact
           <div className="space-y-3">
             <Checkbox
               label="Nieuwe Toewijzingen"
-              description="Ontvang een melding wanneer een nieuw incident aan u wordt toegewezen"
+              description="Ontvang een melding wanneer een nieuwe misstand aan u wordt toegewezen"
               checked={notifications?.notifyNewAssignments ?? true}
               onChange={(e) => setNotifications({ ...notifications, notifyNewAssignments: e?.target?.checked })}
             />
             <Checkbox
               label="Status Updates"
-              description="Ontvang meldingen bij statuswijzigingen van uw toegewezen incidenten"
+              description="Ontvang meldingen bij statuswijzigingen van uw toegewezen misstanden"
               checked={notifications?.notifyStatusUpdates ?? true}
               onChange={(e) => setNotifications({ ...notifications, notifyStatusUpdates: e?.target?.checked })}
             />
             <Checkbox
               label="Escalaties"
-              description="Ontvang meldingen wanneer een incident wordt geëscaleerd"
+              description="Ontvang meldingen wanneer een misstand wordt geëscaleerd"
               checked={notifications?.notifyEscalations ?? true}
               onChange={(e) => setNotifications({ ...notifications, notifyEscalations: e?.target?.checked })}
             />
@@ -55,7 +55,7 @@ const NotificationPreferencesPanel = ({ notifications, setNotifications, contact
             />
             <Checkbox
               label="Opmerkingen"
-              description="Ontvang meldingen bij nieuwe opmerkingen op uw incidenten"
+              description="Ontvang meldingen bij nieuwe opmerkingen op uw misstanden"
               checked={notifications?.notifyComments ?? false}
               onChange={(e) => setNotifications({ ...notifications, notifyComments: e?.target?.checked })}
             />
@@ -91,7 +91,7 @@ const NotificationPreferencesPanel = ({ notifications, setNotifications, contact
         <div className="p-4 rounded-lg bg-muted/50 border border-border">
           <Checkbox
             label="Dagelijkse Samenvatting"
-            description="Ontvang een dagelijkse samenvatting van incidenten onder de ernst drempel"
+            description="Ontvang een dagelijkse samenvatting van misstanden onder de ernst drempel"
             checked={notifications?.dailyDigestEnabled ?? false}
             onChange={(e) => setNotifications({ ...notifications, dailyDigestEnabled: e?.target?.checked })}
           />
@@ -178,7 +178,7 @@ const NotificationPreferencesPanel = ({ notifications, setNotifications, contact
               placeholder="+31612345678"
               value={notifications?.emergencyContactPhone || ''}
               onChange={(e) => setNotifications({ ...notifications, emergencyContactPhone: e?.target?.value })}
-              description="Alternatief nummer voor kritieke incidenten"
+              description="Alternatief nummer voor kritieke misstanden"
             />
           </div>
         </div>

@@ -57,7 +57,6 @@ const TRANSLATIONS_SCOPES_WRITE = [
 ];
 
 // Constants
-define('TRANSLATIONS_DIR', __DIR__ . '/../../src/i18n/locales');
 define('BACKUP_DIR', __DIR__ . '/../../backups/translations');
 
 $translationActorId = null;
@@ -80,13 +79,39 @@ function validateLanguageCode(string $lang): string {
     return $clean;
 }
 
+function translations_has_locale_files(string $dir): bool {
+    return is_dir($dir) && count(glob($dir . '/*/translation.json') ?: []) > 0;
+}
+
+function translations_runtime_dir(): string {
+    static $resolved = null;
+    if (is_string($resolved) && $resolved !== '') {
+        return $resolved;
+    }
+
+    $candidates = [
+        __DIR__ . '/locales',
+        __DIR__ . '/../../src/i18n/locales',
+    ];
+
+    foreach ($candidates as $candidate) {
+        if (translations_has_locale_files($candidate)) {
+            $resolved = $candidate;
+            return $resolved;
+        }
+    }
+
+    $resolved = $candidates[0];
+    return $resolved;
+}
+
 /**
  * Get list of supported languages (dynamically from filesystem)
  */
 function getSupportedLanguages(): array {
-    $dir = TRANSLATIONS_DIR;
+    $dir = translations_runtime_dir();
     if (!is_dir($dir)) {
-        return ['en', 'nl', 'fr', 'de']; // fallback
+        return ['en', 'nl', 'fr', 'de', 'pt']; // fallback
     }
 
     $languages = [];
@@ -102,7 +127,7 @@ function getSupportedLanguages(): array {
 
     // Always ensure we have at least English
     if (empty($languages)) {
-        $languages = ['en', 'nl', 'fr', 'de'];
+        $languages = ['en', 'nl', 'fr', 'de', 'pt'];
     }
 
     return $languages;
@@ -162,7 +187,7 @@ function unflattenArray(array $array): array {
  */
 function readTranslationFile(string $lang): array {
     $lang = validateLanguageCode($lang);
-    $filePath = TRANSLATIONS_DIR . "/$lang/translation.json";
+    $filePath = translations_runtime_dir() . "/$lang/translation.json";
 
     if (!file_exists($filePath)) {
         throw new Exception("Translation file not found: $filePath");
@@ -187,7 +212,7 @@ function readTranslationFile(string $lang): array {
 function writeTranslationFile(string $lang, array $data): void {
     $lang = validateLanguageCode($lang);
 
-    $langDir = TRANSLATIONS_DIR . "/$lang";
+    $langDir = translations_runtime_dir() . "/$lang";
     $filePath = "$langDir/translation.json";
 
     // Create language directory if it doesn't exist
@@ -333,11 +358,18 @@ try {
 
             $data = readTranslationFile($lang);
             $flattened = flattenArray($data);
+            $supportedLanguages = getSupportedLanguages();
 
             apiResponse(200, true, 'Translations loaded', [
                 'language' => $lang,
+                'languages' => $supportedLanguages,
                 'count' => count($flattened),
                 'translations' => $flattened
+            ]);
+
+        } elseif ($action === 'languages') {
+            apiResponse(200, true, 'Supported languages loaded', [
+                'languages' => getSupportedLanguages(),
             ]);
 
         } elseif ($action === 'export') {

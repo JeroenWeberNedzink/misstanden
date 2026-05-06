@@ -7,6 +7,7 @@ import { workflowService } from '../../../services/workflowService';
 const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
 const STATUS_CODE_FALLBACK = 'stap';
+const STATUS_DRAFT_STORAGE_PREFIX = 'workflow-status-draft:v1:';
 
 function newRow(workflowId) {
   return {
@@ -36,6 +37,122 @@ function slugifyStatusCode(value) {
     .replace(/_+/g, '_');
 
   return normalized || STATUS_CODE_FALLBACK;
+}
+
+function normalizeStatusRow(row = {}) {
+  const rawDuration = row?.expectedDurationDays;
+  const expectedDurationDays =
+    rawDuration === null || rawDuration === undefined || rawDuration === ''
+      ? null
+      : Number(rawDuration);
+
+  return {
+    id: row?.id ?? null,
+    workflowId: row?.workflowId ?? null,
+    code: String(row?.code ?? ''),
+    label: String(row?.label ?? ''),
+    description: String(row?.description ?? ''),
+    sortOrder: Number(row?.sortOrder ?? 0),
+    isTerminal: !!row?.isTerminal,
+    isFirstResponse: !!row?.isFirstResponse,
+    nextCodes: Array.isArray(row?.nextCodes) ? row.nextCodes.map((code) => String(code ?? '')) : [],
+    expectedDurationDays: Number.isFinite(expectedDurationDays) ? expectedDurationDays : null,
+    _isNew: !!row?._isNew,
+    _isDeleted: !!row?._isDeleted,
+  };
+}
+
+function cloneStatusRows(rows = []) {
+  return (Array.isArray(rows) ? rows : []).map((row) => normalizeStatusRow(row));
+}
+
+function serializeStatusRows(rows = []) {
+  return JSON.stringify(cloneStatusRows(rows));
+}
+
+function getDraftStorageKey(workflowId) {
+  return workflowId ? `${STATUS_DRAFT_STORAGE_PREFIX}${workflowId}` : '';
+}
+
+function readStatusDraft(workflowId) {
+  if (typeof window === 'undefined') return null;
+  const storageKey = getDraftStorageKey(workflowId);
+  if (!storageKey) return null;
+
+  try {
+    const raw = window.sessionStorage.getItem(storageKey);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.version !== 1 || parsed.workflowId !== workflowId || !Array.isArray(parsed.rows)) {
+      return null;
+    }
+
+    return {
+      ...parsed,
+      rows: cloneStatusRows(parsed.rows).map((row) => ({ ...row, workflowId })),
+      selectedId: parsed?.selectedId ?? null,
+      tab: parsed?.tab === 'sla' ? 'sla' : 'basics',
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeStatusDraft(workflowId, draft) {
+  if (typeof window === 'undefined') return;
+  const storageKey = getDraftStorageKey(workflowId);
+  if (!storageKey) return;
+
+  try {
+    window.sessionStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        version: 1,
+        workflowId,
+        savedAt: Date.now(),
+        rows: cloneStatusRows(draft?.rows || []).map((row) => ({ ...row, workflowId })),
+        selectedId: draft?.selectedId ?? null,
+        tab: draft?.tab === 'sla' ? 'sla' : 'basics',
+      })
+    );
+  } catch {
+    // Ignore storage failures and keep the in-memory state alive.
+  }
+}
+
+function clearStatusDraft(workflowId) {
+  if (typeof window === 'undefined') return;
+  const storageKey = getDraftStorageKey(workflowId);
+  if (!storageKey) return;
+
+  try {
+    window.sessionStorage.removeItem(storageKey);
+  } catch {
+    // Ignore storage cleanup failures.
+  }
+}
+
+function mapStatusRowFromApi(status = {}) {
+  return normalizeStatusRow({
+    id: status.id,
+    workflowId: status.workflow_id ?? status.workflowId,
+    code: status.code ?? '',
+    label: status.label ?? '',
+    description: status.description ?? '',
+    sortOrder: Number(status.sort_order ?? status.sortOrder ?? 0),
+    isTerminal: !!(status.is_terminal ?? status.isTerminal),
+    isFirstResponse: !!(status.is_first_response ?? status.isFirstResponse),
+    nextCodes: Array.isArray(status.next_codes ?? status.nextCodes) ? (status.next_codes ?? status.nextCodes) : [],
+    expectedDurationDays:
+      (status.expected_duration_days ?? status.expectedDurationDays) === null ||
+      (status.expected_duration_days ?? status.expectedDurationDays) === undefined ||
+      (status.expected_duration_days ?? status.expectedDurationDays) === ''
+        ? null
+        : Number(status.expected_duration_days ?? status.expectedDurationDays),
+    _isNew: false,
+    _isDeleted: false,
+  });
 }
 
 function withResolvedCodes(rows = []) {
@@ -139,49 +256,76 @@ export default function EditWorkflowStatusesModal({
   const workflowId = workflow?.id;
 
   const [rows, setRows] = useState([]);
+  const [initialRows, setInitialRows] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [tab, setTab] = useState('basics'); // basics | sla
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [draftNotice, setDraftNotice] = useState('');
+  const [hasServerSnapshot, setHasServerSnapshot] = useState(false);
+  const [hasInitializedDraftState, setHasInitializedDraftState] = useState(false);
+
+  const isDirty = useMemo(
+    () => serializeStatusRows(rows) !== serializeStatusRows(initialRows),
+    [rows, initialRows]
+  );
 
   // Load from DB
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
-      if (!open) return;
-      if (!workflowId) return;
+      if (!open || !workflowId) return;
 
       setError('');
+      setDraftNotice('');
       setLoading(true);
+      setRows([]);
+      setInitialRows([]);
+      setSelectedId(null);
+      setTab('basics');
+      setHasServerSnapshot(false);
+      setHasInitializedDraftState(false);
 
       try {
         const data = await workflowService.getWorkflowStatusesAdmin(workflowId);
-
-        const mapped = (data || []).map((s) => ({
-          id: s.id,
-          workflowId: s.workflow_id,
-          code: s.code ?? '',
-          label: s.label ?? '',
-          description: s.description ?? '',
-          sortOrder: Number(s.sort_order ?? 0),
-          isTerminal: !!s.is_terminal,
-          isFirstResponse: !!s.is_first_response,
-          nextCodes: Array.isArray(s.next_codes) ? s.next_codes : [],
-          expectedDurationDays: s.expected_duration_days ? Number(s.expected_duration_days) : null,
-          _isNew: false,
-          _isDeleted: false,
-        }));
+        const mapped = (data || []).map((status) => mapStatusRowFromApi(status));
+        const restoredDraft = readStatusDraft(workflowId);
+        const nextRows = restoredDraft ? cloneStatusRows(restoredDraft.rows) : mapped;
+        const nextSelectedId = restoredDraft?.selectedId ?? nextRows?.[0]?.id ?? null;
+        const nextTab = restoredDraft?.tab === 'sla' ? 'sla' : 'basics';
 
         if (cancelled) return;
 
-        setRows(mapped);
-        setSelectedId(mapped?.[0]?.id || null);
-        setTab('basics');
+        setRows(nextRows);
+        setInitialRows(mapped);
+        setSelectedId(nextSelectedId);
+        setTab(nextTab);
+        setHasServerSnapshot(true);
+        setHasInitializedDraftState(true);
+
+        if (restoredDraft) {
+          setDraftNotice('Lokale conceptversie hersteld. Je wijzigingen staan nog klaar om op te slaan.');
+        }
       } catch (e) {
-        if (!cancelled) setError(e?.message || 'Kon workflow statussen niet laden.');
+        if (cancelled) return;
+
+        const restoredDraft = readStatusDraft(workflowId);
+        if (restoredDraft) {
+          const restoredRows = cloneStatusRows(restoredDraft.rows);
+          setRows(restoredRows);
+          setInitialRows([]);
+          setSelectedId(restoredDraft?.selectedId ?? restoredRows?.[0]?.id ?? null);
+          setTab(restoredDraft?.tab === 'sla' ? 'sla' : 'basics');
+          setHasServerSnapshot(false);
+          setHasInitializedDraftState(true);
+          setDraftNotice('Lokale conceptversie hersteld. Opslaan kan weer zodra je beheersessie terug is.');
+          setError(e?.message || 'Kon workflow statussen niet laden.');
+        } else {
+          setError(e?.message || 'Kon workflow statussen niet laden.');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -230,10 +374,68 @@ export default function EditWorkflowStatusesModal({
     if (selectedId && !selected && activeRows.length) {
       setSelectedId(activeRows[0].id);
     }
+    if (selectedId && !selected && activeRows.length === 0) {
+      setSelectedId(null);
+    }
     if (!selectedId && activeRows.length) {
       setSelectedId(activeRows[0].id);
     }
   }, [selectedId, selected, activeRows]);
+
+  useEffect(() => {
+    if (!open || !workflowId || !hasInitializedDraftState) return;
+
+    if (!isDirty) {
+      clearStatusDraft(workflowId);
+      return;
+    }
+
+    writeStatusDraft(workflowId, {
+      rows,
+      selectedId,
+      tab,
+    });
+  }, [hasInitializedDraftState, isDirty, open, rows, selectedId, tab, workflowId]);
+
+  useEffect(() => {
+    if (!open || !isDirty) return;
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+      return '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isDirty, open]);
+
+  const requestClose = () => {
+    if (saving) return;
+    if (!isDirty) {
+      onClose?.();
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Je hebt niet-opgeslagen wijzigingen. Deze blijven lokaal bewaard in deze browser. Venster sluiten?'
+    );
+    if (confirmed) {
+      onClose?.();
+    }
+  };
+
+  const handleRestoreServerVersion = () => {
+    if (!hasServerSnapshot) return;
+    setRows(cloneStatusRows(initialRows));
+    setSelectedId(initialRows?.[0]?.id ?? null);
+    setTab('basics');
+    setDraftNotice('');
+    setError('');
+    clearStatusDraft(workflowId);
+  };
 
   const patchRow = (id, patch) => {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -281,6 +483,10 @@ export default function EditWorkflowStatusesModal({
   };
 
   const validate = () => {
+    if (activeRows.length === 0) {
+      return 'Een workflow moet minimaal 1 stap hebben.';
+    }
+
     const seen = new Set();
     for (const r of activeRows) {
       const code = safeTrim(r.code);
@@ -297,6 +503,7 @@ export default function EditWorkflowStatusesModal({
 
   const handleSave = async () => {
     setError('');
+    setDraftNotice('');
     const msg = validate();
     if (msg) {
       setError(msg);
@@ -323,12 +530,21 @@ export default function EditWorkflowStatusesModal({
         contact_notes: null,
       }));
 
-      await workflowService.saveWorkflowStatuses(workflowId, upsertPayload, toDelete);
+      const persisted = await workflowService.saveWorkflowStatuses(workflowId, upsertPayload, toDelete);
+      const persistedRows = (persisted || []).map((row) => mapStatusRowFromApi(row));
+
+      clearStatusDraft(workflowId);
+      setInitialRows(persistedRows);
+      setRows(persistedRows);
+      setSelectedId(persistedRows?.[0]?.id ?? null);
+      setHasServerSnapshot(true);
+      setHasInitializedDraftState(true);
 
       onSaved?.();
       onClose?.();
     } catch (e) {
-      setError(e?.message || 'Opslaan mislukt.');
+      const message = e?.message || 'Opslaan mislukt.';
+      setError(`${message} Je wijzigingen blijven lokaal bewaard.`);
     } finally {
       setSaving(false);
     }
@@ -339,7 +555,7 @@ export default function EditWorkflowStatusesModal({
   return (
     <>
       {/* Overlay */}
-      <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm" onClick={requestClose} />
 
       {/* Modal */}
       <div className="fixed inset-0 z-[10001] flex items-start justify-center p-3 md:p-4 pt-16 md:pt-20 overflow-y-auto">
@@ -365,7 +581,7 @@ export default function EditWorkflowStatusesModal({
               </div>
             </div>
 
-            <Button variant="ghost" size="icon" onClick={onClose} disabled={saving}>
+            <Button variant="ghost" size="icon" onClick={requestClose} disabled={saving}>
               <Icon name="X" size={22} />
             </Button>
           </div>
@@ -424,6 +640,26 @@ export default function EditWorkflowStatusesModal({
               {error && (
                 <div className="mt-3 p-3 rounded-xl border border-destructive/30 bg-destructive/10 text-sm text-destructive">
                   {error}
+                </div>
+              )}
+
+              {draftNotice && (
+                <div className="mt-3 p-3 rounded-xl border border-blue-200/60 bg-blue-50/80 text-sm text-blue-900">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 font-semibold">
+                        <Icon name="Save" size={16} />
+                        Concept bewaard
+                      </div>
+                      <div className="text-xs text-blue-900/80 mt-1">{draftNotice}</div>
+                    </div>
+
+                    {hasServerSnapshot ? (
+                      <Button variant="outline" size="xs" onClick={handleRestoreServerVersion} disabled={saving || loading}>
+                        Herstel serverversie
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               )}
 
@@ -678,11 +914,17 @@ export default function EditWorkflowStatusesModal({
           {/* Footer */}
           <div className="p-4 md:p-6 border-t border-border flex items-center justify-between gap-2">
             <div className="text-xs text-muted-foreground">
-              Opslaan schrijft naar <span className="font-mono">workflow_statuses</span>.
+              {isDirty ? (
+                'Niet-opgeslagen wijzigingen blijven tijdelijk in deze browser bewaard.'
+              ) : (
+                <>
+                  Opslaan schrijft naar <span className="font-mono">workflow_statuses</span>.
+                </>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={onClose} disabled={saving}>
+              <Button variant="outline" onClick={requestClose} disabled={saving}>
                 Annuleren
               </Button>
               <Button variant="default" iconName="Save" iconPosition="left" onClick={handleSave} disabled={saving || loading}>

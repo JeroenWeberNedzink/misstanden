@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
+require_once __DIR__ . '/_ticket_crypto.php';
 require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
 require_once __DIR__ . '/_sqlserver.php';
@@ -72,15 +73,24 @@ function reporter_reply_assert_token_valid(array $tokenRow): void {
 function reporter_reply_fetch_ticket(string $ticketId): ?array {
     $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.tickets WHERE id = @ticket_id', ['ticket_id' => $ticketId]);
     if (!$rows) return null;
-    $ticket = $rows[0];
+    $ticket = ticket_crypto_decrypt_ticket_row($rows[0], true);
     $ticket['metadata'] = reporter_reply_parse_json($ticket['metadata'] ?? null, []);
     $ticket['attachments'] = sqlserver_query('SELECT * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]);
-    $ticket['messages'] = sqlserver_query('SELECT * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]);
+    $ticket['messages'] = array_map('ticket_crypto_decrypt_message_row', sqlserver_query('SELECT * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]));
     return $ticket;
 }
 
 function reporter_reply_sanitize_ticket(array $ticket): array {
-    unset($ticket['access_code'], $ticket['reporter_email'], $ticket['reporter_email_encrypted'], $ticket['reporter_email_hash']);
+    unset(
+        $ticket['access_code'],
+        $ticket['reporter_email'],
+        $ticket['reporter_email_encrypted'],
+        $ticket['reporter_email_hash'],
+        $ticket['description_encrypted'],
+        $ticket['location_encrypted'],
+        $ticket['reporter_name_encrypted'],
+        $ticket['reporter_phone_encrypted']
+    );
 
     $attachments = is_array($ticket['attachments'] ?? null) ? $ticket['attachments'] : [];
     $ticket['attachments'] = array_values(array_filter(array_map(static function ($att) {
@@ -118,12 +128,13 @@ function reporter_reply_sanitize_ticket(array $ticket): array {
 
 function reporter_reply_insert_message(string $ticketId, string $body): array {
     sqlserver_execute(
-        'INSERT INTO dbo.messages (ticket_id, sender, body, is_internal, visible_at, created_at)
-         VALUES (@ticket_id, @sender, @body, @is_internal, SYSUTCDATETIME(), SYSUTCDATETIME())',
+        'INSERT INTO dbo.messages (ticket_id, sender, body, body_encrypted, is_internal, visible_at, created_at)
+         VALUES (@ticket_id, @sender, @body, @body_encrypted, @is_internal, SYSUTCDATETIME(), SYSUTCDATETIME())',
         [
             'ticket_id' => $ticketId,
             'sender' => 'reporter',
-            'body' => $body,
+            'body' => TICKET_ENCRYPTED_PLACEHOLDER,
+            'body_encrypted' => ticket_crypto_encrypt_nullable($body, null, false),
             'is_internal' => false,
         ]
     );
@@ -132,7 +143,8 @@ function reporter_reply_insert_message(string $ticketId, string $body): array {
         ['ticket_id' => $ticketId]
     );
     $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
-    return $rows[0] ?? [];
+    $row = $rows[0] ?? [];
+    return is_array($row) ? ticket_crypto_decrypt_message_row($row) : [];
 }
 
 function reporter_reply_insert_attachment(string $ticketId, array $data): array {

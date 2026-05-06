@@ -34,6 +34,17 @@ const fetchWithAuth = async (url, options = {}) => {
 export const translationService = {
   setTokenProvider,
 
+  async getSupportedLanguages() {
+    const res = await fetchWithAuth(`${API_BASE}?action=languages`);
+
+    if (!res.ok) {
+      throw new Error('Failed to load supported languages');
+    }
+
+    const data = await res.json();
+    return Array.isArray(data?.data?.languages) ? data.data.languages : [];
+  },
+
   /**
    * Get all translations for a language (returns flattened object)
    * @param {string} lang - Language code (en, nl, fr, de)

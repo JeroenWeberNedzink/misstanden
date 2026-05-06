@@ -1054,11 +1054,14 @@ export const ticketService = {
   async getTicketById(ticketId, options = {}) {
     if (!ticketId) throw new Error('ticketId is required');
     const includeRelations = options?.includeRelations !== false;
-    const data = await ticketReadGet('get', { ticket_id: ticketId });
+    const data = await ticketReadGet('get', {
+      ticket_id: ticketId,
+      ...(includeRelations ? { include_relations: '1' } : {}),
+    });
     const ticket = toCamelCase(data?.row || null);
     const runtimeSettings = await getTicketRuntimeSettings(ticket?.workflowType || ticket?.workflow_type);
     if (!includeRelations) return applyTicketRuntimePolicies(ticket, runtimeSettings);
-    const relations = await this.getTicketRelations(ticketId);
+    const relations = data?.relations ? toCamelCase(data.relations) : await this.getTicketRelations(ticketId);
     const withRelations = {
       ...ticket,
       attachments: relations.attachments,

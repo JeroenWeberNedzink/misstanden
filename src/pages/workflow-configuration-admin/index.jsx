@@ -341,7 +341,7 @@ export default function WorkflowConfigurationAdmin() {
     <>
       <Helmet>
         <title>Workflow Configuratie - Admin - Misstanden Portal</title>
-        <meta name="description" content="Beheer incident workflow types en routing regels" />
+        <meta name="description" content="Beheer misstand workflow types en routing regels" />
       </Helmet>
 
       <AuthContextNavigator>

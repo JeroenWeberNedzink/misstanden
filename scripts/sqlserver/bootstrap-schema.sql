@@ -227,13 +227,17 @@ BEGIN
         status_code NVARCHAR(100) NULL,
         severity_code NVARCHAR(50) NULL,
         description NVARCHAR(MAX) NULL,
+        description_encrypted NVARCHAR(MAX) NULL,
         location NVARCHAR(500) NULL,
+        location_encrypted NVARCHAR(MAX) NULL,
         location_id UNIQUEIDENTIFIER NULL,
         reporter_name NVARCHAR(255) NULL,
+        reporter_name_encrypted NVARCHAR(MAX) NULL,
         reporter_email NVARCHAR(255) NULL,
         reporter_email_encrypted NVARCHAR(MAX) NULL,
         reporter_email_hash NVARCHAR(255) NULL,
         reporter_phone NVARCHAR(50) NULL,
+        reporter_phone_encrypted NVARCHAR(MAX) NULL,
         email_notify BIT NOT NULL CONSTRAINT DF_tickets_email_notify DEFAULT (0),
         status_email_notify BIT NOT NULL CONSTRAINT DF_tickets_status_email_notify DEFAULT (1),
         is_anonymous BIT NOT NULL CONSTRAINT DF_tickets_is_anonymous DEFAULT (0),
@@ -252,6 +256,26 @@ BEGIN
     CREATE INDEX IX_tickets_status_code ON dbo.tickets(status_code);
     CREATE INDEX IX_tickets_workflow_type ON dbo.tickets(workflow_type);
     CREATE INDEX IX_tickets_reporter_email_hash ON dbo.tickets(reporter_email_hash);
+END;
+
+IF COL_LENGTH(N'dbo.tickets', N'description_encrypted') IS NULL
+BEGIN
+    ALTER TABLE dbo.tickets ADD description_encrypted NVARCHAR(MAX) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.tickets', N'location_encrypted') IS NULL
+BEGIN
+    ALTER TABLE dbo.tickets ADD location_encrypted NVARCHAR(MAX) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.tickets', N'reporter_name_encrypted') IS NULL
+BEGIN
+    ALTER TABLE dbo.tickets ADD reporter_name_encrypted NVARCHAR(MAX) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.tickets', N'reporter_phone_encrypted') IS NULL
+BEGIN
+    ALTER TABLE dbo.tickets ADD reporter_phone_encrypted NVARCHAR(MAX) NULL;
 END;
 
 IF OBJECT_ID(N'dbo.ticket_handlers', N'U') IS NULL
@@ -276,11 +300,17 @@ BEGIN
         id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_ticket_comments PRIMARY KEY DEFAULT NEWID(),
         ticket_id UNIQUEIDENTIFIER NOT NULL,
         comment NVARCHAR(MAX) NOT NULL,
+        comment_encrypted NVARCHAR(MAX) NULL,
         author_name NVARCHAR(255) NULL,
         created_at DATETIME2(3) NOT NULL CONSTRAINT DF_ticket_comments_created_at DEFAULT SYSUTCDATETIME(),
         updated_at DATETIME2(3) NOT NULL CONSTRAINT DF_ticket_comments_updated_at DEFAULT SYSUTCDATETIME(),
         CONSTRAINT FK_ticket_comments_ticket FOREIGN KEY (ticket_id) REFERENCES dbo.tickets(id) ON DELETE CASCADE
     );
+END;
+
+IF COL_LENGTH(N'dbo.ticket_comments', N'comment_encrypted') IS NULL
+BEGIN
+    ALTER TABLE dbo.ticket_comments ADD comment_encrypted NVARCHAR(MAX) NULL;
 END;
 
 IF OBJECT_ID(N'dbo.messages', N'U') IS NULL
@@ -290,6 +320,7 @@ BEGIN
         ticket_id UNIQUEIDENTIFIER NOT NULL,
         sender NVARCHAR(50) NOT NULL,
         body NVARCHAR(MAX) NOT NULL,
+        body_encrypted NVARCHAR(MAX) NULL,
         is_internal BIT NOT NULL CONSTRAINT DF_messages_is_internal DEFAULT (0),
         visible_at DATETIME2(3) NOT NULL CONSTRAINT DF_messages_visible_at DEFAULT SYSUTCDATETIME(),
         created_at DATETIME2(3) NOT NULL CONSTRAINT DF_messages_created_at DEFAULT SYSUTCDATETIME(),
@@ -300,6 +331,11 @@ BEGIN
         CONSTRAINT FK_messages_handler FOREIGN KEY (handler_id) REFERENCES dbo.handlers(id)
     );
     CREATE INDEX IX_messages_ticket_visible_at ON dbo.messages(ticket_id, visible_at);
+END;
+
+IF COL_LENGTH(N'dbo.messages', N'body_encrypted') IS NULL
+BEGIN
+    ALTER TABLE dbo.messages ADD body_encrypted NVARCHAR(MAX) NULL;
 END;
 
 IF OBJECT_ID(N'dbo.attachments', N'U') IS NULL
@@ -327,6 +363,7 @@ BEGIN
         action_type NVARCHAR(100) NOT NULL,
         action NVARCHAR(255) NOT NULL,
         description NVARCHAR(MAX) NULL,
+        description_encrypted NVARCHAR(MAX) NULL,
         handler_id UNIQUEIDENTIFIER NULL,
         handler_name NVARCHAR(255) NULL,
         handler_email NVARCHAR(255) NULL,
@@ -336,6 +373,11 @@ BEGIN
         CONSTRAINT FK_ticket_actions_handler FOREIGN KEY (handler_id) REFERENCES dbo.handlers(id)
     );
     CREATE INDEX IX_ticket_actions_ticket_created_at ON dbo.ticket_actions(ticket_id, created_at DESC);
+END;
+
+IF COL_LENGTH(N'dbo.ticket_actions', N'description_encrypted') IS NULL
+BEGIN
+    ALTER TABLE dbo.ticket_actions ADD description_encrypted NVARCHAR(MAX) NULL;
 END;
 
 IF OBJECT_ID(N'dbo.access_requests', N'U') IS NULL

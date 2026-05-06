@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/_crypto.php';
+require_once __DIR__ . '/_ticket_crypto.php';
 require_once __DIR__ . '/_admin_auth.php';
 require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
@@ -48,7 +49,7 @@ function ticket_read_handler(array $row, string $prefix = 'handler_'): ?array {
 }
 
 function ticket_read_ticket(array $row): array {
-    $ticket = $row;
+    $ticket = ticket_crypto_decrypt_ticket_row($row, true);
     $ticket['metadata'] = ticket_read_parse_json($row['metadata'] ?? null, []);
     $ticket['email_notify'] = isset($row['email_notify']) ? (bool)$row['email_notify'] : false;
     $ticket['status_email_notify'] = isset($row['status_email_notify']) ? (bool)$row['status_email_notify'] : true;
@@ -209,11 +210,12 @@ try {
 
     if ($action === 'get') {
         $ticketId = trim((string)($_GET['ticket_id'] ?? ''));
+        $includeRelations = in_array(strtolower(trim((string)($_GET['include_relations'] ?? ''))), ['1', 'true', 'yes', 'on'], true);
         if ($ticketId === '') {
             ticket_read_json(400, false, 'ticket_id is required');
         }
 
-        $results = sqlserver_run_commands([
+        $commands = [
             sqlserver_command(
                 'query',
                 'SELECT TOP 1
@@ -243,7 +245,16 @@ try {
                  ORDER BY th.assigned_at ASC, th.created_at ASC',
                 ['ticket_id' => $ticketId]
             ),
-        ], false);
+        ];
+
+        if ($includeRelations) {
+            $commands[] = sqlserver_command('query', 'SELECT * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]);
+            $commands[] = sqlserver_command('query', 'SELECT * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]);
+            $commands[] = sqlserver_command('query', 'SELECT * FROM dbo.ticket_comments WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]);
+            $commands[] = sqlserver_command('query', 'SELECT * FROM dbo.ticket_actions WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]);
+        }
+
+        $results = sqlserver_run_commands($commands, false);
         $row = sqlserver_result_rows($results, 0)[0] ?? null;
         if (!$row) {
             ticket_read_json(404, false, 'Ticket not found');
@@ -252,7 +263,23 @@ try {
         $ticket = ticket_read_ticket($row);
         $ticketHandlersMap = ticket_read_ticket_handlers_from_rows(sqlserver_result_rows($results, 1));
         $ticket['ticket_handlers'] = $ticketHandlersMap[$ticketId] ?? [];
-        ticket_read_json(200, true, 'Ticket loaded', ['data' => ['row' => $ticket]]);
+        $data = ['row' => $ticket];
+        if ($includeRelations) {
+            $data['relations'] = [
+                'attachments' => array_map(static function (array $row): array {
+                    $row['is_internal'] = isset($row['is_internal']) ? (bool)$row['is_internal'] : false;
+                    return $row;
+                }, sqlserver_result_rows($results, 2)),
+                'messages' => array_map(static function (array $row): array {
+                    $row = ticket_crypto_decrypt_message_row($row);
+                    $row['is_internal'] = isset($row['is_internal']) ? (bool)$row['is_internal'] : false;
+                    return $row;
+                }, sqlserver_result_rows($results, 3)),
+                'ticket_comments' => array_map('ticket_crypto_decrypt_comment_row', sqlserver_result_rows($results, 4)),
+                'ticket_actions' => array_map('ticket_crypto_decrypt_action_row', sqlserver_result_rows($results, 5)),
+            ];
+        }
+        ticket_read_json(200, true, 'Ticket loaded', ['data' => $data]);
     }
 
     if ($action === 'relations') {
@@ -274,11 +301,12 @@ try {
                 return $row;
             }, sqlserver_result_rows($results, 0)),
             'messages' => array_map(static function (array $row): array {
+                $row = ticket_crypto_decrypt_message_row($row);
                 $row['is_internal'] = isset($row['is_internal']) ? (bool)$row['is_internal'] : false;
                 return $row;
             }, sqlserver_result_rows($results, 1)),
-            'ticket_comments' => sqlserver_result_rows($results, 2),
-            'ticket_actions' => sqlserver_result_rows($results, 3),
+            'ticket_comments' => array_map('ticket_crypto_decrypt_comment_row', sqlserver_result_rows($results, 2)),
+            'ticket_actions' => array_map('ticket_crypto_decrypt_action_row', sqlserver_result_rows($results, 3)),
         ]]);
     }
 

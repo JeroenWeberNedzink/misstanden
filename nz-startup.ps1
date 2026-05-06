@@ -194,7 +194,7 @@ function Invoke-LocalDeploy($rootDir) {
 
     Info "Deploying build output to $deployTarget"
 
-    $rootFiles = @('index.html', 'favicon.ico', 'manifest.json', 'robots.txt', 'web.config')
+    $rootFiles = @('favicon.ico', 'manifest.json', 'robots.txt', 'web.config')
     $existingRootFiles = @()
     foreach ($file in $rootFiles) {
         if (Test-Path (Join-Path $distDir $file)) {
@@ -220,7 +220,8 @@ function Invoke-LocalDeploy($rootDir) {
     }
 
     if (Test-Path $distAssetsDir) {
-        Invoke-RobocopyChecked $distAssetsDir $targetAssetsDir @('*') @('/MIR', '/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
+        Info "Deploying frontend assets before index.html to avoid hash mismatch during rollout"
+        Invoke-RobocopyChecked $distAssetsDir $targetAssetsDir @('*') @('/E', '/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
     } else {
         Warn "Build output has no assets directory: $distAssetsDir"
     }
@@ -243,6 +244,13 @@ function Invoke-LocalDeploy($rootDir) {
         Invoke-RobocopyChecked $privateDir $targetPrivateDir @('*') @('/MIR', '/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
     } else {
         Warn "private directory not found locally: $privateDir"
+    }
+
+    if (Test-Path (Join-Path $distDir 'index.html')) {
+        Info "Publishing index.html last"
+        Invoke-RobocopyChecked $distDir $deployTarget @('index.html') @('/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
+    } else {
+        Warn "Build output has no index.html: $distDir"
     }
 
     Ok "Local deploy completed"

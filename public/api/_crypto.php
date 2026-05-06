@@ -76,6 +76,11 @@ function load_runtime_env(?string $anchorDir = null): void {
 }
 
 function get_email_crypto_key(): string {
+    static $cachedKey = null;
+    if ($cachedKey !== null) {
+        return $cachedKey;
+    }
+
     $candidates = [];
 
     $envPath = trim((string)(getenv('EMAIL_ENC_KEY_PATH') ?: ''));
@@ -113,36 +118,58 @@ function get_email_crypto_key(): string {
     if ($raw === false || strlen($raw) !== 32) {
         throw new Exception('Email encryption key must be base64-encoded 32 bytes');
     }
-    return $raw;
+    $cachedKey = $raw;
+    return $cachedKey;
 }
 
-function encrypt_email(string $plaintext, string $rawKey): string {
+function encrypt_sensitive_value(string $plaintext, string $rawKey): string {
     $iv = random_bytes(12); // GCM standard
     $tag = '';
     $cipher = openssl_encrypt($plaintext, 'aes-256-gcm', $rawKey, OPENSSL_RAW_DATA, $iv, $tag);
     if ($cipher === false) {
-        throw new Exception('Failed to encrypt email');
+        throw new Exception('Failed to encrypt sensitive value');
     }
     return 'gcm:' . base64_encode($iv) . ':' . base64_encode($tag) . ':' . base64_encode($cipher);
 }
 
-function decrypt_email(string $payload, string $rawKey): string {
+function decrypt_sensitive_value(string $payload, string $rawKey): string {
     $parts = explode(':', $payload);
     if (count($parts) !== 4 || $parts[0] !== 'gcm') {
-        throw new Exception('Invalid encrypted email format');
+        throw new Exception('Invalid encrypted value format');
     }
     [$_, $ivB64, $tagB64, $cipherB64] = $parts;
     $iv = base64_decode($ivB64, true);
     $tag = base64_decode($tagB64, true);
     $cipher = base64_decode($cipherB64, true);
     if ($iv === false || $tag === false || $cipher === false) {
-        throw new Exception('Invalid encrypted email payload');
+        throw new Exception('Invalid encrypted value payload');
     }
     $plain = openssl_decrypt($cipher, 'aes-256-gcm', $rawKey, OPENSSL_RAW_DATA, $iv, $tag);
     if ($plain === false) {
-        throw new Exception('Failed to decrypt email');
+        throw new Exception('Failed to decrypt sensitive value');
     }
     return $plain;
+}
+
+function maybe_decrypt_sensitive_value($payload, $fallback = null, ?string $rawKey = null) {
+    $encrypted = trim((string)($payload ?? ''));
+    if ($encrypted === '') {
+        return $fallback;
+    }
+
+    try {
+        return decrypt_sensitive_value($encrypted, $rawKey ?? get_email_crypto_key());
+    } catch (Throwable $e) {
+        return $fallback;
+    }
+}
+
+function encrypt_email(string $plaintext, string $rawKey): string {
+    return encrypt_sensitive_value($plaintext, $rawKey);
+}
+
+function decrypt_email(string $payload, string $rawKey): string {
+    return decrypt_sensitive_value($payload, $rawKey);
 }
 
 function hash_email(string $email): string {

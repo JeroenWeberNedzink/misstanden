@@ -41,37 +41,66 @@ const safeTrim = (v) => String(v ?? '').trim();
 const WORKFLOW_API_URL = '/api/workflows.api.php';
 const CATALOG_API_URL = '/api/catalog.api.php';
 let workflowTokenProvider = null;
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const isAuthStatus = (status) => status === 401 || status === 403;
 
 const setTokenProvider = (provider) => {
   workflowTokenProvider = typeof provider === 'function' ? provider : null;
 };
 
-const getAuthHeaders = async () => {
+const getAuthHeaders = async (options = {}) => {
   if (!workflowTokenProvider) return {};
   try {
-    const token = await workflowTokenProvider();
+    const token = await workflowTokenProvider(options);
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};
   }
 };
 
-const apiGet = async (action, params = {}, { requireAdmin = false } = {}) => {
+const getAdminAuthHeaders = async () => {
   let headers = await getAuthHeaders();
+  if (headers.Authorization) return headers;
+
+  await wait(75);
+  headers = await getAuthHeaders();
+  if (headers.Authorization) return headers;
+
+  await wait(150);
+  return getAuthHeaders({ forceRefresh: true });
+};
+
+const parseJsonResponse = async (response) => response.json().catch(() => null);
+
+const apiGet = async (action, params = {}, { requireAdmin = false } = {}) => {
+  let headers = requireAdmin ? await getAdminAuthHeaders() : await getAuthHeaders();
   if (requireAdmin && !headers.Authorization) {
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    headers = await getAuthHeaders();
+    throw new Error('Admin session unavailable. Please sign in again.');
   }
   const urlParams = new URLSearchParams({ action, ...params });
-  const response = await fetch(`${WORKFLOW_API_URL}?${urlParams.toString()}`, {
+  const url = `${WORKFLOW_API_URL}?${urlParams.toString()}`;
+  let response = await fetch(url, {
     method: 'GET',
     headers,
   });
-  const json = await response.json().catch(() => null);
+  let json = await parseJsonResponse(response);
+
+  if (requireAdmin && isAuthStatus(response.status)) {
+    const retryHeaders = await getAuthHeaders({ forceRefresh: true });
+    if (retryHeaders.Authorization) {
+      headers = retryHeaders;
+      response = await fetch(url, {
+        method: 'GET',
+        headers,
+      });
+      json = await parseJsonResponse(response);
+    }
+  }
+
   if (!response.ok || !json?.success) {
     const message = json?.message || `Workflows API error (${response.status})`;
-    if (!headers.Authorization && requireAdmin) {
-      throw new Error(`Admin token missing: ${message}`);
+    if (requireAdmin && (!headers.Authorization || isAuthStatus(response.status))) {
+      throw new Error(`Admin session unavailable: ${message}`);
     }
     throw new Error(message);
   }
@@ -79,24 +108,36 @@ const apiGet = async (action, params = {}, { requireAdmin = false } = {}) => {
 };
 
 const apiPost = async (action, payload = {}, { requireAdmin = true } = {}) => {
-  let headers = await getAuthHeaders();
+  let headers = requireAdmin ? await getAdminAuthHeaders() : await getAuthHeaders();
   if (requireAdmin && !headers.Authorization) {
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    headers = await getAuthHeaders();
+    throw new Error('Admin session unavailable. Please sign in again.');
   }
-  const response = await fetch(WORKFLOW_API_URL, {
+
+  const requestOptions = (requestHeaders) => ({
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...headers,
+      ...requestHeaders,
     },
     body: JSON.stringify({ action, ...payload }),
   });
-  const json = await response.json().catch(() => null);
+
+  let response = await fetch(WORKFLOW_API_URL, requestOptions(headers));
+  let json = await parseJsonResponse(response);
+
+  if (requireAdmin && isAuthStatus(response.status)) {
+    const retryHeaders = await getAuthHeaders({ forceRefresh: true });
+    if (retryHeaders.Authorization) {
+      headers = retryHeaders;
+      response = await fetch(WORKFLOW_API_URL, requestOptions(headers));
+      json = await parseJsonResponse(response);
+    }
+  }
+
   if (!response.ok || !json?.success) {
     const message = json?.message || `Workflows API error (${response.status})`;
-    if (!headers.Authorization && requireAdmin) {
-      throw new Error(`Admin token missing: ${message}`);
+    if (requireAdmin && (!headers.Authorization || isAuthStatus(response.status))) {
+      throw new Error(`Admin session unavailable: ${message}`);
     }
     throw new Error(message);
   }

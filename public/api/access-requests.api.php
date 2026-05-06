@@ -184,7 +184,7 @@ function ar_auth_claims(): array {
     if ($token === '') ar_json(401, false, 'Authorization token required');
     $claims = auth0_verify_access_token($token, trim((string)(getenv('VITE_AUTH0_DOMAIN') ?: '')), auth0_expected_api_audience(), trim((string)(getenv('VITE_AUTH0_CLIENT_ID') ?: '')));
     if (trim((string)($claims['sub'] ?? '')) === '') ar_json(403, false, 'Invalid authenticated subject');
-    return function_exists('api_authz_enrich_identity_claims') ? api_authz_enrich_identity_claims($claims) : $claims;
+    return function_exists('api_authz_enrich_identity_claims') ? api_authz_enrich_identity_claims($claims, $token) : $claims;
 }
 
 function ar_require_admin_context(array $scopes = []): array {

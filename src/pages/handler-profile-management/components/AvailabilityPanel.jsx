@@ -18,7 +18,7 @@ const AvailabilityPanel = ({ availability, setAvailability }) => {
         <h2 className="text-xl font-semibold text-foreground">Beschikbaarheid</h2>
       </div>
       <p className="text-sm text-muted-foreground mb-6">
-        Beheer uw beschikbaarheidsstatus voor incident-toewijzingen.
+        Beheer uw beschikbaarheidsstatus voor misstand-toewijzingen.
       </p>
 
       <div className="space-y-6">
@@ -26,7 +26,7 @@ const AvailabilityPanel = ({ availability, setAvailability }) => {
         <div className="p-4 rounded-lg bg-muted/50 border border-border">
           <Checkbox
             label="Beschikbaar voor nieuwe toewijzingen"
-            description="Schakel dit uit om tijdelijk geen nieuwe incidenten toegewezen te krijgen"
+            description="Schakel dit uit om tijdelijk geen nieuwe misstanden toegewezen te krijgen"
             checked={availability?.isAvailable ?? true}
             onChange={(e) => setAvailability({ ...availability, isAvailable: e?.target?.checked })}
           />
