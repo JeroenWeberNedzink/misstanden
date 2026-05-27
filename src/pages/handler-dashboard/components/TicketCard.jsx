@@ -2,8 +2,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
-import { format } from 'date-fns';
-import { de, enUS, fr, nl, pt } from 'date-fns/locale';
 
 const TicketCard = ({
   ticket,
@@ -16,17 +14,26 @@ const TicketCard = ({
 }) => {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
-  const dateFnsLocaleByLanguage = {
-    en: enUS,
-    nl,
-    fr,
-    de,
-    pt,
+  const localeByLanguage = {
+    en: 'en-GB',
+    nl: 'nl-NL',
+    fr: 'fr-FR',
+    de: 'de-DE',
+    pt: 'pt-PT',
   };
   const activeLanguage = String(i18n?.resolvedLanguage || i18n?.language || 'en')
     .toLowerCase()
     .split('-')[0];
-  const activeLocale = dateFnsLocaleByLanguage[activeLanguage] || enUS;
+  const activeLocale = localeByLanguage[activeLanguage] || 'en-GB';
+  const dateFormatter = React.useMemo(() => new Intl.DateTimeFormat(activeLocale, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }), [activeLocale]);
+  const timeFormatter = React.useMemo(() => new Intl.DateTimeFormat(activeLocale, {
+    hour: '2-digit',
+    minute: '2-digit',
+  }), [activeLocale]);
 
   const getStatusMeta = (statusCode, workflowCode) => {
     const inner = workflowStatusMap?.get(workflowCode);
@@ -57,12 +64,14 @@ const TicketCard = ({
   const statusInfo = getStatusInfo(ticket?.statusCode, ticket?.workflowType);
   const severityInfo = getSeverityInfo(ticket?.severityCode);
 
-  const submittedDate = ticket?.submittedAt
-    ? format(new Date(ticket.submittedAt), 'dd MMM yyyy', { locale: activeLocale })
+  const submittedAt = ticket?.submittedAt ? new Date(ticket.submittedAt) : null;
+  const hasSubmittedAt = submittedAt && !Number.isNaN(submittedAt.getTime());
+  const submittedDate = hasSubmittedAt
+    ? dateFormatter.format(submittedAt)
     : '-';
 
-  const submittedTime = ticket?.submittedAt
-    ? format(new Date(ticket.submittedAt), 'HH:mm', { locale: activeLocale })
+  const submittedTime = hasSubmittedAt
+    ? timeFormatter.format(submittedAt)
     : '';
 
   const handlerId =

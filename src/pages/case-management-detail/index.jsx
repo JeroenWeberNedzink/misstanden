@@ -1004,6 +1004,7 @@ export default function CaseManagementDetail() {
       const updatedTicket = await ticketService.setTicketHandlers(ticketId, normalizedHandlerIds, null, {
         currentHandlerId,
         rolesByHandlerId,
+        knownHandlers: availableHandlers,
       });
 
       // Update header and panel assignment immediately.

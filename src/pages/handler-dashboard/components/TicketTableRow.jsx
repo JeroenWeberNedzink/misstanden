@@ -111,8 +111,10 @@ const TicketTableRow = ({
   const reporterEmail = ticket?.reporterEmail || ticket?.reporter_email;
   const reporterName = ticket?.reporterName || ticket?.reporter_name;
 
-  // Check if ticket is anonymous (no reporter email or name)
-  const isAnonymous = !reporterEmail && !reporterName;
+  const hasAnonymousFlag = ticket?.isAnonymous !== undefined || ticket?.is_anonymous !== undefined;
+  const isAnonymous = hasAnonymousFlag
+    ? Boolean(ticket?.isAnonymous ?? ticket?.is_anonymous)
+    : (!reporterEmail && !reporterName);
 
   // ✓ DB-driven display code:
   // - If a workflow uses detailed steps, you store that in current_stage

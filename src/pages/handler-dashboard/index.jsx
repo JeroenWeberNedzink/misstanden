@@ -21,12 +21,51 @@ import { normalizeHandlerRecord } from '../../services/utils/handlerNormalizatio
 
 const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
+const DASHBOARD_BOOTSTRAP_CACHE_KEY = 'handler_dashboard_bootstrap_v1';
+const DASHBOARD_BOOTSTRAP_CACHE_TTL_MS = 2 * 60 * 1000;
 const readCachedHandlerProfile = () => {
   try {
     const cached = sessionStorage.getItem('handler_profile');
     return cached ? normalizeHandlerRecord(JSON.parse(cached)) : null;
   } catch {
     return null;
+  }
+};
+const isBootstrapForUser = (bootstrap, user) => {
+  if (!bootstrap?.handler?.id || !user) return false;
+  const userSub = safeTrim(user?.sub);
+  const userEmail = safeLower(user?.email);
+  const claimsSub = safeTrim(bootstrap?.claimsSub);
+  const handlerUserId = safeTrim(bootstrap?.handler?.userId || bootstrap?.handler?.user_id);
+  const handlerEmail = safeLower(bootstrap?.handler?.email);
+  return Boolean(
+    (userSub && (claimsSub === userSub || handlerUserId === userSub)) ||
+    (userEmail && handlerEmail === userEmail)
+  );
+};
+const readCachedDashboardBootstrap = (user) => {
+  try {
+    const raw = sessionStorage.getItem(DASHBOARD_BOOTSTRAP_CACHE_KEY);
+    if (!raw) return null;
+    const payload = JSON.parse(raw);
+    if (!payload || Date.now() - Number(payload.cachedAt || 0) > DASHBOARD_BOOTSTRAP_CACHE_TTL_MS) {
+      return null;
+    }
+    const bootstrap = payload.bootstrap || null;
+    return isBootstrapForUser(bootstrap, user) ? bootstrap : null;
+  } catch {
+    return null;
+  }
+};
+const writeCachedDashboardBootstrap = (bootstrap, user) => {
+  try {
+    if (!isBootstrapForUser(bootstrap, user)) return;
+    sessionStorage.setItem(DASHBOARD_BOOTSTRAP_CACHE_KEY, JSON.stringify({
+      cachedAt: Date.now(),
+      bootstrap,
+    }));
+  } catch {
+    // Ignore session storage write errors.
   }
 };
 const parseRoles = (rawRoles) => {
@@ -60,6 +99,7 @@ export default function HandlerDashboard() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [severityFilter, setSeverityFilter] = useState('all');
   const [scopeFilter, setScopeFilter] = useState('all');
+  const [hasDashboardBootstrap, setHasDashboardBootstrap] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [layout, setLayout] = useState('cards');
   const navigate = useNavigate();
@@ -81,10 +121,10 @@ export default function HandlerDashboard() {
   }, [user, auth0Loading]);
 
   useEffect(() => {
-    if (currentHandlerId && currentHandlerRole) {
+    if (currentHandlerId && currentHandlerRole && !hasDashboardBootstrap) {
       loadData();
     }
-  }, [currentHandlerId, currentHandlerRole]);
+  }, [currentHandlerId, currentHandlerRole, hasDashboardBootstrap]);
 
   const normalizeStatuses = (raw) => {
     const arr = Array.isArray(raw) ? raw : [];
@@ -94,7 +134,7 @@ export default function HandlerDashboard() {
         code: safeTrim(s.code),
         label: safeTrim(s.label),
         color: safeTrim(s.color) || null,
-        order: Number.isFinite(Number(s.sortOrder ?? s.sort_order ?? 0)) ? Number(s.sortOrder ?? s.sort_order ?? 0) : 0,
+        order: Number.isFinite(Number(s.sortOrder ?? s.sort_order ?? s.order ?? 0)) ? Number(s.sortOrder ?? s.sort_order ?? s.order ?? 0) : 0,
         isTerminal: Boolean(s.isTerminal ?? s.is_terminal),
         nextCodes: Array.isArray(s.nextCodes)
           ? s.nextCodes
@@ -153,6 +193,42 @@ export default function HandlerDashboard() {
     return wfMap?.get(safeLower(statusCode)) || null;
   };
 
+  const applyDashboardData = (ticketsData = [], workflowsData = [], severitiesData = [], role = currentHandlerRole) => {
+    let nextWorkflows = Array.isArray(workflowsData) ? [...workflowsData] : [];
+    const nextSeverities = Array.isArray(severitiesData) ? severitiesData : [];
+    const isAdmin = role === 'admin';
+
+    if (isAdmin) {
+      nextWorkflows = nextWorkflows.filter((workflow) => workflow?.active !== false);
+    } else {
+      const workflowCodes = Array.from(
+        new Set((ticketsData || []).map((ticket) => safeTrim(ticket?.workflowType)).filter(Boolean))
+      );
+      if (workflowCodes.length > 0) {
+        const allowedCodes = new Set(workflowCodes.map((code) => safeTrim(code)).filter(Boolean));
+        nextWorkflows = nextWorkflows.filter((workflow) => allowedCodes.has(safeTrim(workflow?.code)));
+      } else {
+        nextWorkflows = [];
+      }
+    }
+
+    const workflowsWithStatuses = nextWorkflows.map((workflow) => ({
+      ...workflow,
+      statuses: Array.isArray(workflow?.statuses) ? workflow.statuses : [],
+    }));
+
+    setTickets(Array.isArray(ticketsData) ? ticketsData : []);
+    setWorkflows(workflowsWithStatuses);
+    setSeverities(nextSeverities);
+    setLastUpdated(new Date());
+
+    console.log('[HandlerDashboard] Loaded data:', {
+      tickets: ticketsData?.length || 0,
+      workflows: workflowsWithStatuses?.length || 0,
+      severities: nextSeverities?.length || 0,
+    });
+  };
+
   const loadHandlerProfile = async () => {
     if (!user) {
       // Keep dashboard skeleton visible while Auth0 is still hydrating the session.
@@ -163,7 +239,24 @@ export default function HandlerDashboard() {
     }
 
     try {
-      let handler = null;
+      const cachedBootstrap = readCachedDashboardBootstrap(user);
+      if (cachedBootstrap?.handler?.id) {
+        const cachedRole = cachedBootstrap.isAdmin ? 'admin' : 'handler';
+        setCurrentHandlerId(cachedBootstrap.handler.id);
+        setCurrentHandlerName(String(cachedBootstrap.handler?.name || user?.name || user?.email || '').trim());
+        setCurrentHandlerRole(cachedRole);
+        applyDashboardData(
+          cachedBootstrap.tickets || [],
+          cachedBootstrap.workflows || [],
+          cachedBootstrap.severities || [],
+          cachedRole
+        );
+        setHasDashboardBootstrap(true);
+        setIsDataLoading(false);
+      }
+
+      let handler = cachedBootstrap?.handler || null;
+      let bootstrapData = null;
       let softAuthFailure = false;
 
       // Preferred flow: resolve handler context via authenticated backend endpoint.
@@ -190,15 +283,12 @@ export default function HandlerDashboard() {
         if (!token) {
           throw new Error('Auth0 API token unavailable');
         }
-        const resp = await fetch('/api/me.api.php', {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+        bootstrapData = await ticketService.getHandlerDashboardBootstrap({
+          token,
         });
-        const payload = await resp.json().catch(() => null);
-        if (resp.ok && payload?.success && payload?.data?.handler) {
-          handler = payload.data.handler;
+        if (bootstrapData?.handler?.id) {
+          handler = bootstrapData.handler;
+          writeCachedDashboardBootstrap(bootstrapData, user);
           try {
             sessionStorage.setItem('handler_profile', JSON.stringify(normalizeHandlerRecord(handler)));
           } catch {
@@ -207,7 +297,28 @@ export default function HandlerDashboard() {
         }
       } catch (apiErr) {
         if (!softAuthFailure) {
-          console.warn('[HandlerDashboard] /api/me.api.php lookup failed, using cached handler profile if available', apiErr);
+          console.warn('[HandlerDashboard] dashboard bootstrap failed, using cached handler profile if available', apiErr);
+        }
+        try {
+          if (token) {
+            const resp = await fetch('/api/me.api.php', {
+              method: 'GET',
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+            const payload = await resp.json().catch(() => null);
+            if (resp.ok && payload?.success && payload?.data?.handler) {
+              handler = payload.data.handler;
+              try {
+                sessionStorage.setItem('handler_profile', JSON.stringify(normalizeHandlerRecord(handler)));
+              } catch {
+                // Ignore session storage write errors.
+              }
+            }
+          }
+        } catch (meErr) {
+          console.warn('[HandlerDashboard] /api/me.api.php fallback failed', meErr);
         }
       }
 
@@ -232,11 +343,21 @@ export default function HandlerDashboard() {
       }
 
       const roles = parseRoles(handler.roles);
-      const role = roles.some((r) => ['ADMIN', 'SUPER_ADMIN'].includes(r.toUpperCase())) ? 'admin' : 'handler';
+      const role = bootstrapData?.isAdmin || cachedBootstrap?.isAdmin || roles.some((r) => ['ADMIN', 'SUPER_ADMIN'].includes(r.toUpperCase()))
+        ? 'admin'
+        : 'handler';
       setCurrentHandlerId(handler.id);
       setCurrentHandlerName(String(handler?.name || user?.name || user?.email || '').trim());
       setCurrentHandlerRole(role);
       console.log('[HandlerDashboard] Handler loaded:', { id: handler.id, role, roles });
+
+      if (bootstrapData) {
+        applyDashboardData(bootstrapData.tickets || [], bootstrapData.workflows || [], bootstrapData.severities || [], role);
+        setHasDashboardBootstrap(true);
+        setIsDataLoading(false);
+      } else {
+        setHasDashboardBootstrap(Boolean(cachedBootstrap));
+      }
     } catch (err) {
       console.error('Error loading handler profile:', err);
       setIsDataLoading(false);
@@ -251,62 +372,49 @@ export default function HandlerDashboard() {
     }
 
     try {
-      const isAdmin = currentHandlerRole === 'admin';
-      const ticketsData = await ticketService?.getAllTickets(isAdmin ? {} : { handlerId: currentHandlerId });
+      const bootstrapData = await ticketService.getHandlerDashboardBootstrap();
+      const handler = bootstrapData?.handler;
+      const role = bootstrapData?.isAdmin ? 'admin' : 'handler';
 
-      const allWorkflows = await workflowService.getWorkflows(false).catch((error) => {
-        console.warn('[HandlerDashboard] Could not load workflows from API:', error);
-        return [];
-      });
-
-      let workflowsData = Array.isArray(allWorkflows) ? [...allWorkflows] : [];
-      if (isAdmin) {
-        workflowsData = workflowsData.filter((workflow) => workflow?.active !== false);
-      } else {
-        const workflowIds = await workflowService.getHandlerWorkflowIds(currentHandlerId).catch((error) => {
-          console.warn('[HandlerDashboard] Could not load handler workflow assignments, deriving from tickets:', error);
-          return [];
-        });
-        if (workflowIds.length > 0) {
-          const allowedIds = new Set(workflowIds.map((id) => safeTrim(id)).filter(Boolean));
-          workflowsData = workflowsData.filter((workflow) => allowedIds.has(safeTrim(workflow?.id)));
-        } else {
-          const workflowCodes = Array.from(
-            new Set((ticketsData || []).map((t) => safeTrim(t?.workflowType)).filter(Boolean))
-          );
-          if (workflowCodes.length > 0) {
-            const allowedCodes = new Set(workflowCodes.map((code) => safeTrim(code)).filter(Boolean));
-            workflowsData = workflowsData.filter((workflow) => allowedCodes.has(safeTrim(workflow?.code)));
-          } else {
-            workflowsData = [];
-          }
+      if (handler?.id) {
+        setCurrentHandlerId(handler.id);
+        setCurrentHandlerName(String(handler?.name || currentHandlerName || user?.name || user?.email || '').trim());
+        setCurrentHandlerRole(role);
+        try {
+          sessionStorage.setItem('handler_profile', JSON.stringify(normalizeHandlerRecord(handler)));
+          sessionStorage.setItem('user_role', role);
+        } catch {
+          // Ignore session storage write errors.
         }
       }
 
-      // Attach DB-driven statuses to workflows (from workflow_statuses table)
-      const workflowsWithStatuses = await Promise.all(
-        (workflowsData || []).map(async (wf) => {
-          const statuses = await workflowService
-            .getWorkflowStatuses(wf.id)
-            .catch(() => []);
-          return { ...wf, statuses };
-        })
-      );
-
-      const severitiesData = await ticketService?.getSeverities();
-
-      setTickets(ticketsData);
-      setWorkflows(workflowsWithStatuses);
-      setSeverities(severitiesData);
-      setLastUpdated(new Date());
-
-      console.log('[HandlerDashboard] Loaded data:', {
-        tickets: ticketsData?.length || 0,
-        workflows: workflowsWithStatuses?.length || 0,
-        severities: severitiesData?.length || 0
-      });
+      applyDashboardData(bootstrapData?.tickets || [], bootstrapData?.workflows || [], bootstrapData?.severities || [], role);
+      writeCachedDashboardBootstrap(bootstrapData, user);
+      setHasDashboardBootstrap(true);
     } catch (err) {
-      console.error('Error loading data:', err);
+      console.error('Error loading dashboard bootstrap, falling back to legacy dashboard calls:', err);
+      try {
+        const isAdmin = currentHandlerRole === 'admin';
+        const [ticketsData, catalogData] = await Promise.all([
+          ticketService.getAllTickets({
+            ...(isAdmin ? {} : { handlerId: currentHandlerId }),
+            summary: true,
+          }),
+          workflowService.getHandlerDashboardCatalog(false).catch((error) => {
+            console.warn('[HandlerDashboard] Could not load dashboard catalog from API:', error);
+            return { workflows: [], severities: [] };
+          }),
+        ]);
+        applyDashboardData(
+          ticketsData || [],
+          Array.isArray(catalogData?.workflows) ? catalogData.workflows : [],
+          Array.isArray(catalogData?.severities) ? catalogData.severities : [],
+          currentHandlerRole
+        );
+        setHasDashboardBootstrap(false);
+      } catch (fallbackErr) {
+        console.error('Error loading fallback dashboard data:', fallbackErr);
+      }
     } finally {
       if (showLoadingSkeleton) {
         setIsDataLoading(false);
@@ -335,7 +443,17 @@ export default function HandlerDashboard() {
     });
 
     try {
-      await ticketService?.assignHandler(ticketId, handlerId, null, { currentHandlerId });
+      await ticketService?.assignHandler(ticketId, handlerId, null, {
+        currentHandlerId,
+        currentHandlerName,
+        knownHandlers: [
+          {
+            id: currentHandlerId,
+            name: currentHandlerName,
+            active: true,
+          },
+        ],
+      });
       await loadData({ showLoadingSkeleton: false });
     } catch (err) {
       console.error('Error assigning handler:', err);

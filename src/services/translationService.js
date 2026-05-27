@@ -2,6 +2,7 @@
  * Translation Service
  * Handles all translation management API calls
  */
+import { getSharedTokenProvider } from '../lib/serviceTokenProvider';
 
 const API_BASE = '/api/translations.api.php';
 let tokenProvider = null;
@@ -11,9 +12,10 @@ const setTokenProvider = (provider) => {
 };
 
 const getAuthHeaders = async () => {
-  if (!tokenProvider) return {};
+  const provider = tokenProvider || getSharedTokenProvider();
+  if (!provider) return {};
   try {
-    const token = await tokenProvider();
+    const token = await provider();
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};

@@ -1,6 +1,41 @@
 import React from 'react';
 import { useSettings } from '../contexts/SettingsContext';
-import Icon from './AppIcon';
+
+const AlertTriangleIcon = ({ className = '', size = 24 }) => (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    width={size}
+    height={size}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+    <path d="M12 9v4" />
+    <path d="M12 17h.01" />
+  </svg>
+);
+
+const ClockIcon = ({ size = 16 }) => (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    width={size}
+    height={size}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 6v6l4 2" />
+  </svg>
+);
 
 /**
  * Maintenance Mode Guard
@@ -39,7 +74,7 @@ const MaintenanceModeGuard = ({ children }) => {
         <div className="max-w-2xl w-full">
           <div className="bg-card border-2 border-amber-300 rounded-2xl p-8 text-center shadow-xl">
             <div className="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-6">
-              <Icon name="AlertTriangle" size={40} className="text-amber-700" />
+              <AlertTriangleIcon size={40} className="text-amber-700" />
             </div>
 
             <h1 className="text-3xl font-bold text-foreground mb-4">
@@ -78,7 +113,7 @@ const MaintenanceModeGuard = ({ children }) => {
             </div>
 
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-muted text-sm text-muted-foreground mt-6">
-              <Icon name="Clock" size={16} />
+              <ClockIcon size={16} />
               <span>Probeer het later opnieuw</span>
             </div>
 

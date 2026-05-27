@@ -1,4 +1,6 @@
 // services/settingsService.js
+import { getSharedTokenProvider } from '../lib/serviceTokenProvider';
+
 let tokenProvider = null;
 
 const API_URL = '/api/settings.api.php';
@@ -11,9 +13,10 @@ const setTokenProvider = (provider) => {
 };
 
 const getAuthHeaders = async () => {
-  if (!tokenProvider) return {};
+  const provider = tokenProvider || getSharedTokenProvider();
+  if (!provider) return {};
   try {
-    const token = await tokenProvider();
+    const token = await provider();
     if (!token) return {};
     return { Authorization: `Bearer ${token}` };
   } catch {

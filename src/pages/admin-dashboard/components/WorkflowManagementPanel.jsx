@@ -138,12 +138,12 @@ const WorkflowManagementPanel = ({ workflows: initialWorkflows, users, onRefresh
   }, [loadWorkflowRuntimeSettings]);
 
   const loadWorkflows = useCallback(
-    async ({ keepSelection = true } = {}) => {
+    async ({ keepSelection = true, force = false } = {}) => {
       setError('');
       setIsLoading(true);
 
       try {
-        const data = await workflowService.getWorkflowsWithStats();
+        const data = await workflowService.getWorkflowsWithStats({ force });
         const list = (data || []).slice();
         setWorkflows(list);
 

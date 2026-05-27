@@ -3,21 +3,6 @@ import { Auth0Provider, useAuth0 } from "@auth0/auth0-react";
 import { SettingsProvider } from "./contexts/SettingsContext";
 import Routes from "./Routes";
 import { runMigrations } from "./services/migrationService";
-import { workflowService } from "./services/workflowService";
-import { settingsService } from "./services/SettingsService";
-import { translationService } from "./services/translationService";
-import { ticketService } from "./services/ticketService";
-import { permissionService } from "./services/permissionService";
-import { auditLogService } from "./services/auditLogService";
-import { locationService } from "./services/locationService";
-import { accessRequestService } from "./services/accessRequestService";
-import { analyticsApiService } from "./services/analyticsApiService";
-import { guestAccessService } from "./services/guestAccessService";
-import { reportService } from "./services/reportService";
-import { handlerProfileService } from "./services/handlerProfileService";
-import { emailNotificationService } from "./services/emailNotificationService";
-import { communicationService } from "./services/communicationService";
-import { notificationService } from "./services/notificationService";
 import {
   getApiAccessToken,
   getApiAudience,
@@ -25,6 +10,7 @@ import {
   getApiScope,
   getOptionalApiAccessToken,
 } from "./lib/auth0ApiToken";
+import { setSharedTokenProvider } from "./lib/serviceTokenProvider";
 import "./styles/tailwind.css";
 import "./styles/index.css";
 
@@ -77,21 +63,7 @@ function ServiceTokenBridge() {
       return token;
     };
 
-    workflowService.setTokenProvider(provider);
-    settingsService.setTokenProvider(provider);
-    translationService.setTokenProvider(provider);
-    ticketService.setTokenProvider(provider);
-    permissionService.setTokenProvider(provider);
-    auditLogService.setTokenProvider(provider);
-    locationService.setTokenProvider(provider);
-    accessRequestService.setTokenProvider(provider);
-    analyticsApiService.setTokenProvider(provider);
-    guestAccessService.setTokenProvider(provider);
-    reportService.setTokenProvider(provider);
-    handlerProfileService.setTokenProvider(provider);
-    emailNotificationService.setTokenProvider(provider);
-    communicationService.setTokenProvider(provider);
-    notificationService.setTokenProvider(provider);
+    setSharedTokenProvider(provider);
 
     if (audienceIssue) {
       const message = audienceIssue === 'tenant'

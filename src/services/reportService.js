@@ -1,10 +1,13 @@
+import { getSharedTokenProvider } from '../lib/serviceTokenProvider';
+
 const REPORT_API_URL = '/api/report.api.php';
 
 let tokenProvider = null;
 
 const getAuthHeaders = async () => {
-  if (!tokenProvider) throw new Error('Authorization token required');
-  const token = await tokenProvider();
+  const provider = tokenProvider || getSharedTokenProvider();
+  if (!provider) throw new Error('Authorization token required');
+  const token = await provider();
   if (!token) throw new Error('Authorization token required');
   return { Authorization: `Bearer ${token}` };
 };

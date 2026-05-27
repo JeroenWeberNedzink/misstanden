@@ -1,13 +1,16 @@
+import { getSharedTokenProvider } from '../lib/serviceTokenProvider';
+
 const GUEST_ACCESS_API_URL = '/api/guest-access.api.php';
 
 let tokenProvider = null;
 
 const getAuthHeaders = async (requireAuth = false) => {
-  if (!tokenProvider) {
+  const provider = tokenProvider || getSharedTokenProvider();
+  if (!provider) {
     if (requireAuth) throw new Error('Authorization token required');
     return {};
   }
-  const token = await tokenProvider();
+  const token = await provider();
   if (!token && requireAuth) throw new Error('Authorization token required');
   return token ? { Authorization: `Bearer ${token}` } : {};
 };

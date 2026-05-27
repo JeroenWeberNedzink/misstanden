@@ -64,12 +64,12 @@ export default function WorkflowConfigurationAdmin() {
   );
 
   const loadWorkflows = useCallback(
-    async ({ keepSelection = true } = {}) => {
+    async ({ keepSelection = true, force = false } = {}) => {
       setError('');
       setIsLoading(true);
 
       try {
-        const data = await workflowService.getWorkflowsWithStats();
+        const data = await workflowService.getWorkflowsWithStats({ force });
         const list = (data || []).slice();
         setWorkflows(list);
 
@@ -362,7 +362,7 @@ export default function WorkflowConfigurationAdmin() {
                   iconName="RefreshCcw"
                   iconPosition="left"
                   onClick={() => {
-                    loadWorkflows({ keepSelection: true });
+                    loadWorkflows({ keepSelection: true, force: true });
                     loadWorkflowRuntimeSettings();
                   }}
                   disabled={isLoading || isBusy}

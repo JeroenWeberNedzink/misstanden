@@ -1,5 +1,21 @@
 import React from "react";
-import Icon from "./AppIcon";
+
+const ArrowLeftIcon = () => (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    width="18"
+    height="18"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M19 12H5" />
+    <path d="m12 19-7-7 7-7" />
+  </svg>
+);
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -41,7 +57,7 @@ class ErrorBoundary extends React.Component {
                 }}
                 className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded flex items-center gap-2 transition-colors duration-200 shadow-sm"
               >
-                <Icon name="ArrowLeft" size={18} color="#fff" />
+                <ArrowLeftIcon />
                 Back
               </button>
             </div>

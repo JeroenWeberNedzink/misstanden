@@ -1,4 +1,5 @@
 import { normalizeHandlerRecord } from './utils/handlerNormalization';
+import { getSharedTokenProvider } from '../lib/serviceTokenProvider';
 
 const PROFILE_API_URL = '/api/profile.api.php';
 let profileTokenProvider = null;
@@ -37,9 +38,10 @@ const setTokenProvider = (provider) => {
 };
 
 const getAuthHeaders = async () => {
-  if (!profileTokenProvider) return {};
+  const provider = profileTokenProvider || getSharedTokenProvider();
+  if (!provider) return {};
   try {
-    const token = await profileTokenProvider();
+    const token = await provider();
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};

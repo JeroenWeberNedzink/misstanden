@@ -64,6 +64,10 @@ export default function AnalyticsDashboardPage() {
   }, [loadMetrics]);
 
   const summary = metrics?.summary || {};
+  const locationHeatmapData = useMemo(
+    () => (Array.isArray(metrics?.location_heatmap) ? metrics.location_heatmap : []),
+    [metrics?.location_heatmap]
+  );
 
   const summaryCards = useMemo(
     () => [
@@ -176,10 +180,10 @@ export default function AnalyticsDashboardPage() {
               </h2>
               <div className="h-[320px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={metrics?.location_heatmap || []} layout="vertical" margin={{ left: 30, right: 20 }}>
+                  <BarChart data={locationHeatmapData} layout="vertical" margin={{ left: 30, right: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis type="number" allowDecimals={false} />
-                    <YAxis type="category" dataKey="label" width={180} />
+                    <YAxis type="category" dataKey="label" width={220} />
                     <Tooltip />
                     <Bar dataKey="value" fill="#ff7a59" />
                   </BarChart>

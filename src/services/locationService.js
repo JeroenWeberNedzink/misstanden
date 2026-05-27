@@ -1,4 +1,5 @@
 // services/locationService.js
+import { getSharedTokenProvider } from '../lib/serviceTokenProvider';
 
 const WORKFLOW_API_URL = '/api/workflows.api.php';
 const CATALOG_API_URL = '/api/catalog.api.php';
@@ -9,9 +10,10 @@ const setTokenProvider = (provider) => {
 };
 
 const getAuthHeaders = async () => {
-  if (!locationTokenProvider) return {};
+  const provider = locationTokenProvider || getSharedTokenProvider();
+  if (!provider) return {};
   try {
-    const token = await locationTokenProvider();
+    const token = await provider();
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};
@@ -31,6 +33,8 @@ const getAdminAuthHeadersOrNull = async () => {
   const authHeaders = await getAuthHeadersWithRetry(true);
   return authHeaders.Authorization ? authHeaders : null;
 };
+
+const hasTokenProvider = () => Boolean(locationTokenProvider || getSharedTokenProvider());
 
 const apiGet = async (action, params = {}, { requireAdmin = true, authHeaders = null } = {}) => {
   const headers = authHeaders || await getAuthHeadersWithRetry(requireAdmin);
@@ -91,7 +95,7 @@ export const locationService = {
    * Returns: Array of location objects
    */
   async getLocations({ activeOnly = true } = {}) {
-    const adminAuthHeaders = locationTokenProvider ? await getAdminAuthHeadersOrNull() : null;
+    const adminAuthHeaders = hasTokenProvider() ? await getAdminAuthHeadersOrNull() : null;
     if (adminAuthHeaders) {
       try {
         const data = await apiGet(
@@ -116,7 +120,7 @@ export const locationService = {
    * Get a single location by ID
    */
   async getLocationById(id) {
-    const adminAuthHeaders = locationTokenProvider ? await getAdminAuthHeadersOrNull() : null;
+    const adminAuthHeaders = hasTokenProvider() ? await getAdminAuthHeadersOrNull() : null;
     if (adminAuthHeaders) {
       const data = await apiGet('location_by_id', { id }, { requireAdmin: true, authHeaders: adminAuthHeaders });
       return data?.row || null;
@@ -137,7 +141,7 @@ export const locationService = {
    * Get a location by country code
    */
   async getLocationByCode(countryCode) {
-    const adminAuthHeaders = locationTokenProvider ? await getAdminAuthHeadersOrNull() : null;
+    const adminAuthHeaders = hasTokenProvider() ? await getAdminAuthHeadersOrNull() : null;
     if (adminAuthHeaders) {
       const data = await apiGet(
         'location_by_code',

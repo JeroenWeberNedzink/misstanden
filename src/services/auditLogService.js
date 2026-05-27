@@ -1,4 +1,6 @@
 import { settingsService } from './SettingsService';
+import { getSharedTokenProvider } from '../lib/serviceTokenProvider';
+
 const WORKFLOW_API_URL = '/api/workflows.api.php';
 let auditLogTokenProvider = null;
 let cachedRetentionDays = null;
@@ -17,9 +19,10 @@ const setTokenProvider = (provider) => {
 };
 
 const getAuthHeaders = async () => {
-  if (!auditLogTokenProvider) return {};
+  const provider = auditLogTokenProvider || getSharedTokenProvider();
+  if (!provider) return {};
   try {
-    const token = await auditLogTokenProvider();
+    const token = await provider();
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};

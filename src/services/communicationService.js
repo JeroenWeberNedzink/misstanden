@@ -1,6 +1,8 @@
 import { format } from 'date-fns';
 import { normalizeHandlerRecords } from './utils/handlerNormalization';
 import { ticketService } from './ticketService';
+import { getSharedTokenProvider } from '../lib/serviceTokenProvider';
+
 const WORKFLOW_API_URL = '/api/workflows.api.php';
 let communicationTokenProvider = null;
 
@@ -23,9 +25,10 @@ const setTokenProvider = (provider) => {
 };
 
 const getAuthHeaders = async () => {
-  if (!communicationTokenProvider) return {};
+  const provider = communicationTokenProvider || getSharedTokenProvider();
+  if (!provider) return {};
   try {
-    const token = await communicationTokenProvider();
+    const token = await provider();
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};

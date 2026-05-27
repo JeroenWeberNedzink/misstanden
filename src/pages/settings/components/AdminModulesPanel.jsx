@@ -139,7 +139,7 @@ const AdminModulesPanel = () => {
     (options = {}) =>
       runDatasetRequest(
         'workflows',
-        () => workflowService.getWorkflowsWithStats(),
+        () => workflowService.getWorkflowsWithStats({ force: options.force === true }),
         (value) => {
           const items = Array.isArray(value) ? value : [];
           setWorkflows(items);

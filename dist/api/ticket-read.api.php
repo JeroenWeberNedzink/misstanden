@@ -64,6 +64,40 @@ function ticket_read_ticket(array $row): array {
     return $ticket;
 }
 
+function ticket_read_ticket_summary(array $row): array {
+    $ticket = $row;
+    foreach ([
+        'description' => 'description_encrypted',
+        'location' => 'location_encrypted',
+    ] as $plainField => $encryptedField) {
+        $ticket = ticket_crypto_decrypt_field($ticket, $plainField, $encryptedField);
+    }
+
+    unset(
+        $ticket['access_code'],
+        $ticket['reporter_email'],
+        $ticket['reporter_email_encrypted'],
+        $ticket['reporter_email_hash'],
+        $ticket['reporter_name'],
+        $ticket['reporter_name_encrypted'],
+        $ticket['reporter_phone'],
+        $ticket['reporter_phone_encrypted']
+    );
+
+    $ticket['metadata'] = [];
+    $ticket['email_notify'] = isset($row['email_notify']) ? (bool)$row['email_notify'] : false;
+    $ticket['status_email_notify'] = isset($row['status_email_notify']) ? (bool)$row['status_email_notify'] : true;
+    $ticket['is_anonymous'] = isset($row['is_anonymous']) ? (bool)$row['is_anonymous'] : false;
+    $ticket['handlers'] = ticket_read_handler($row);
+    unset(
+        $ticket['handler_name'],
+        $ticket['handler_email'],
+        $ticket['handler_roles'],
+        $ticket['handler_active']
+    );
+    return $ticket;
+}
+
 function ticket_read_ticket_handlers_from_rows(array $rows): array {
     $map = [];
     foreach ($rows as $row) {
@@ -134,6 +168,7 @@ try {
     if ($action === 'list') {
         $params = [];
         $where = ['1=1'];
+        $summaryMode = in_array(strtolower(trim((string)($_GET['summary'] ?? ''))), ['1', 'true', 'yes', 'on'], true);
 
         $statusCode = trim((string)($_GET['status_code'] ?? ''));
         $severityCode = trim((string)($_GET['severity_code'] ?? ''));
@@ -182,9 +217,13 @@ try {
             $params['filter_handler_id'] = $filterHandlerId;
         }
 
-        $rows = sqlserver_query(
-            'SELECT
-                t.*,
+        // Use t.* in summary mode too so older databases without additive encrypted
+        // columns do not fail at SQL parse time. The summary normalizer trims the
+        // response and only decrypts fields needed by the dashboard list.
+        $ticketSelect = 't.*';
+
+        $ticketSql = 'SELECT
+                ' . $ticketSelect . ',
                 h.id AS handler_id,
                 h.name AS handler_name,
                 h.email AS handler_email,
@@ -193,13 +232,32 @@ try {
              FROM dbo.tickets t
              LEFT JOIN dbo.handlers h ON h.id = t.handler_id
              WHERE ' . implode(' AND ', $where) . '
-             ORDER BY t.submitted_at DESC',
-            $params
-        );
+             ORDER BY t.submitted_at DESC';
 
-        $tickets = array_map('ticket_read_ticket', $rows);
-        $ticketIds = array_values(array_filter(array_map(static fn($row) => (string)($row['id'] ?? ''), $tickets)));
-        $ticketHandlersMap = ticket_read_ticket_handlers($ticketIds);
+        $ticketHandlersSql = 'SELECT
+                th.*,
+                h.id AS handler_id_ref,
+                h.name AS handler_name,
+                h.email AS handler_email,
+                h.roles AS handler_roles,
+                h.active AS handler_active
+             FROM dbo.ticket_handlers th
+             LEFT JOIN dbo.handlers h ON h.id = th.handler_id
+             WHERE th.ticket_id IN (
+                SELECT t.id
+                FROM dbo.tickets t
+                WHERE ' . implode(' AND ', $where) . '
+             )
+             ORDER BY th.ticket_id ASC, th.assigned_at ASC, th.created_at ASC';
+
+        $results = sqlserver_run_commands([
+            sqlserver_command('query', $ticketSql, $params),
+            sqlserver_command('query', $ticketHandlersSql, $params),
+        ], false);
+
+        $rows = sqlserver_result_rows($results, 0);
+        $tickets = array_map($summaryMode ? 'ticket_read_ticket_summary' : 'ticket_read_ticket', $rows);
+        $ticketHandlersMap = ticket_read_ticket_handlers_from_rows(sqlserver_result_rows($results, 1));
         foreach ($tickets as &$ticket) {
             $ticket['ticket_handlers'] = $ticketHandlersMap[(string)($ticket['id'] ?? '')] ?? [];
         }

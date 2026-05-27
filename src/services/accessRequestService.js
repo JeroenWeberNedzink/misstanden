@@ -1,3 +1,5 @@
+import { getSharedTokenProvider } from '../lib/serviceTokenProvider';
+
 const API_URL = '/api/access-requests.api.php';
 
 let tokenProvider = null;
@@ -20,9 +22,10 @@ const setTokenProvider = (provider) => {
 };
 
 const getAuthHeaders = async () => {
-  if (!tokenProvider) return {};
+  const provider = tokenProvider || getSharedTokenProvider();
+  if (!provider) return {};
   try {
-    const token = await tokenProvider();
+    const token = await provider();
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};

@@ -7,6 +7,8 @@
 import * as emailService from './emailService';
 import { handlerProfileService } from './handlerProfileService';
 import { ticketService } from './ticketService';
+import { getSharedTokenProvider } from '../lib/serviceTokenProvider';
+
 const WORKFLOW_API_URL = '/api/workflows.api.php';
 let notificationTokenProvider = null;
 
@@ -38,9 +40,10 @@ const setTokenProvider = (provider) => {
 };
 
 const getAuthHeaders = async () => {
-  if (!notificationTokenProvider) return {};
+  const provider = notificationTokenProvider || getSharedTokenProvider();
+  if (!provider) return {};
   try {
-    const token = await notificationTokenProvider();
+    const token = await provider();
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};

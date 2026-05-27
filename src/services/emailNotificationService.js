@@ -1,3 +1,5 @@
+import { getSharedTokenProvider } from '../lib/serviceTokenProvider';
+
 const DEFAULT_EMAIL_EVENT_TYPES = [
   {
     code: 'TICKET_CREATED',
@@ -185,9 +187,10 @@ const setTokenProvider = (provider) => {
 };
 
 const getAuthHeaders = async () => {
-  if (!emailSettingsTokenProvider) return {};
+  const provider = emailSettingsTokenProvider || getSharedTokenProvider();
+  if (!provider) return {};
   try {
-    const token = await emailSettingsTokenProvider();
+    const token = await provider();
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};

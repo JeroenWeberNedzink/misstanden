@@ -1,4 +1,5 @@
 // src/services/workflowService.js
+import { getSharedTokenProvider } from '../lib/serviceTokenProvider';
 
 // -----------------------------
 // Helpers
@@ -49,9 +50,10 @@ const setTokenProvider = (provider) => {
 };
 
 const getAuthHeaders = async (options = {}) => {
-  if (!workflowTokenProvider) return {};
+  const provider = workflowTokenProvider || getSharedTokenProvider();
+  if (!provider) return {};
   try {
-    const token = await workflowTokenProvider(options);
+    const token = await provider(options);
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};
@@ -162,8 +164,34 @@ const catalogGet = async (action, params = {}) => {
 // -----------------------------
 const cache = {
   statusesByWorkflowId: new Map(), // workflowId -> { statuses, ts }
+  workflowsWithStats: { rows: null, ts: 0 },
+  activeHandlers: { rows: null, ts: 0 },
 };
 const TTL_MS = 30_000;
+const WORKFLOW_LIST_TTL_MS = 60_000;
+const HANDLER_LIST_TTL_MS = 120_000;
+const inflight = {
+  workflowsWithStats: null,
+  activeHandlers: null,
+};
+
+const isFresh = (entry, ttl) => Array.isArray(entry?.rows) && Date.now() - Number(entry?.ts || 0) < ttl;
+
+function rememberWorkflowsWithStats(rows = []) {
+  cache.workflowsWithStats = { rows, ts: Date.now() };
+}
+
+function invalidateWorkflowListCache() {
+  cache.workflowsWithStats = { rows: null, ts: 0 };
+}
+
+function rememberActiveHandlers(rows = []) {
+  cache.activeHandlers = { rows, ts: Date.now() };
+}
+
+function invalidateHandlerListCache() {
+  cache.activeHandlers = { rows: null, ts: 0 };
+}
 
 function invalidateWorkflowStatusesCache(workflowId) {
   if (!workflowId) return;
@@ -180,31 +208,45 @@ export const workflowService = {
    * Returns workflows with status count, ticket count, and handler count (for UI badges).
    * Admin read via backend API.
    */
-  async getWorkflowsWithStats() {
-    const data = await apiGet('list_with_stats', {}, { requireAdmin: true });
+  async getWorkflowsWithStats(options = {}) {
+    const force = options?.force === true;
+    if (!force && isFresh(cache.workflowsWithStats, WORKFLOW_LIST_TTL_MS)) {
+      return cache.workflowsWithStats.rows;
+    }
+    if (!force && inflight.workflowsWithStats) return inflight.workflowsWithStats;
 
-    const rows = (data?.rows || []).map((w) => {
-      const statusCount = w?.workflow_statuses?.[0]?.count ?? 0;
-      const ticketCount = w?.tickets?.[0]?.count ?? 0;
-      const handlerCount = w?.handler_workflows?.[0]?.count ?? 0;
+    inflight.workflowsWithStats = (async () => {
+      const data = await apiGet('list_with_stats', {}, { requireAdmin: true });
 
-      const clean = { ...w };
-      delete clean.workflow_statuses;
-      delete clean.tickets;
-      delete clean.handler_workflows;
+      const rows = (data?.rows || []).map((w) => {
+        const statusCount = w?.workflow_statuses?.[0]?.count ?? 0;
+        const ticketCount = w?.tickets?.[0]?.count ?? 0;
+        const handlerCount = w?.handler_workflows?.[0]?.count ?? 0;
 
-      return {
-        ...clean,
-        status_count: statusCount,
-        statusCount,
-        ticket_count: ticketCount,
-        ticketCount,
-        handler_count: handlerCount,
-        handlerCount
-      };
+        const clean = { ...w };
+        delete clean.workflow_statuses;
+        delete clean.tickets;
+        delete clean.handler_workflows;
+
+        return {
+          ...clean,
+          status_count: statusCount,
+          statusCount,
+          ticket_count: ticketCount,
+          ticketCount,
+          handler_count: handlerCount,
+          handlerCount,
+        };
+      });
+
+      const normalized = toCamelCase(rows);
+      rememberWorkflowsWithStats(normalized);
+      return normalized;
+    })().finally(() => {
+      inflight.workflowsWithStats = null;
     });
 
-    return toCamelCase(rows);
+    return inflight.workflowsWithStats;
   },
 
   async getWorkflows(includeInactive = true) {
@@ -212,6 +254,26 @@ export const workflowService = {
       include_inactive: includeInactive ? '1' : '0',
     });
     return toCamelCase(data?.rows || []);
+  },
+
+  async getHandlerDashboardCatalog(includeInactive = false) {
+    const data = await catalogGet('handler_dashboard_catalog', {
+      include_inactive: includeInactive ? '1' : '0',
+    });
+    const workflows = toCamelCase(data?.workflows || []);
+    const severities = toCamelCase(data?.severities || []);
+
+    workflows.forEach((workflow) => {
+      const workflowId = safeTrim(workflow?.id);
+      if (workflowId && Array.isArray(workflow?.statuses)) {
+        cache.statusesByWorkflowId.set(workflowId, {
+          statuses: workflow.statuses,
+          ts: Date.now(),
+        });
+      }
+    });
+
+    return { workflows, severities };
   },
 
   async getWorkflowById(id) {
@@ -236,6 +298,7 @@ export const workflowService = {
 
   async createWorkflow(payload) {
     const data = await apiPost('create_workflow', { payload: toSnakeCase(payload) });
+    invalidateWorkflowListCache();
     return toCamelCase(data?.row);
   },
 
@@ -243,6 +306,7 @@ export const workflowService = {
     if (!id) throw new Error('workflow id is required');
 
     const data = await apiPost('update_workflow', { id, patch: toSnakeCase(patch) });
+    invalidateWorkflowListCache();
     return toCamelCase(data?.row);
   },
 
@@ -250,12 +314,14 @@ export const workflowService = {
     if (!id) throw new Error('workflow id is required');
 
     const data = await apiPost('toggle_workflow_status', { id, active: !!active });
+    invalidateWorkflowListCache();
     return toCamelCase(data?.row);
   },
 
   async deleteWorkflowForce(id) {
     if (!id) throw new Error('workflow id is required');
     await apiPost('delete_workflow_force', { id });
+    invalidateWorkflowListCache();
     invalidateWorkflowStatusesCache(id);
     return true;
   },
@@ -274,6 +340,48 @@ export const workflowService = {
     const statuses = toCamelCase(data?.rows || []);
     cache.statusesByWorkflowId.set(id, { statuses, ts: now });
     return statuses;
+  },
+
+  async getWorkflowStatusesForWorkflows(workflowIds = [], { useCache = true } = {}) {
+    const ids = Array.from(
+      new Set((Array.isArray(workflowIds) ? workflowIds : []).map((id) => safeTrim(id)).filter(Boolean))
+    );
+    if (ids.length === 0) return new Map();
+
+    const now = Date.now();
+    const result = new Map();
+    const missingIds = [];
+
+    ids.forEach((id) => {
+      const cached = cache.statusesByWorkflowId.get(id);
+      if (useCache && cached && now - cached.ts < TTL_MS) {
+        result.set(id, cached.statuses);
+        return;
+      }
+      missingIds.push(id);
+    });
+
+    if (missingIds.length > 0) {
+      const data = await catalogGet('workflow_statuses_bulk', {
+        workflow_ids: missingIds.join(','),
+      });
+      const rows = toCamelCase(data?.rows || []);
+      const grouped = new Map(missingIds.map((id) => [id, []]));
+
+      rows.forEach((row) => {
+        const workflowId = safeTrim(row?.workflowId);
+        if (!workflowId) return;
+        if (!grouped.has(workflowId)) grouped.set(workflowId, []);
+        grouped.get(workflowId).push(row);
+      });
+
+      grouped.forEach((statuses, workflowId) => {
+        cache.statusesByWorkflowId.set(workflowId, { statuses, ts: Date.now() });
+        result.set(workflowId, statuses);
+      });
+    }
+
+    return result;
   },
 
   async getWorkflowStatusesAdmin(workflowId) {
@@ -314,6 +422,7 @@ export const workflowService = {
 
     const persisted = toCamelCase(data?.rows || []);
     cache.statusesByWorkflowId.set(id, { statuses: persisted, ts: Date.now() });
+    invalidateWorkflowListCache();
     return persisted;
   },
 
@@ -342,6 +451,7 @@ export const workflowService = {
       status: payload,
     });
 
+    invalidateWorkflowListCache();
     invalidateWorkflowStatusesCache(id);
     return toCamelCase(data?.row);
   },
@@ -370,6 +480,7 @@ export const workflowService = {
     const row = toCamelCase(data?.row);
     if (row?.workflowId) invalidateWorkflowStatusesCache(row.workflowId);
     else cache.statusesByWorkflowId.clear();
+    invalidateWorkflowListCache();
     return row;
   },
 
@@ -381,6 +492,7 @@ export const workflowService = {
     const wfId = data?.row?.workflow_id;
     if (wfId) invalidateWorkflowStatusesCache(wfId);
     else cache.statusesByWorkflowId.clear();
+    invalidateWorkflowListCache();
     return true;
   },
 
@@ -407,6 +519,7 @@ export const workflowService = {
       workflow_id: id,
       items: updates,
     });
+    invalidateWorkflowListCache();
     invalidateWorkflowStatusesCache(id);
     return true;
   },
@@ -414,6 +527,7 @@ export const workflowService = {
   async duplicateWorkflow(id) {
     if (!id) throw new Error('workflow id is required');
     const data = await apiPost('duplicate_workflow', { id });
+    invalidateWorkflowListCache();
     return toCamelCase(data?.row);
   },
 
@@ -431,6 +545,7 @@ export const workflowService = {
     const hId = safeTrim(handlerId);
     if (!wfId || !hId) throw new Error('workflowId and handlerId are required');
     const data = await apiPost('add_routing_rule', { workflow_id: wfId, handler_id: hId });
+    invalidateWorkflowListCache();
     return toCamelCase(data?.row);
   },
 
@@ -438,12 +553,35 @@ export const workflowService = {
     const id = safeTrim(ruleId);
     if (!id) throw new Error('ruleId is required');
     await apiPost('remove_routing_rule', { rule_id: id });
+    invalidateWorkflowListCache();
     return true;
   },
 
-  async getActiveHandlers() {
+  async getActiveHandlers(options = {}) {
+    const force = options?.force === true;
+    if (!force && isFresh(cache.activeHandlers, HANDLER_LIST_TTL_MS)) {
+      return cache.activeHandlers.rows;
+    }
+    if (!force && inflight.activeHandlers) return inflight.activeHandlers;
+
+    inflight.activeHandlers = (async () => {
+      const data = await apiGet('active_handlers', {}, { requireAdmin: true });
+      const rows = toCamelCase(data?.rows || []);
+      rememberActiveHandlers(rows);
+      return rows;
+    })().finally(() => {
+      inflight.activeHandlers = null;
+    });
+
+    return inflight.activeHandlers;
+  },
+
+  async refreshActiveHandlers() {
+    invalidateHandlerListCache();
     const data = await apiGet('active_handlers', {}, { requireAdmin: true });
-    return toCamelCase(data?.rows || []);
+    const rows = toCamelCase(data?.rows || []);
+    rememberActiveHandlers(rows);
+    return rows;
   },
   async getHandlerWorkflowIds(handlerId) {
     const id = safeTrim(handlerId);
@@ -473,19 +611,23 @@ export const workflowService = {
       handler_id: id,
       workflow_ids: normalizedIds,
     });
+    invalidateWorkflowListCache();
     return Array.isArray(data?.workflow_ids) ? data.workflow_ids : normalizedIds;
   },
   async clearHandlerWorkflows(handlerId) {
     const id = safeTrim(handlerId);
     if (!id) throw new Error('handlerId is required');
     await apiPost('clear_handler_workflows', { handler_id: id });
+    invalidateWorkflowListCache();
     return true;
   },
 
   // ----- Utilities -----
   toCamelCase,
   toSnakeCase,
+  invalidateWorkflowListCache,
   invalidateWorkflowStatusesCache,
+  invalidateHandlerListCache,
   setTokenProvider,
 };
 

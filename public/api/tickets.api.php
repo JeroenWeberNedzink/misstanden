@@ -171,6 +171,196 @@ function ticket_workflow_scoped_setting_key(string $workflowType, string $workfl
 function ticket_setting_bool_for_workflow(array $settings, string $workflowType, array $aliases, bool $default = false): bool { $keys = []; foreach ($aliases as $alias) { $scoped = ticket_workflow_scoped_setting_key($workflowType, trim((string)$alias)); if ($scoped !== null) $keys[] = $scoped; $keys[] = $alias; } return ticket_setting_bool($settings, $keys, $default); }
 function ticket_action_logging_enabled(array $settings): bool { return ticket_setting_bool($settings, ['compliance.audit_log_enabled', 'audit.enable_logging'], true); }
 
+function ticket_runtime_schema_marker_file(): string {
+    $dir = __DIR__ . '/../../run/cache';
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    return $dir . '/tickets-runtime-schema-v3.ok';
+}
+
+function ticket_ensure_runtime_schema(): void {
+    static $done = false;
+    if ($done) return;
+    $marker = ticket_runtime_schema_marker_file();
+    if (is_file($marker) && ((time() - (int)@filemtime($marker)) < 21600)) {
+        $done = true;
+        return;
+    }
+
+    sqlserver_execute(
+        "IF OBJECT_ID(N'dbo.ticket_handlers', N'U') IS NULL
+         BEGIN
+             CREATE TABLE dbo.ticket_handlers (
+                 id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_ticket_handlers PRIMARY KEY DEFAULT NEWID(),
+                 ticket_id UNIQUEIDENTIFIER NOT NULL,
+                 handler_id UNIQUEIDENTIFIER NOT NULL,
+                 role NVARCHAR(50) NOT NULL CONSTRAINT DF_ticket_handlers_role DEFAULT N'primary',
+                 assigned_at DATETIME2(3) NULL,
+                 created_at DATETIME2(3) NOT NULL CONSTRAINT DF_ticket_handlers_created_at DEFAULT SYSUTCDATETIME()
+             );
+         END;
+
+         IF COL_LENGTH(N'dbo.ticket_handlers', N'role') IS NULL
+         BEGIN
+             ALTER TABLE dbo.ticket_handlers ADD role NVARCHAR(50) NOT NULL CONSTRAINT DF_ticket_handlers_role DEFAULT N'primary' WITH VALUES;
+         END;
+
+         IF COL_LENGTH(N'dbo.ticket_handlers', N'assigned_at') IS NULL
+         BEGIN
+             ALTER TABLE dbo.ticket_handlers ADD assigned_at DATETIME2(3) NULL;
+         END;
+
+         IF COL_LENGTH(N'dbo.ticket_handlers', N'created_at') IS NULL
+         BEGIN
+             ALTER TABLE dbo.ticket_handlers ADD created_at DATETIME2(3) NOT NULL CONSTRAINT DF_ticket_handlers_created_at DEFAULT SYSUTCDATETIME() WITH VALUES;
+         END;
+
+         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ticket_handlers_role' AND object_id = OBJECT_ID(N'dbo.ticket_handlers'))
+         BEGIN
+             CREATE INDEX IX_ticket_handlers_role ON dbo.ticket_handlers(role);
+         END;
+
+         IF OBJECT_ID(N'dbo.ticket_comments', N'U') IS NULL
+         BEGIN
+             CREATE TABLE dbo.ticket_comments (
+                 id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_ticket_comments PRIMARY KEY DEFAULT NEWID(),
+                 ticket_id UNIQUEIDENTIFIER NOT NULL,
+                 comment NVARCHAR(MAX) NOT NULL,
+                 comment_encrypted NVARCHAR(MAX) NULL,
+                 author_name NVARCHAR(255) NULL,
+                 created_at DATETIME2(3) NOT NULL CONSTRAINT DF_ticket_comments_created_at DEFAULT SYSUTCDATETIME(),
+                 updated_at DATETIME2(3) NOT NULL CONSTRAINT DF_ticket_comments_updated_at DEFAULT SYSUTCDATETIME()
+             );
+         END;
+
+         IF COL_LENGTH(N'dbo.ticket_comments', N'comment') IS NULL
+         BEGIN
+             ALTER TABLE dbo.ticket_comments ADD comment NVARCHAR(MAX) NOT NULL CONSTRAINT DF_ticket_comments_comment DEFAULT N'' WITH VALUES;
+         END;
+
+         IF COL_LENGTH(N'dbo.ticket_comments', N'comment_encrypted') IS NULL
+         BEGIN
+             ALTER TABLE dbo.ticket_comments ADD comment_encrypted NVARCHAR(MAX) NULL;
+         END;
+
+         IF COL_LENGTH(N'dbo.ticket_comments', N'author_name') IS NULL
+         BEGIN
+             ALTER TABLE dbo.ticket_comments ADD author_name NVARCHAR(255) NULL;
+         END;
+
+         IF COL_LENGTH(N'dbo.ticket_comments', N'created_at') IS NULL
+         BEGIN
+             ALTER TABLE dbo.ticket_comments ADD created_at DATETIME2(3) NOT NULL CONSTRAINT DF_ticket_comments_created_at DEFAULT SYSUTCDATETIME() WITH VALUES;
+         END;
+
+         IF COL_LENGTH(N'dbo.ticket_comments', N'updated_at') IS NULL
+         BEGIN
+             ALTER TABLE dbo.ticket_comments ADD updated_at DATETIME2(3) NOT NULL CONSTRAINT DF_ticket_comments_updated_at DEFAULT SYSUTCDATETIME() WITH VALUES;
+         END;
+
+         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ticket_comments_ticket_created_at' AND object_id = OBJECT_ID(N'dbo.ticket_comments'))
+         BEGIN
+             CREATE INDEX IX_ticket_comments_ticket_created_at ON dbo.ticket_comments(ticket_id, created_at DESC);
+         END;
+
+         IF OBJECT_ID(N'dbo.messages', N'U') IS NULL
+         BEGIN
+             CREATE TABLE dbo.messages (
+                 id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_messages PRIMARY KEY DEFAULT NEWID(),
+                 ticket_id UNIQUEIDENTIFIER NOT NULL,
+                 sender NVARCHAR(50) NOT NULL,
+                 body NVARCHAR(MAX) NOT NULL,
+                 body_encrypted NVARCHAR(MAX) NULL,
+                 is_internal BIT NOT NULL CONSTRAINT DF_messages_is_internal DEFAULT (0),
+                 visible_at DATETIME2(3) NOT NULL CONSTRAINT DF_messages_visible_at DEFAULT SYSUTCDATETIME(),
+                 created_at DATETIME2(3) NOT NULL CONSTRAINT DF_messages_created_at DEFAULT SYSUTCDATETIME(),
+                 read_at DATETIME2(3) NULL,
+                 handler_id UNIQUEIDENTIFIER NULL,
+                 handler_name NVARCHAR(255) NULL
+             );
+         END;
+
+         IF COL_LENGTH(N'dbo.messages', N'body_encrypted') IS NULL
+         BEGIN
+             ALTER TABLE dbo.messages ADD body_encrypted NVARCHAR(MAX) NULL;
+         END;
+
+         IF COL_LENGTH(N'dbo.messages', N'visible_at') IS NULL
+         BEGIN
+             ALTER TABLE dbo.messages ADD visible_at DATETIME2(3) NOT NULL CONSTRAINT DF_messages_visible_at DEFAULT SYSUTCDATETIME() WITH VALUES;
+         END;
+
+         IF COL_LENGTH(N'dbo.messages', N'read_at') IS NULL
+         BEGIN
+             ALTER TABLE dbo.messages ADD read_at DATETIME2(3) NULL;
+         END;
+
+         IF COL_LENGTH(N'dbo.messages', N'handler_id') IS NULL
+         BEGIN
+             ALTER TABLE dbo.messages ADD handler_id UNIQUEIDENTIFIER NULL;
+         END;
+
+         IF COL_LENGTH(N'dbo.messages', N'handler_name') IS NULL
+         BEGIN
+             ALTER TABLE dbo.messages ADD handler_name NVARCHAR(255) NULL;
+         END;
+
+         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_messages_ticket_visible_at' AND object_id = OBJECT_ID(N'dbo.messages'))
+         BEGIN
+             CREATE INDEX IX_messages_ticket_visible_at ON dbo.messages(ticket_id, visible_at);
+         END;
+
+         IF OBJECT_ID(N'dbo.ticket_actions', N'U') IS NULL
+         BEGIN
+             CREATE TABLE dbo.ticket_actions (
+                 id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_ticket_actions PRIMARY KEY DEFAULT NEWID(),
+                 ticket_id UNIQUEIDENTIFIER NOT NULL,
+                 action_type NVARCHAR(100) NOT NULL,
+                 action NVARCHAR(255) NOT NULL,
+                 description NVARCHAR(MAX) NULL,
+                 description_encrypted NVARCHAR(MAX) NULL,
+                 handler_id UNIQUEIDENTIFIER NULL,
+                 handler_name NVARCHAR(255) NULL,
+                 handler_email NVARCHAR(255) NULL,
+                 performed_by NVARCHAR(255) NULL,
+                 created_at DATETIME2(3) NOT NULL CONSTRAINT DF_ticket_actions_created_at DEFAULT SYSUTCDATETIME()
+             );
+         END;
+
+         IF COL_LENGTH(N'dbo.ticket_actions', N'description_encrypted') IS NULL
+         BEGIN
+             ALTER TABLE dbo.ticket_actions ADD description_encrypted NVARCHAR(MAX) NULL;
+         END;
+
+         IF COL_LENGTH(N'dbo.ticket_actions', N'handler_id') IS NULL
+         BEGIN
+             ALTER TABLE dbo.ticket_actions ADD handler_id UNIQUEIDENTIFIER NULL;
+         END;
+
+         IF COL_LENGTH(N'dbo.ticket_actions', N'handler_name') IS NULL
+         BEGIN
+             ALTER TABLE dbo.ticket_actions ADD handler_name NVARCHAR(255) NULL;
+         END;
+
+         IF COL_LENGTH(N'dbo.ticket_actions', N'handler_email') IS NULL
+         BEGIN
+             ALTER TABLE dbo.ticket_actions ADD handler_email NVARCHAR(255) NULL;
+         END;
+
+         IF COL_LENGTH(N'dbo.ticket_actions', N'performed_by') IS NULL
+         BEGIN
+             ALTER TABLE dbo.ticket_actions ADD performed_by NVARCHAR(255) NULL;
+         END;
+
+         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ticket_actions_ticket_created_at' AND object_id = OBJECT_ID(N'dbo.ticket_actions'))
+         BEGIN
+             CREATE INDEX IX_ticket_actions_ticket_created_at ON dbo.ticket_actions(ticket_id, created_at DESC);
+         END;"
+    );
+
+    @file_put_contents($marker, (string)time());
+    $done = true;
+}
+
 function ticket_attachment_extension(string $fileName): string { $parts = explode('.', strtolower(trim($fileName))); return count($parts) < 2 ? '' : trim((string)end($parts)); }
 function ticket_attachment_policy(array $settings): array {
     $maxMb = min(max(ticket_setting_int($settings, ['portal.max_attachment_size_mb'], 10), 1), 250);
@@ -192,8 +382,16 @@ function ticket_uuid4(): string { $bytes = random_bytes(16); $bytes[6] = chr((or
 function ticket_generate_ticket_number(string $prefix): string { return $prefix . '-' . gmdate('Y') . '-' . random_int(100000, 999999); }
 function ticket_generate_access_code(): string { return str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT); }
 function ticket_generate_secure_token(int $bytes = REPORTER_REPLY_TOKEN_BYTES): string { return bin2hex(random_bytes($bytes)); }
-function ticket_reply_token_expiry_iso(): string { $days = max(1, (int)(getenv('REPORTER_REPLY_TOKEN_TTL_DAYS') ?: 365)); return gmdate('c', time() + ($days * 86400)); }
-function ticket_handler_message_visible_at(bool $isInternal, string $sender): string { return ($isInternal || $sender !== 'handler') ? gmdate('c') : gmdate('c', time() + random_int(HANDLER_REPLY_DELAY_MIN_SECONDS, HANDLER_REPLY_DELAY_MAX_SECONDS)); }
+function ticket_sql_utc_datetime(?int $timestamp = null): string { return gmdate('Y-m-d H:i:s', $timestamp ?? time()); }
+function ticket_sql_datetime_param($value): ?string {
+    if ($value === null || trim((string)$value) === '') return null;
+    $timestamp = is_numeric($value) ? (int)$value : strtotime((string)$value);
+    return $timestamp === false ? null : ticket_sql_utc_datetime($timestamp);
+}
+function ticket_reply_token_expiry_timestamp(): int { $days = max(1, (int)(getenv('REPORTER_REPLY_TOKEN_TTL_DAYS') ?: 365)); return time() + ($days * 86400); }
+function ticket_reply_token_expiry_iso(): string { return gmdate('Y-m-d\TH:i:s\Z', ticket_reply_token_expiry_timestamp()); }
+function ticket_reply_token_expiry_sql(): string { return ticket_sql_utc_datetime(ticket_reply_token_expiry_timestamp()); }
+function ticket_handler_message_visible_at(bool $isInternal, string $sender): string { return ticket_sql_utc_datetime(($isInternal || $sender !== 'handler') ? time() : time() + random_int(HANDLER_REPLY_DELAY_MIN_SECONDS, HANDLER_REPLY_DELAY_MAX_SECONDS)); }
 
 function ticket_download_url(?string $raw): ?string {
     $value = trim((string)$raw);
@@ -461,7 +659,7 @@ function ticket_action_command(array $payload, array $settings): ?array {
             'handler_name' => $payload['handler_name'] ?? null,
             'handler_email' => $payload['handler_email'] ?? null,
             'performed_by' => $payload['performed_by'] ?? null,
-            'created_at' => $payload['created_at'] ?? null,
+            'created_at' => ticket_sql_datetime_param($payload['created_at'] ?? null),
         ]
     );
 }
@@ -490,66 +688,78 @@ function ticket_try_auto_assign_handler(string $ticketId, string $workflowType):
 }
 
 function ticket_create_reply_token(string $ticketId): ?string {
-    $token = ticket_generate_secure_token(); $expiresAt = ticket_reply_token_expiry_iso();
+    $token = ticket_generate_secure_token(); $expiresAt = ticket_reply_token_expiry_sql();
     sqlserver_execute('INSERT INTO dbo.ticket_reply_tokens (ticket_id, token, expires_at, created_at) VALUES (@ticket_id, @token, @expires_at, SYSUTCDATETIME())', ['ticket_id' => $ticketId, 'token' => $token, 'expires_at' => $expiresAt]);
     return $token;
 }
 
 function handle_create(array $data): void {
-    ticket_enforce_request_rate_limit('create', (string)($data['workflow_type'] ?? 'new'));
-    $settings = ticket_load_system_settings();
-    if (!ticket_setting_bool($settings, ['tickets.allow_public_submission', 'portal.enable_public_submissions'], true)) api_json(403, false, 'Public submissions are disabled by system policy');
-    $email = trim((string)($data['reporter_email'] ?? '')); $isAnonymous = !empty($data['is_anonymous']);
-    if (ticket_setting_bool($settings, ['tickets.require_email_verification'], true) && $email === '') throw new Exception('reporter_email is required by system policy');
-    $severityCode = ticket_normalize_severity((string)($data['severity_code'] ?? ''), ticket_normalize_severity(ticket_setting_string($settings, ['tickets.default_priority', 'workflow.default_priority', 'portal.default_priority'], 'low'), 'low'));
+    $stage = 'rate_limit';
     $workflowType = trim((string)($data['workflow_type'] ?? ''));
-    $cryptoKey = get_email_crypto_key();
-    $payload = [
-        'id' => ticket_uuid4(),
-        'ticket_number' => trim((string)($data['ticket_number'] ?? '')) ?: ticket_generate_ticket_number(ticket_sanitize_prefix(ticket_setting_string($settings, ['tickets.ticket_number_prefix'], 'NZ'), 'NZ')),
-        'access_code' => normalize_access_code($data['access_code'] ?? '') ?: ticket_generate_access_code(),
-        'description' => null,
-        'description_encrypted' => ticket_crypto_encrypt_nullable($data['description'] ?? null, $cryptoKey, false),
-        'location' => null,
-        'location_encrypted' => ticket_crypto_encrypt_nullable($data['location'] ?? null, $cryptoKey),
-        'workflow_type' => $workflowType,
-        'severity_code' => $severityCode,
-        'reporter_name' => null,
-        'reporter_name_encrypted' => ticket_crypto_encrypt_nullable($data['reporter_name'] ?? null, $cryptoKey),
-        'reporter_phone' => null,
-        'reporter_phone_encrypted' => ticket_crypto_encrypt_nullable($data['reporter_phone'] ?? null, $cryptoKey),
-        'email_notify' => $email !== '' ? !empty($data['email_notify']) : false,
-        'status_email_notify' => array_key_exists('status_email_notify', $data) ? ($email !== '' ? !empty($data['status_email_notify']) : false) : ($email !== ''),
-        'status_code' => $data['status_code'] ?? null,
-        'current_stage' => $data['current_stage'] ?? null,
-        'metadata' => json_encode(is_array($data['metadata'] ?? null) ? $data['metadata'] : [], JSON_UNESCAPED_UNICODE),
-        'reporter_email' => null,
-        'reporter_email_encrypted' => $email ? encrypt_email($email, $cryptoKey) : null,
-        'reporter_email_hash' => $email ? hash_email($email) : null,
-        'next_step_due' => $data['next_step_due'] ?? null,
-        'is_anonymous' => $isAnonymous,
-    ];
-    sqlserver_execute(
-        'INSERT INTO dbo.tickets (
-            id, ticket_number, access_code, description, description_encrypted, location, location_encrypted,
-            workflow_type, severity_code, reporter_name, reporter_name_encrypted, reporter_phone, reporter_phone_encrypted,
-            email_notify, status_email_notify, status_code, current_stage, metadata, reporter_email, reporter_email_encrypted,
-            reporter_email_hash, next_step_due, is_anonymous, submitted_at, created_at, updated_at
-        )
-         VALUES (
-            @id, @ticket_number, @access_code, @description, @description_encrypted, @location, @location_encrypted,
-            @workflow_type, @severity_code, @reporter_name, @reporter_name_encrypted, @reporter_phone, @reporter_phone_encrypted,
-            @email_notify, @status_email_notify, @status_code, @current_stage, @metadata, @reporter_email, @reporter_email_encrypted,
-            @reporter_email_hash, @next_step_due, @is_anonymous, SYSUTCDATETIME(), SYSUTCDATETIME(), SYSUTCDATETIME()
-        )',
-        $payload
-    );
-    $row = ticket_load_ticket_row_by_id((string)$payload['id']); if (!$row) throw new Exception('Ticket create failed');
-    if (ticket_setting_bool_for_workflow($settings, $workflowType, ['tickets.auto_assign_enabled', 'workflow.auto_assign'], true)) {
-        $assigned = ticket_try_auto_assign_handler((string)$payload['id'], $workflowType); if ($assigned) $row['handler_id'] = $assigned['id'] ?? null;
+    try {
+        ticket_enforce_request_rate_limit('create', (string)($data['workflow_type'] ?? 'new'));
+        $stage = 'load_settings';
+        $settings = ticket_load_system_settings();
+        if (!ticket_setting_bool($settings, ['tickets.allow_public_submission', 'portal.enable_public_submissions'], true)) api_json(403, false, 'Public submissions are disabled by system policy');
+        $stage = 'validate_payload';
+        $email = trim((string)($data['reporter_email'] ?? '')); $isAnonymous = !empty($data['is_anonymous']);
+        if (ticket_setting_bool($settings, ['tickets.require_email_verification'], true) && $email === '') throw new Exception('reporter_email is required by system policy');
+        $severityCode = ticket_normalize_severity((string)($data['severity_code'] ?? ''), ticket_normalize_severity(ticket_setting_string($settings, ['tickets.default_priority', 'workflow.default_priority', 'portal.default_priority'], 'low'), 'low'));
+        $stage = 'encrypt_payload';
+        $cryptoKey = get_email_crypto_key();
+        $payload = [
+            'id' => ticket_uuid4(),
+            'ticket_number' => trim((string)($data['ticket_number'] ?? '')) ?: ticket_generate_ticket_number(ticket_sanitize_prefix(ticket_setting_string($settings, ['tickets.ticket_number_prefix'], 'NZ'), 'NZ')),
+            'access_code' => normalize_access_code($data['access_code'] ?? '') ?: ticket_generate_access_code(),
+            'description' => null,
+            'description_encrypted' => ticket_crypto_encrypt_nullable($data['description'] ?? null, $cryptoKey, false),
+            'location' => null,
+            'location_encrypted' => ticket_crypto_encrypt_nullable($data['location'] ?? null, $cryptoKey),
+            'workflow_type' => $workflowType,
+            'severity_code' => $severityCode,
+            'reporter_name' => null,
+            'reporter_name_encrypted' => ticket_crypto_encrypt_nullable($data['reporter_name'] ?? null, $cryptoKey),
+            'reporter_phone' => null,
+            'reporter_phone_encrypted' => ticket_crypto_encrypt_nullable($data['reporter_phone'] ?? null, $cryptoKey),
+            'email_notify' => $email !== '' ? !empty($data['email_notify']) : false,
+            'status_email_notify' => array_key_exists('status_email_notify', $data) ? ($email !== '' ? !empty($data['status_email_notify']) : false) : ($email !== ''),
+            'status_code' => $data['status_code'] ?? null,
+            'current_stage' => $data['current_stage'] ?? null,
+            'metadata' => json_encode(is_array($data['metadata'] ?? null) ? $data['metadata'] : [], JSON_UNESCAPED_UNICODE),
+            'reporter_email' => null,
+            'reporter_email_encrypted' => $email ? encrypt_email($email, $cryptoKey) : null,
+            'reporter_email_hash' => $email ? hash_email($email) : null,
+            'next_step_due' => ticket_sql_datetime_param($data['next_step_due'] ?? null),
+            'is_anonymous' => $isAnonymous,
+        ];
+        $stage = 'insert_ticket';
+        sqlserver_execute(
+            'INSERT INTO dbo.tickets (
+                id, ticket_number, access_code, description, description_encrypted, location, location_encrypted,
+                workflow_type, severity_code, reporter_name, reporter_name_encrypted, reporter_phone, reporter_phone_encrypted,
+                email_notify, status_email_notify, status_code, current_stage, metadata, reporter_email, reporter_email_encrypted,
+                reporter_email_hash, next_step_due, is_anonymous, submitted_at, created_at, updated_at
+            )
+             VALUES (
+                @id, @ticket_number, @access_code, @description, @description_encrypted, @location, @location_encrypted,
+                @workflow_type, @severity_code, @reporter_name, @reporter_name_encrypted, @reporter_phone, @reporter_phone_encrypted,
+                @email_notify, @status_email_notify, @status_code, @current_stage, @metadata, @reporter_email, @reporter_email_encrypted,
+                @reporter_email_hash, @next_step_due, @is_anonymous, SYSUTCDATETIME(), SYSUTCDATETIME(), SYSUTCDATETIME()
+            )',
+            $payload
+        );
+        $stage = 'load_ticket';
+        $row = ticket_load_ticket_row_by_id((string)$payload['id']); if (!$row) throw new Exception('Ticket create failed');
+        $stage = 'auto_assign';
+        if (ticket_setting_bool_for_workflow($settings, $workflowType, ['tickets.auto_assign_enabled', 'workflow.auto_assign'], true)) {
+            $assigned = ticket_try_auto_assign_handler((string)$payload['id'], $workflowType); if ($assigned) $row['handler_id'] = $assigned['id'] ?? null;
+        }
+        try { $replyToken = ticket_create_reply_token((string)$payload['id']); $row['reply_token'] = $replyToken; $row['reply_url_path'] = '/reply/' . rawurlencode($replyToken); $row['reply_expires_at'] = ticket_reply_token_expiry_iso(); } catch (Throwable $e) {}
+        api_json(200, true, 'Ticket created', $row);
+    } catch (Throwable $e) {
+        $errorId = api_log_exception('tickets.api.create', $e, ['action' => 'create', 'stage' => $stage, 'workflow_type' => $workflowType]);
+        api_json(500, false, 'Internal server error', ['error_id' => $errorId, 'action' => 'create', 'stage' => $stage]);
     }
-    try { $replyToken = ticket_create_reply_token((string)$payload['id']); $row['reply_token'] = $replyToken; $row['reply_url_path'] = '/reply/' . rawurlencode($replyToken); $row['reply_expires_at'] = ticket_reply_token_expiry_iso(); } catch (Throwable $e) {}
-    api_json(200, true, 'Ticket created', $row);
 }
 
 function handle_access(array $data): void {
@@ -666,54 +876,73 @@ function handle_handler_update_ticket(array $data): void {
 }
 
 function handle_handler_add_comment(array $data): void {
-    $ctx = ticket_require_active_handler_context(); $handler = $ctx['handler']; $settings = ticket_load_system_settings();
+    $stage = 'start';
+    $ctx = ticket_require_active_handler_context(); $handler = $ctx['handler'];
     $ticketId = trim((string)($data['ticket_id'] ?? '')); $comment = trim((string)($data['comment'] ?? ''));
     if (!ticket_is_uuid($ticketId)) api_json(400, false, 'ticket_id must be a valid UUID');
     if ($comment === '') api_json(400, false, 'comment is required');
     if (ticket_strlen($comment) > 4000) api_json(400, false, 'comment exceeds 4000 characters');
     ticket_enforce_handler_mutation_rate_limit('add_comment', $handler, $ticketId);
     $performedBy = trim((string)($data['author_name'] ?? $handler['name'] ?? '')) ?: 'System';
-    $commands = [
-        sqlserver_command(
-            'nonquery',
-            'INSERT INTO dbo.ticket_comments (ticket_id, comment, comment_encrypted, author_name, created_at, updated_at) VALUES (@ticket_id, @comment, @comment_encrypted, @author_name, SYSUTCDATETIME(), SYSUTCDATETIME())',
-            [
-                'ticket_id' => $ticketId,
-                'comment' => TICKET_ENCRYPTED_PLACEHOLDER,
-                'comment_encrypted' => ticket_crypto_encrypt_nullable($comment, null, false),
-                'author_name' => $performedBy,
-            ]
-        ),
-        sqlserver_command(
-            'nonquery',
-            'UPDATE dbo.tickets SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id',
-            ['id' => $ticketId]
-        ),
-    ];
-    $actionCommand = ticket_action_command([
-        'ticket_id' => $ticketId,
-        'action_type' => 'note_added',
-        'action' => 'Note Added',
-        'description' => 'Added investigation note: ' . ticket_substr($comment, 0, 100) . '...',
-        'handler_id' => trim((string)($handler['id'] ?? '')) ?: null,
-        'handler_name' => $performedBy,
-        'handler_email' => trim((string)($handler['email'] ?? '')) ?: null,
-        'performed_by' => $performedBy,
-    ], $settings);
-    if ($actionCommand) $commands[] = $actionCommand;
 
-    $commentIndex = count($commands);
-    $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.ticket_comments WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
-    $ticketIndex = count($commands);
-    $commands[] = ticket_ticket_with_handler_command($ticketId);
-    $ticketHandlersIndex = count($commands);
-    $commands[] = ticket_ticket_handlers_command($ticketId);
+    try {
+        $stage = 'encrypt_comment';
+        $encryptedComment = ticket_crypto_encrypt_nullable($comment, null, false);
+        $stage = 'write_comment';
+        $results = sqlserver_run_commands([
+            sqlserver_command(
+                'nonquery',
+                'INSERT INTO dbo.ticket_comments (ticket_id, [comment], comment_encrypted, author_name, created_at, updated_at) VALUES (@ticket_id, @comment, @comment_encrypted, @author_name, SYSUTCDATETIME(), SYSUTCDATETIME())',
+                [
+                    'ticket_id' => $ticketId,
+                    'comment' => TICKET_ENCRYPTED_PLACEHOLDER,
+                    'comment_encrypted' => $encryptedComment,
+                    'author_name' => $performedBy,
+                ]
+            ),
+            sqlserver_command(
+                'nonquery',
+                'UPDATE dbo.tickets SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id',
+                ['id' => $ticketId]
+            ),
+            sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.ticket_comments WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]),
+        ], true);
+    } catch (Throwable $e) {
+        $errorId = api_log_exception('tickets.api.add_comment', $e, ['action' => 'handler_add_comment', 'ticket_id' => $ticketId, 'stage' => $stage]);
+        api_json(500, false, 'Internal server error', ['error_id' => $errorId, 'action' => 'handler_add_comment', 'stage' => $stage]);
+    }
 
-    $results = sqlserver_run_commands($commands, true);
-    $commentRow = sqlserver_result_rows($results, $commentIndex)[0] ?? null;
+    $commentRow = sqlserver_result_rows($results, 2)[0] ?? null;
     if (is_array($commentRow)) $commentRow = ticket_crypto_decrypt_comment_row($commentRow);
-    $ticket = ticket_with_handlers_from_results($results, $ticketIndex, $ticketHandlersIndex);
-    api_json(200, true, 'Comment added', ['comment' => $commentRow, 'performed_by' => $performedBy, 'ticket' => $ticket]);
+    $ticket = null;
+    $ticketLoadErrorId = null;
+    try {
+        $ticketResults = sqlserver_run_commands([
+            ticket_ticket_with_handler_command($ticketId),
+            ticket_ticket_handlers_command($ticketId),
+        ], false);
+        $ticket = ticket_with_handlers_from_results($ticketResults, 0, 1);
+    } catch (Throwable $e) {
+        $ticketLoadErrorId = api_log_exception('tickets.api.add_comment.ticket_load', $e, ['action' => 'handler_add_comment', 'ticket_id' => $ticketId]);
+    }
+
+    $actionLogErrorId = null;
+    try {
+        $settings = ticket_load_system_settings();
+        ticket_insert_action([
+            'ticket_id' => $ticketId,
+            'action_type' => 'note_added',
+            'action' => 'Note Added',
+            'description' => 'Added investigation note: ' . ticket_substr($comment, 0, 100) . '...',
+            'handler_id' => trim((string)($handler['id'] ?? '')) ?: null,
+            'handler_name' => $performedBy,
+            'handler_email' => trim((string)($handler['email'] ?? '')) ?: null,
+            'performed_by' => $performedBy,
+        ], $settings);
+    } catch (Throwable $e) {
+        $actionLogErrorId = api_log_exception('tickets.api.add_comment.action_log', $e, ['action' => 'handler_add_comment', 'ticket_id' => $ticketId]);
+    }
+    api_json(200, true, 'Comment added', ['comment' => $commentRow, 'performed_by' => $performedBy, 'ticket' => $ticket, 'ticket_load_error_id' => $ticketLoadErrorId, 'action_log_error_id' => $actionLogErrorId]);
 }
 
 function handle_handler_add_message(array $data): void {
@@ -869,11 +1098,16 @@ function handle_handler_log_action(array $data): void {
     if ($actionType === '' || ticket_strlen($actionType) > 80) api_json(400, false, 'action_type is required and must be <= 80 chars');
     if ($action === '' || ticket_strlen($action) > 255) api_json(400, false, 'action is required and must be <= 255 chars');
     if ($description !== '' && ticket_strlen($description) > 4000) api_json(400, false, 'description must be <= 4000 chars');
-    ticket_insert_action(['ticket_id' => $ticketId, 'action_type' => $actionType, 'action' => $action, 'description' => $description !== '' ? $description : null, 'handler_id' => trim((string)($handler['id'] ?? '')) ?: null, 'handler_name' => trim((string)($data['handler_name'] ?? $handler['name'] ?? 'System')) ?: 'System', 'handler_email' => trim((string)($handler['email'] ?? '')) ?: null, 'performed_by' => trim((string)($handler['name'] ?? '')) ?: 'System', 'created_at' => gmdate('c')], $settings);
-    $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.ticket_actions WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
-    $row = $rows[0] ?? null;
-    if (is_array($row)) $row = ticket_crypto_decrypt_action_row($row);
-    api_json(200, true, 'Action logged', ['ticket_action' => $row]);
+    try {
+        ticket_insert_action(['ticket_id' => $ticketId, 'action_type' => $actionType, 'action' => $action, 'description' => $description !== '' ? $description : null, 'handler_id' => trim((string)($handler['id'] ?? '')) ?: null, 'handler_name' => trim((string)($data['handler_name'] ?? $handler['name'] ?? 'System')) ?: 'System', 'handler_email' => trim((string)($handler['email'] ?? '')) ?: null, 'performed_by' => trim((string)($handler['name'] ?? '')) ?: 'System'], $settings);
+        $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.ticket_actions WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
+        $row = $rows[0] ?? null;
+        if (is_array($row)) $row = ticket_crypto_decrypt_action_row($row);
+        api_json(200, true, 'Action logged', ['ticket_action' => $row]);
+    } catch (Throwable $e) {
+        $errorId = api_log_exception('tickets.api.log_action', $e, ['action' => 'handler_log_action', 'ticket_id' => $ticketId, 'action_type' => $actionType]);
+        api_json(200, true, 'Action log skipped', ['ticket_action' => null, 'skipped' => true, 'error_id' => $errorId]);
+    }
 }
 
 function handle_handler_set_ticket_handler_role(array $data): void {
@@ -945,12 +1179,25 @@ function handle_handler_set_ticket_handler_role(array $data): void {
     api_json(200, true, 'Ticket handler role updated', ['ticket_handler' => $ticketHandlerRow, 'ticket' => $ticket]);
 }
 
+$ticketApiAction = 'unknown';
+$ticketApiStage = 'bootstrap';
+$ticketApiData = [];
+
 try {
+    $ticketApiStage = 'load_env';
     load_runtime_env(__DIR__);
+    $ticketApiStage = 'check_sql_config';
     if (!sqlserver_is_configured()) throw new Exception('SQL Server is not configured');
+    $ticketApiStage = 'ensure_schema';
+    ticket_ensure_runtime_schema();
+    $ticketApiStage = 'check_method';
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') api_json(405, false, 'Method not allowed');
+    $ticketApiStage = 'parse_body';
     $data = json_decode(file_get_contents('php://input') ?: '', true); if (!is_array($data)) $data = [];
     $action = strtolower(trim((string)($data['action'] ?? 'create')));
+    $ticketApiData = $data;
+    $ticketApiAction = $action !== '' ? $action : 'create';
+    $ticketApiStage = 'dispatch_' . $ticketApiAction;
     switch ($action) {
         case 'create': handle_create($data); break;
         case 'access': handle_access($data); break;
@@ -965,6 +1212,11 @@ try {
         default: api_json(400, false, 'Unsupported action');
     }
 } catch (Throwable $e) {
-    $errorId = api_log_exception('tickets.api', $e);
-    api_json(500, false, 'Internal server error', ['error_id' => $errorId]);
+    $ticketId = is_array($ticketApiData) ? trim((string)($ticketApiData['ticket_id'] ?? $ticketApiData['ticketId'] ?? '')) : '';
+    $errorId = api_log_exception('tickets.api', $e, [
+        'action' => $ticketApiAction,
+        'stage' => $ticketApiStage,
+        'ticket_id' => ticket_is_uuid($ticketId) ? $ticketId : null,
+    ]);
+    api_json(500, false, 'Internal server error', ['error_id' => $errorId, 'action' => $ticketApiAction, 'stage' => $ticketApiStage]);
 }

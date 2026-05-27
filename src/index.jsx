@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./styles/tailwind.css";
 import "./styles/index.css";
-import "./i18n/config";
 
 // Handle Auth0 authorization response messages to prevent warnings
 window.addEventListener('message', (event) => {
@@ -17,4 +16,13 @@ window.addEventListener('message', (event) => {
 const container = document.getElementById("root");
 const root = createRoot(container);
 
-root.render(<App />);
+const renderApp = () => {
+  root.render(<App />);
+};
+
+import("./i18n/config")
+  .then(({ i18nReady }) => i18nReady)
+  .catch((error) => {
+    console.error("[i18n] Failed to initialize translations:", error);
+  })
+  .finally(renderApp);

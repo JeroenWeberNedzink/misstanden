@@ -1,3 +1,5 @@
+import { getSharedTokenProvider } from '../lib/serviceTokenProvider';
+
 const WORKFLOW_API_URL = '/api/workflows.api.php';
 let permissionTokenProvider = null;
 
@@ -34,9 +36,10 @@ const setTokenProvider = (provider) => {
 };
 
 const getAuthHeaders = async () => {
-  if (!permissionTokenProvider) return {};
+  const provider = permissionTokenProvider || getSharedTokenProvider();
+  if (!provider) return {};
   try {
-    const token = await permissionTokenProvider();
+    const token = await provider();
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};

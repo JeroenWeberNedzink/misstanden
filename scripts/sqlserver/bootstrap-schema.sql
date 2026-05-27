@@ -164,6 +164,13 @@ BEGIN
         CONSTRAINT FK_handler_workflows_workflow FOREIGN KEY (workflow_id) REFERENCES dbo.workflows(id) ON DELETE CASCADE
     );
     CREATE UNIQUE INDEX UX_handler_workflows_handler_workflow ON dbo.handler_workflows(handler_id, workflow_id);
+    CREATE INDEX IX_handler_workflows_workflow_id ON dbo.handler_workflows(workflow_id, handler_id);
+END;
+
+IF OBJECT_ID(N'dbo.handler_workflows', N'U') IS NOT NULL
+AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_handler_workflows_workflow_id' AND object_id = OBJECT_ID(N'dbo.handler_workflows'))
+BEGIN
+    CREATE INDEX IX_handler_workflows_workflow_id ON dbo.handler_workflows(workflow_id, handler_id);
 END;
 
 IF OBJECT_ID(N'dbo.locations', N'U') IS NULL
@@ -294,6 +301,21 @@ BEGIN
     CREATE INDEX IX_ticket_handlers_role ON dbo.ticket_handlers(role);
 END;
 
+IF COL_LENGTH(N'dbo.ticket_handlers', N'role') IS NULL
+BEGIN
+    ALTER TABLE dbo.ticket_handlers ADD role NVARCHAR(50) NOT NULL CONSTRAINT DF_ticket_handlers_role DEFAULT N'primary' WITH VALUES;
+END;
+
+IF COL_LENGTH(N'dbo.ticket_handlers', N'assigned_at') IS NULL
+BEGIN
+    ALTER TABLE dbo.ticket_handlers ADD assigned_at DATETIME2(3) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.ticket_handlers', N'created_at') IS NULL
+BEGIN
+    ALTER TABLE dbo.ticket_handlers ADD created_at DATETIME2(3) NOT NULL CONSTRAINT DF_ticket_handlers_created_at DEFAULT SYSUTCDATETIME() WITH VALUES;
+END;
+
 IF OBJECT_ID(N'dbo.ticket_comments', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.ticket_comments (
@@ -308,9 +330,34 @@ BEGIN
     );
 END;
 
+IF COL_LENGTH(N'dbo.ticket_comments', N'comment') IS NULL
+BEGIN
+    ALTER TABLE dbo.ticket_comments ADD comment NVARCHAR(MAX) NOT NULL CONSTRAINT DF_ticket_comments_comment DEFAULT N'' WITH VALUES;
+END;
+
 IF COL_LENGTH(N'dbo.ticket_comments', N'comment_encrypted') IS NULL
 BEGIN
     ALTER TABLE dbo.ticket_comments ADD comment_encrypted NVARCHAR(MAX) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.ticket_comments', N'author_name') IS NULL
+BEGIN
+    ALTER TABLE dbo.ticket_comments ADD author_name NVARCHAR(255) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.ticket_comments', N'created_at') IS NULL
+BEGIN
+    ALTER TABLE dbo.ticket_comments ADD created_at DATETIME2(3) NOT NULL CONSTRAINT DF_ticket_comments_created_at DEFAULT SYSUTCDATETIME() WITH VALUES;
+END;
+
+IF COL_LENGTH(N'dbo.ticket_comments', N'updated_at') IS NULL
+BEGIN
+    ALTER TABLE dbo.ticket_comments ADD updated_at DATETIME2(3) NOT NULL CONSTRAINT DF_ticket_comments_updated_at DEFAULT SYSUTCDATETIME() WITH VALUES;
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ticket_comments_ticket_created_at' AND object_id = OBJECT_ID(N'dbo.ticket_comments'))
+BEGIN
+    CREATE INDEX IX_ticket_comments_ticket_created_at ON dbo.ticket_comments(ticket_id, created_at DESC);
 END;
 
 IF OBJECT_ID(N'dbo.messages', N'U') IS NULL
@@ -336,6 +383,26 @@ END;
 IF COL_LENGTH(N'dbo.messages', N'body_encrypted') IS NULL
 BEGIN
     ALTER TABLE dbo.messages ADD body_encrypted NVARCHAR(MAX) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.messages', N'visible_at') IS NULL
+BEGIN
+    ALTER TABLE dbo.messages ADD visible_at DATETIME2(3) NOT NULL CONSTRAINT DF_messages_visible_at DEFAULT SYSUTCDATETIME() WITH VALUES;
+END;
+
+IF COL_LENGTH(N'dbo.messages', N'read_at') IS NULL
+BEGIN
+    ALTER TABLE dbo.messages ADD read_at DATETIME2(3) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.messages', N'handler_id') IS NULL
+BEGIN
+    ALTER TABLE dbo.messages ADD handler_id UNIQUEIDENTIFIER NULL;
+END;
+
+IF COL_LENGTH(N'dbo.messages', N'handler_name') IS NULL
+BEGIN
+    ALTER TABLE dbo.messages ADD handler_name NVARCHAR(255) NULL;
 END;
 
 IF OBJECT_ID(N'dbo.attachments', N'U') IS NULL
@@ -378,6 +445,26 @@ END;
 IF COL_LENGTH(N'dbo.ticket_actions', N'description_encrypted') IS NULL
 BEGIN
     ALTER TABLE dbo.ticket_actions ADD description_encrypted NVARCHAR(MAX) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.ticket_actions', N'handler_id') IS NULL
+BEGIN
+    ALTER TABLE dbo.ticket_actions ADD handler_id UNIQUEIDENTIFIER NULL;
+END;
+
+IF COL_LENGTH(N'dbo.ticket_actions', N'handler_name') IS NULL
+BEGIN
+    ALTER TABLE dbo.ticket_actions ADD handler_name NVARCHAR(255) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.ticket_actions', N'handler_email') IS NULL
+BEGIN
+    ALTER TABLE dbo.ticket_actions ADD handler_email NVARCHAR(255) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.ticket_actions', N'performed_by') IS NULL
+BEGIN
+    ALTER TABLE dbo.ticket_actions ADD performed_by NVARCHAR(255) NULL;
 END;
 
 IF OBJECT_ID(N'dbo.access_requests', N'U') IS NULL

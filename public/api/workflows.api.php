@@ -43,6 +43,42 @@ const WORKFLOWS_SCOPES_WRITE = [
     'admin',
 ];
 
+function wf_performance_marker_file(): string {
+    $dir = __DIR__ . '/../../run/cache';
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    return $dir . '/workflows-performance-indexes-v1.ok';
+}
+
+function wf_try_ensure_performance_indexes(): void {
+    $marker = wf_performance_marker_file();
+    if (is_file($marker) && ((time() - (int)@filemtime($marker)) < 86400)) return;
+
+    try {
+        sqlserver_execute(
+            "IF OBJECT_ID(N'dbo.handler_workflows', N'U') IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_handler_workflows_workflow_id' AND object_id = OBJECT_ID(N'dbo.handler_workflows'))
+             BEGIN
+                 CREATE INDEX IX_handler_workflows_workflow_id ON dbo.handler_workflows(workflow_id, handler_id);
+             END;
+
+             IF OBJECT_ID(N'dbo.tickets', N'U') IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_tickets_workflow_type' AND object_id = OBJECT_ID(N'dbo.tickets'))
+             BEGIN
+                 CREATE INDEX IX_tickets_workflow_type ON dbo.tickets(workflow_type);
+             END;
+
+             IF OBJECT_ID(N'dbo.workflow_statuses', N'U') IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_workflow_statuses_workflow_sort' AND object_id = OBJECT_ID(N'dbo.workflow_statuses'))
+             BEGIN
+                 CREATE INDEX IX_workflow_statuses_workflow_sort ON dbo.workflow_statuses(workflow_id, sort_order);
+             END;"
+        );
+        @file_put_contents($marker, (string)time());
+    } catch (Throwable $e) {
+        error_log('workflows performance index check skipped: ' . $e->getMessage());
+    }
+}
+
 function wf_json(int $status, bool $success, string $message, $data = null): void {
     http_response_code($status);
     echo json_encode(['success' => $success, 'message' => $message, 'data' => $data], JSON_UNESCAPED_UNICODE);
@@ -369,6 +405,7 @@ try {
     $serviceKey = '';
     $requiredScopes = $_SERVER['REQUEST_METHOD'] === 'GET' ? WORKFLOWS_SCOPES_READ : WORKFLOWS_SCOPES_WRITE;
     $adminHandler = wf_require_admin($baseUrl, $serviceKey, $requiredScopes);
+    wf_try_ensure_performance_indexes();
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         $handlerId = trim((string)($adminHandler['id'] ?? ''));
         $actorKey = api_rate_limit_hash('workflows_actor:' . ($handlerId !== '' ? $handlerId : 'unknown'));

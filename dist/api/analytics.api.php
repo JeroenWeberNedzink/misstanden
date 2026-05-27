@@ -73,7 +73,9 @@ function analytics_fetch_locations_catalog(): array {
     $byId = [];
     $byCode = [];
     $byName = [];
-    $order = [];
+    $allOrder = [];
+    $activeOrder = [];
+    $rowsOut = [];
 
     foreach ($rows as $row) {
         $id = trim((string)($row['id'] ?? ''));
@@ -83,12 +85,13 @@ function analytics_fetch_locations_catalog(): array {
             continue;
         }
 
+        $isActive = !empty($row['active']);
         $entry = [
             'id' => $id,
             'country_code' => $countryCode,
             'country_name' => $countryName,
             'display_order' => (int)($row['display_order'] ?? 0),
-            'active' => !empty($row['active']),
+            'active' => $isActive,
         ];
 
         if ($id !== '') {
@@ -96,14 +99,19 @@ function analytics_fetch_locations_catalog(): array {
         }
         $byCode[$countryCode] = $entry;
         $byName[strtolower($countryName)] = $entry;
-        $order[] = $countryCode;
+        $allOrder[] = $countryCode;
+        if ($isActive) {
+            $activeOrder[] = $countryCode;
+            $rowsOut[] = $entry;
+        }
     }
 
     return [
         'by_id' => $byId,
         'by_code' => $byCode,
         'by_name' => $byName,
-        'order' => $order,
+        'order' => $activeOrder ?: $allOrder,
+        'rows' => $rowsOut,
     ];
 }
 
@@ -314,6 +322,7 @@ try {
             'reports_per_category' => analytics_build_series($reportsPerCategory),
             'reports_per_location' => $locationSeries,
             'location_heatmap' => $locationSeries,
+            'locations' => $locationsCatalog['rows'] ?? [],
             'sla_breaches_by_reason' => analytics_build_series($slaBreachesByReason),
         ],
     ]);

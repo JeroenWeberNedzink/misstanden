@@ -1,9 +1,22 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { Navigate } from 'react-router-dom';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useSettings } from '../../contexts/SettingsContext';
-import NoAccessPage from './NoAccessPage';
+
+const NoAccessPage = lazy(() => import('./NoAccessPage'));
+
+const AccessDeniedLoading = () => (
+  <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="w-full max-w-sm px-6">
+      <div className="rounded-xl border border-border bg-card p-6 animate-pulse">
+        <div className="h-4 w-1/2 bg-muted rounded mb-4"></div>
+        <div className="h-3 w-full bg-muted/70 rounded mb-2"></div>
+        <div className="h-3 w-4/5 bg-muted/70 rounded"></div>
+      </div>
+    </div>
+  </div>
+);
 
 /**
  * Protected route component that checks authentication and optionally permissions/roles
@@ -121,7 +134,11 @@ const ProtectedRoute = ({
       console.debug('[ProtectedRoute] Access denied', window.__nzProtectedRouteDebug, window.__nzPermissionsDebug);
     }
     if (showAccessDenied && !handlerProfile?.id) {
-      return <NoAccessPage />;
+      return (
+        <Suspense fallback={<AccessDeniedLoading />}>
+          <NoAccessPage />
+        </Suspense>
+      );
     }
     if (showAccessDenied) {
       return (

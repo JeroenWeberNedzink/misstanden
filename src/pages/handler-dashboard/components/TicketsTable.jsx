@@ -34,7 +34,7 @@ const normalizeStatuses = (raw) => {
       label: safeTrim(s.label),
       description: safeTrim(s.description) || '',
       color: safeTrim(s.color) || null,
-      order: Number.isFinite(Number(s.order)) ? Number(s.order) : 999,
+      order: Number.isFinite(Number(s.sortOrder ?? s.sort_order ?? s.order)) ? Number(s.sortOrder ?? s.sort_order ?? s.order) : 999,
       isTerminal: Boolean(s.isTerminal ?? s.is_terminal),
       nextCodes: Array.isArray(s.nextCodes)
         ? s.nextCodes

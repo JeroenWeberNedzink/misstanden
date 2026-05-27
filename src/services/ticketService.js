@@ -5,6 +5,7 @@ import { settingsService } from './SettingsService';
 import { permissionService } from './permissionService';
 import { isReceiptConfirmationStatus } from '../utils/slaUtils';
 import { normalizeHandlerRecord, normalizeHandlerRecords, normalizePermissions } from './utils/handlerNormalization';
+import { getSharedTokenProvider } from '../lib/serviceTokenProvider';
 
 // -----------------------------
 // Case conversion helpers
@@ -81,6 +82,7 @@ const isAuthOrRlsError = (err) => {
 const TICKETS_API_URL = '/api/tickets.api.php';
 const TICKET_READ_API_URL = '/api/ticket-read.api.php';
 const TICKET_ASSIGNMENT_API_URL = '/api/ticket-assignment.api.php';
+const HANDLER_DASHBOARD_API_URL = '/api/handler-dashboard.api.php';
 const WORKFLOWS_API_URL = '/api/workflows.api.php';
 const CATALOG_API_URL = '/api/catalog.api.php';
 const FILES_API_URL = '/api/files.api.php';
@@ -94,9 +96,10 @@ const setTokenProvider = (provider) => {
 };
 
 const getAuthHeaders = async () => {
-  if (!ticketTokenProvider) return {};
+  const provider = ticketTokenProvider || getSharedTokenProvider();
+  if (!provider) return {};
   try {
-    const token = await ticketTokenProvider();
+    const token = await provider();
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};
@@ -110,6 +113,20 @@ const getAuthHeadersWithRetry = async (requireAuth = false) => {
     headers = await getAuthHeaders();
   }
   return headers;
+};
+
+const ticketsApiErrorMessage = (json, fallbackMessage, requestAction = '') => {
+  const data = json?.data || {};
+  const errorId = String(data?.error_id || json?.error_id || json?.errorId || '').trim();
+  const action = String(data?.action || json?.action || requestAction || '').trim();
+  const stage = String(data?.stage || json?.stage || '').trim();
+  const message = json?.message || fallbackMessage;
+  const hints = [
+    action ? `action: ${action}` : '',
+    stage ? `stage: ${stage}` : '',
+    errorId ? `error_id: ${errorId}` : '',
+  ].filter(Boolean);
+  return hints.length > 0 ? `${message} [${hints.join('] [')}]` : message;
 };
 
 const coerceSettingValue = (value, fallback = null) => {
@@ -364,6 +381,7 @@ const ticketApiPost = async (payload, { requireAuth = false } = {}) => {
   if (requireAuth && !authHeaders.Authorization) {
     throw new Error('Authorization token required');
   }
+  const requestAction = String(payload?.action || 'create').trim();
 
   const response = await fetch(TICKETS_API_URL, {
     method: 'POST',
@@ -376,7 +394,7 @@ const ticketApiPost = async (payload, { requireAuth = false } = {}) => {
 
   const json = await response.json().catch(() => null);
   if (!response.ok || !json?.success) {
-    throw new Error(json?.message || `Tickets API error (${response.status})`);
+    throw new Error(ticketsApiErrorMessage(json, `Tickets API error (${response.status})`, requestAction));
   }
   return json?.data;
 };
@@ -418,6 +436,28 @@ const ticketAssignmentPost = async (payload, { requireAuth = true } = {}) => {
     throw new Error(json?.message || `Ticket assignment API error (${response.status})`);
   }
   return toCamelCase(json?.data);
+};
+
+const handlerDashboardGet = async (params = {}, { token = '', requireAuth = true } = {}) => {
+  const authHeaders = token
+    ? { Authorization: `Bearer ${token}` }
+    : await getAuthHeadersWithRetry(requireAuth);
+  if (requireAuth && !authHeaders.Authorization) {
+    throw new Error('Authorization token required');
+  }
+
+  const query = new URLSearchParams(params).toString();
+  const response = await fetch(`${HANDLER_DASHBOARD_API_URL}${query ? `?${query}` : ''}`, {
+    method: 'GET',
+    headers: authHeaders,
+  });
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) {
+    const errorId = String(json?.data?.error_id || json?.error_id || json?.errorId || '').trim();
+    const message = json?.message || `Handler dashboard API error (${response.status})`;
+    throw new Error(errorId ? `${message} [error_id: ${errorId}]` : message);
+  }
+  return json?.data;
 };
 
 const workflowApiGet = async (action, params = {}, { requireAuth = false } = {}) => {
@@ -556,6 +596,12 @@ const ticketActionsWriteState = {
   available: initialTicketActionsState.available, // null = unknown, true = writable, false = blocked
   checkedAt: initialTicketActionsState.checkedAt,
 };
+const HANDLER_LOOKUP_TTL_MS = 5 * 60 * 1000;
+const ALL_HANDLERS_TTL_MS = 2 * 60 * 1000;
+const handlerLookupCache = new Map();
+const handlerLookupInflight = new Map();
+const allHandlersCache = new Map();
+const allHandlersInflight = new Map();
 
 const shouldProbeTicketHandlersRelation = () => {
   if (ticketHandlersRelationState.available !== false) return true;
@@ -734,12 +780,7 @@ const loadHandlerContactById = async (handlerId, context = 'handler lookup') => 
   if (!normalizedId) return null;
 
   try {
-    const apiData = await workflowApiGet(
-      'handlers_by_ids',
-      { ids: normalizedId, include_inactive: '1' },
-      { requireAuth: true }
-    );
-    const row = Array.isArray(apiData?.rows) ? apiData.rows[0] : null;
+    const row = (await fetchHandlersByIdsCached([normalizedId]))[0] || null;
     return row ? { id: row.id, name: row.name, email: row.email } : null;
   } catch (err) {
     console.warn(`[ticketService] ${context} failed unexpectedly, continuing`, err);
@@ -803,6 +844,111 @@ const normalizeHandlerIds = (handlerIds) => {
   return out;
 };
 
+const normalizeCachedHandlerRow = (row) => {
+  const handler = toCamelCase(row || null);
+  const id = String(handler?.id || '').trim();
+  if (!id) return null;
+  return { ...handler, id };
+};
+
+const rememberHandlerRows = (rows = []) => {
+  const now = Date.now();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const handler = normalizeCachedHandlerRow(row);
+    if (!handler?.id) return;
+    handlerLookupCache.set(handler.id, { handler, ts: now });
+  });
+};
+
+const invalidateAllHandlersCache = () => {
+  allHandlersCache.clear();
+  allHandlersInflight.clear();
+};
+
+const getCachedHandlerRow = (handlerId) => {
+  const id = String(handlerId || '').trim();
+  if (!id) return null;
+  const cached = handlerLookupCache.get(id);
+  if (!cached || Date.now() - cached.ts > HANDLER_LOOKUP_TTL_MS) {
+    handlerLookupCache.delete(id);
+    return null;
+  }
+  return cached.handler;
+};
+
+const fetchHandlersByIdsCached = async (handlerIds = []) => {
+  const normalizedIds = normalizeHandlerIds(handlerIds);
+  if (normalizedIds.length === 0) return [];
+
+  const byId = new Map();
+  const missingIds = [];
+  normalizedIds.forEach((id) => {
+    const cached = getCachedHandlerRow(id);
+    if (cached) {
+      byId.set(id, cached);
+      return;
+    }
+    missingIds.push(id);
+  });
+
+  if (missingIds.length > 0) {
+    const inflightKey = missingIds.slice().sort().join(',');
+    let request = handlerLookupInflight.get(inflightKey);
+    if (!request) {
+      request = workflowApiGet(
+        'handlers_by_ids',
+        {
+          ids: missingIds.join(','),
+          include_inactive: '1',
+        },
+        { requireAuth: true }
+      ).then((apiData) => {
+        const rows = Array.isArray(apiData?.rows) ? apiData.rows : [];
+        rememberHandlerRows(rows);
+        return rows.map(normalizeCachedHandlerRow).filter(Boolean);
+      }).finally(() => {
+        handlerLookupInflight.delete(inflightKey);
+      });
+      handlerLookupInflight.set(inflightKey, request);
+    }
+
+    const fetched = await request;
+    fetched.forEach((handler) => {
+      if (handler?.id) byId.set(handler.id, handler);
+    });
+  }
+
+  return normalizedIds.map((id) => byId.get(id)).filter(Boolean);
+};
+
+const fetchAllHandlersCached = async (includeInactive, force = false) => {
+  const cacheKey = includeInactive ? 'include-inactive' : 'active-only';
+  const cached = allHandlersCache.get(cacheKey);
+  if (!force && cached && Date.now() - cached.ts < ALL_HANDLERS_TTL_MS) {
+    return cached.rows;
+  }
+
+  if (!force && allHandlersInflight.has(cacheKey)) {
+    return allHandlersInflight.get(cacheKey);
+  }
+
+  const request = workflowApiGet(
+    'all_handlers',
+    { include_inactive: includeInactive ? '1' : '0' },
+    { requireAuth: true }
+  ).then((apiData) => {
+    const rows = Array.isArray(apiData?.rows) ? apiData.rows : [];
+    allHandlersCache.set(cacheKey, { rows, ts: Date.now() });
+    rememberHandlerRows(rows);
+    return rows;
+  }).finally(() => {
+    allHandlersInflight.delete(cacheKey);
+  });
+
+  allHandlersInflight.set(cacheKey, request);
+  return request;
+};
+
 const normalizeAssignmentRole = (value, fallback = 'secondary') => {
   const role = String(value || '').trim().toLowerCase();
   if (['primary', 'secondary', 'legal', 'observer'].includes(role)) {
@@ -826,15 +972,8 @@ const loadHandlersByIdsWithFallback = async (handlerIds = []) => {
   const normalizedIds = normalizeHandlerIds(handlerIds);
   if (normalizedIds.length === 0) return [];
 
-  const apiData = await workflowApiGet(
-    'handlers_by_ids',
-    {
-      ids: normalizedIds.join(','),
-      include_inactive: '1',
-    },
-    { requireAuth: true }
-  );
-  return (Array.isArray(apiData?.rows) ? apiData.rows : []).map((row) => ({
+  const rows = await fetchHandlersByIdsCached(normalizedIds);
+  return rows.map((row) => ({
     id: row?.id,
     name: row?.name ?? null,
     email: row?.email ?? null,
@@ -848,7 +987,7 @@ const insertTicketActionSafe = async (payload, context = 'ticket action') => {
   }
 
   try {
-    await ticketApiPost(
+    const result = await ticketApiPost(
       {
         action: 'handler_log_action',
         ticket_id: payload?.ticket_id,
@@ -859,6 +998,14 @@ const insertTicketActionSafe = async (payload, context = 'ticket action') => {
       },
       { requireAuth: true }
     );
+    if (result?.skipped) {
+      markTicketActionsWriteState(false);
+      return {
+        skipped: true,
+        reason: 'server_skipped',
+        errorId: result?.error_id || result?.errorId || null,
+      };
+    }
     markTicketActionsWriteState(true);
     return { ok: true, source: 'api' };
   } catch (error) {
@@ -1036,9 +1183,37 @@ const SELECT_TICKET_RELATIONS = `
 // -----------------------------
 export const ticketService = {
   // ----- Read/list -----
+  async getHandlerDashboardBootstrap(options = {}) {
+    const params = {
+      ...(options.statusCode && options.statusCode !== 'all' ? { status_code: options.statusCode } : {}),
+      ...(options.severityCode && options.severityCode !== 'all' ? { severity_code: options.severityCode } : {}),
+      ...(options.workflowType && options.workflowType !== 'all' ? { workflow_type: options.workflowType } : {}),
+      ...(options.dateFrom ? { date_from: new Date(options.dateFrom).toISOString() } : {}),
+      ...(options.dateTo ? { date_to: getEndOfDayISO(options.dateTo) } : {}),
+      ...(options.search ? { search: String(options.search).trim() } : {}),
+      ...(options.includeInactive ? { include_inactive: '1' } : {}),
+    };
+    const data = await handlerDashboardGet(params, {
+      token: options.token || '',
+      requireAuth: options.requireAuth !== false,
+    });
+    const handler = normalizeHandlerRecord(toCamelCase(data?.handler || null));
+    const tickets = toCamelCase(data?.tickets?.rows || []);
+    const workflows = toCamelCase(data?.catalog?.workflows || []);
+    const severities = toCamelCase(data?.catalog?.severities || []);
+
+    return {
+      handler,
+      isAdmin: Boolean(data?.is_admin ?? data?.isAdmin),
+      claimsSub: data?.claims_sub || data?.claimsSub || '',
+      tickets,
+      workflows,
+      severities,
+    };
+  },
+
   async getAllTickets(filters = {}) {
-    const runtimeSettings = await getTicketRuntimeSettings();
-    const data = await ticketReadGet('list', {
+    const params = {
       ...(filters.handlerId && filters.handlerId !== 'all' ? { handler_id: filters.handlerId } : {}),
       ...(filters.statusCode && filters.statusCode !== 'all' ? { status_code: filters.statusCode } : {}),
       ...(filters.severityCode && filters.severityCode !== 'all' ? { severity_code: filters.severityCode } : {}),
@@ -1046,7 +1221,12 @@ export const ticketService = {
       ...(filters.dateFrom ? { date_from: new Date(filters.dateFrom).toISOString() } : {}),
       ...(filters.dateTo ? { date_to: getEndOfDayISO(filters.dateTo) } : {}),
       ...(filters.search ? { search: String(filters.search).trim() } : {}),
-    });
+      ...(filters.summary ? { summary: '1' } : {}),
+    };
+    const [runtimeSettings, data] = await Promise.all([
+      getTicketRuntimeSettings(),
+      ticketReadGet('list', params),
+    ]);
     const tickets = toCamelCase(data?.rows || []);
     return tickets.map((ticket) => applyTicketRuntimePolicies(ticket, runtimeSettings));
   },
@@ -1054,12 +1234,14 @@ export const ticketService = {
   async getTicketById(ticketId, options = {}) {
     if (!ticketId) throw new Error('ticketId is required');
     const includeRelations = options?.includeRelations !== false;
+    const settingsByKeyPromise = getNormalizedTicketSettingsByKey();
     const data = await ticketReadGet('get', {
       ticket_id: ticketId,
       ...(includeRelations ? { include_relations: '1' } : {}),
     });
     const ticket = toCamelCase(data?.row || null);
-    const runtimeSettings = await getTicketRuntimeSettings(ticket?.workflowType || ticket?.workflow_type);
+    const normalizedByKey = await settingsByKeyPromise;
+    const runtimeSettings = buildTicketRuntimeSettings(normalizedByKey, ticket?.workflowType || ticket?.workflow_type);
     if (!includeRelations) return applyTicketRuntimePolicies(ticket, runtimeSettings);
     const relations = data?.relations ? toCamelCase(data.relations) : await this.getTicketRelations(ticketId);
     const withRelations = {
@@ -1105,7 +1287,7 @@ export const ticketService = {
 
     const json = await resp.json().catch(() => null);
     if (!resp.ok || !json?.success || !json?.data) {
-      throw new Error(json?.message || 'Ongeldige ticket-ID of toegangscode');
+      throw new Error(ticketsApiErrorMessage(json, 'Ongeldige ticket-ID of toegangscode', 'access'));
     }
 
     const loadedTicket = toCamelCase(json.data);
@@ -1134,7 +1316,7 @@ export const ticketService = {
     const json = await resp.json().catch(() => null);
 
     if (!resp.ok || !json?.success) {
-      throw new Error(json?.message || 'Failed to send reporter message');
+      throw new Error(ticketsApiErrorMessage(json, 'Failed to send reporter message', 'message'));
     }
 
     const message = toCamelCase(json?.data?.message || null);
@@ -1247,9 +1429,9 @@ export const ticketService = {
         is_anonymous: isAnonymous
       })
     });
-    const json = await resp.json();
+    const json = await resp.json().catch(() => null);
     if (!resp.ok || !json?.success) {
-      throw new Error(json?.message || 'Failed to create ticket');
+      throw new Error(ticketsApiErrorMessage(json, 'Failed to create ticket', 'create'));
     }
 
     const createdTicket = toCamelCase(json?.data);
@@ -1433,6 +1615,7 @@ async updateHandler(handlerId, updates = {}) {
     { id: handlerId, patch: payload },
     { requireAuth: true }
   );
+  invalidateAllHandlersCache();
   return normalizeHandlerRecord(toCamelCase(apiData?.row || null));
 },
 
@@ -1463,6 +1646,7 @@ async createHandler(handlerData = {}) {
     { payload },
     { requireAuth: true }
   );
+  invalidateAllHandlersCache();
   return normalizeHandlerRecord(toCamelCase(apiData?.row || null));
 },
 
@@ -1476,6 +1660,7 @@ async deleteHandler(handlerId, options = {}) {
     { id: handlerId, hard, force_detach: forceDetach },
     { requireAuth: true }
   );
+  invalidateAllHandlersCache();
   return {
     success: true,
     mode: apiData?.mode || (hard ? 'hard' : 'soft'),
@@ -1512,24 +1697,38 @@ async deleteHandler(handlerId, options = {}) {
     if (!ticketId) throw new Error('ticketId is required');
 
     const nowIso = new Date().toISOString();
+    const trimmed = note ? String(note).trim() : '';
     const normalizedHandlerIds = normalizeHandlerIds(handlerIds);
     const trustedHandlerIds = new Set(normalizeHandlerIds(options?.currentHandlerId));
     const assignmentRoles = buildAssignmentRolesMap(normalizedHandlerIds, options?.rolesByHandlerId || {});
     const explicitPrimary = normalizedHandlerIds.find((id) => assignmentRoles[id] === 'primary') || null;
     const primaryHandlerId = explicitPrimary || normalizedHandlerIds[0] || null;
     const handlerMap = new Map();
-    let ticketBefore = null;
-    ticketBefore = await this.getTicketById(ticketId, { includeRelations: false }).catch(() => null);
-    if (!ticketBefore) {
-      const e = new Error('Ticket bestaat niet meer.');
-      e.code = 'TICKET_NOT_FOUND';
-      throw e;
-    }
+    const knownHandlers = Array.isArray(options?.knownHandlers) ? options.knownHandlers : [];
+    knownHandlers.forEach((handler) => {
+      const normalizedId = String(handler?.id || '').trim();
+      if (!normalizedId || !normalizedHandlerIds.includes(normalizedId)) return;
+      handlerMap.set(normalizedId, {
+        ...handler,
+        id: normalizedId,
+        active: handler?.active ?? handler?.isActive ?? true,
+      });
+    });
+    trustedHandlerIds.forEach((handlerId) => {
+      if (!normalizedHandlerIds.includes(handlerId) || handlerMap.has(handlerId)) return;
+      handlerMap.set(handlerId, {
+        id: handlerId,
+        name: options?.currentHandlerName || null,
+        email: options?.currentHandlerEmail || null,
+        active: true,
+      });
+    });
 
     if (normalizedHandlerIds.length > 0) {
       let handlers = [];
       try {
-        handlers = await loadHandlersByIdsWithFallback(normalizedHandlerIds);
+        const missingHandlerIds = normalizedHandlerIds.filter((handlerId) => !handlerMap.has(handlerId));
+        handlers = await loadHandlersByIdsWithFallback(missingHandlerIds);
       } catch (handlerError) {
         if (isAuthOrRlsError(handlerError)) {
           console.warn('[ticketService] Handler validation query blocked by policy, trusting current handler where possible', handlerError);
@@ -1577,23 +1776,31 @@ async deleteHandler(handlerId, options = {}) {
         : 'TICKET_HANDLERS_MIGRATION_REQUIRED';
       throw e;
     }
+
+    let result = syncResult?.ticket || null;
+    if (!result) {
+      result = await this.getTicketById(ticketId, { includeRelations: false });
+    }
+    if (!result) {
+      const e = new Error('Ticket bestaat niet meer.');
+      e.code = 'TICKET_NOT_FOUND';
+      throw e;
+    }
+
     const workflowRuntimeSettings = await getTicketRuntimeSettings(
-      safeTrim(ticketBefore?.workflowType || ticketBefore?.workflow_type || syncResult?.ticket?.workflowType || syncResult?.ticket?.workflow_type)
+      safeTrim(result?.workflowType || result?.workflow_type)
     );
     const shouldNotifyOnAssignment = workflowRuntimeSettings.notifyOnAssignment !== false;
 
-    // Get handler info for logging
-    let handlerInfo = null;
-    if (options.currentHandlerId) {
-      handlerInfo = await loadHandlerContactById(
-        options.currentHandlerId,
-        'read current handler info for assignment log'
-      );
-    }
-
-    // Log assignment action
-    const trimmed = note ? String(note).trim() : '';
     if (trimmed && await this.isAuditLoggingEnabled()) {
+      let handlerInfo = null;
+      if (options.currentHandlerId) {
+        handlerInfo = await loadHandlerContactById(
+          options.currentHandlerId,
+          'read current handler info for assignment log'
+        );
+      }
+
       await insertTicketActionSafe({
         ticket_id: ticketId,
         action_type: 'assignment',
@@ -1607,12 +1814,7 @@ async deleteHandler(handlerId, options = {}) {
       }, 'setTicketHandlers(note)');
     }
 
-    let result = syncResult?.ticket || null;
-    if (result) {
-      result = applyTicketRuntimePolicies(result, workflowRuntimeSettings);
-    } else {
-      result = await this.getTicketById(ticketId, { includeRelations: false });
-    }
+    result = applyTicketRuntimePolicies(result, workflowRuntimeSettings);
 
     // Send assignment notification only to newly added handlers.
     const addedHandlerIds = syncResult.available
@@ -1630,8 +1832,8 @@ async deleteHandler(handlerId, options = {}) {
     }
 
     const hadAnyAssignmentBefore = syncResult.available
-      ? (syncResult.previousIds || []).length > 0 || Boolean(ticketBefore?.handler_id)
-      : Boolean(ticketBefore?.handler_id);
+      ? (syncResult.previousIds || []).length > 0
+      : false;
     const hasAnyAssignmentNow = normalizedHandlerIds.length > 0;
     const firstAssignment = !hadAnyAssignmentBefore && hasAnyAssignmentNow;
 
@@ -1770,12 +1972,7 @@ async deleteHandler(handlerId, options = {}) {
       : options.activeOnly !== undefined
         ? !Boolean(options.activeOnly)
         : true;
-    const apiData = await workflowApiGet(
-      'all_handlers',
-      { include_inactive: includeInactive ? '1' : '0' },
-      { requireAuth: true }
-    );
-    const rows = Array.isArray(apiData?.rows) ? apiData.rows : [];
+    const rows = await fetchAllHandlersCached(includeInactive, options.force === true);
 
     // Enrich handlers with permissions from new RBAC system.
     const handlers = normalizeHandlerRecords(toCamelCase(rows) || []);
@@ -1816,14 +2013,8 @@ async deleteHandler(handlerId, options = {}) {
   async getHandlerById(handlerId) {
     if (!handlerId) throw new Error('handlerId is required');
 
-    const apiData = await workflowApiGet(
-      'handlers_by_ids',
-      { ids: String(handlerId), include_inactive: '1' },
-      { requireAuth: true }
-    );
-    const rows = Array.isArray(apiData?.rows) ? apiData.rows : [];
-    const row = rows.find((item) => String(item?.id || '').trim() === String(handlerId).trim()) || null;
-    return row ? normalizeHandlerRecord(toCamelCase(row)) : null;
+    const row = (await fetchHandlersByIdsCached([handlerId]))[0] || null;
+    return row ? normalizeHandlerRecord(row) : null;
   },
 
   async getWorkflows(includeInactive = false) {
