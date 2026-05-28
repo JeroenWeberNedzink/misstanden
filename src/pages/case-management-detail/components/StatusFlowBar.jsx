@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import Icon from '../../../components/AppIcon';
 import { workflowService } from '../../../services/workflowService';
 import StatusFlowNoteDialog from './StatusFlowNoteDialog';
+import { toDateSafe } from '../../../utils/slaUtils';
 
 const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
@@ -11,8 +12,8 @@ const STATUS_ROLLBACK_WINDOW_MS = 60 * 60 * 1000;
 
 const isRollbackWindowOpen = (value) => {
   if (!value) return false;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return false;
+  const date = toDateSafe(value);
+  if (!date) return false;
   return Date.now() - date.getTime() <= STATUS_ROLLBACK_WINDOW_MS;
 };
 

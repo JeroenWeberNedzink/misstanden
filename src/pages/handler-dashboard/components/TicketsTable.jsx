@@ -3,6 +3,7 @@ import Icon from '../../../components/AppIcon';
 import { useTranslation } from 'react-i18next';
 import Button from '../../../components/ui/Button';
 import TicketTableRow from './TicketTableRow';
+import { toDateSafe } from '../../../utils/slaUtils';
 
 // ---- helpers (local) ----
 const safeTrim = (v) => String(v ?? '').trim();
@@ -87,8 +88,8 @@ const TicketsTable = ({ tickets, isLoading = false, workflows = [], onStatusChan
 
       // Dates: compare timestamps properly
       if (key === 'submitted_at' || key === 'submittedAt') {
-        const ad = aValue ? new Date(aValue).getTime() : 0;
-        const bd = bValue ? new Date(bValue).getTime() : 0;
+        const ad = toDateSafe(aValue)?.getTime() || 0;
+        const bd = toDateSafe(bValue)?.getTime() || 0;
         return sortConfig.direction === 'asc' ? ad - bd : bd - ad;
       }
 

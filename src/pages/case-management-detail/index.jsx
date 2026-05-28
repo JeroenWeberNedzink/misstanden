@@ -26,8 +26,8 @@ import { normalizeHandlerRecord } from '../../services/utils/handlerNormalizatio
 const fmtDateTime = (value, locale) => {
   if (!value) return '-';
   try {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return String(value);
+    const d = toDateSafe(value);
+    if (!d) return String(value);
     return d.toLocaleString(locale || undefined);
   } catch {
     return String(value);

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
+import { toDateSafe } from '../../../utils/slaUtils';
 
 const PREVIEW_LIMIT = 5;
 
@@ -27,8 +28,8 @@ const ActionHistoryPanel = ({ history = [], actions = [], isLoading = false }) =
         };
       })
       .sort((a, b) => {
-        const at = a?.timestamp ? new Date(a.timestamp).getTime() : 0;
-        const bt = b?.timestamp ? new Date(b.timestamp).getTime() : 0;
+        const at = toDateSafe(a?.timestamp)?.getTime() || 0;
+        const bt = toDateSafe(b?.timestamp)?.getTime() || 0;
         return bt - at;
       });
   }, [history, actions, t]);
@@ -88,8 +89,8 @@ const ActionHistoryPanel = ({ history = [], actions = [], isLoading = false }) =
   const formatTimestamp = (value) => {
     if (!value) return '';
     try {
-      const d = new Date(value);
-      if (Number.isNaN(d.getTime())) return String(value);
+      const d = toDateSafe(value);
+      if (!d) return String(value);
       return d.toLocaleString(i18n?.resolvedLanguage || i18n?.language || undefined, {
         day: '2-digit',
         month: '2-digit',

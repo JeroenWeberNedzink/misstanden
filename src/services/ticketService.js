@@ -3,7 +3,7 @@ import { notificationService } from './notificationService';
 import { workflowService } from './workflowService';
 import { settingsService } from './SettingsService';
 import { permissionService } from './permissionService';
-import { isReceiptConfirmationStatus } from '../utils/slaUtils';
+import { isReceiptConfirmationStatus, toDateSafe } from '../utils/slaUtils';
 import { normalizeHandlerRecord, normalizeHandlerRecords, normalizePermissions } from './utils/handlerNormalization';
 import { getSharedTokenProvider } from '../lib/serviceTokenProvider';
 
@@ -353,8 +353,8 @@ const applyTicketRuntimePolicies = (ticket, runtimeSettings, options = {}) => {
 
   if (!isClosedStatus(statusCode) && isResolvedStatus(statusCode) && Number(runtimeSettings?.autoCloseResolvedDays || 0) > 0) {
     const baseDateRaw = next?.lastUpdateAt || next?.last_update_at || next?.updatedAt || next?.submittedAt || next?.submitted_at || null;
-    const baseDate = baseDateRaw ? new Date(baseDateRaw) : null;
-    if (baseDate && !Number.isNaN(baseDate.getTime())) {
+    const baseDate = toDateSafe(baseDateRaw);
+    if (baseDate) {
       const daysSinceUpdate = (now - baseDate.getTime()) / (1000 * 60 * 60 * 24);
       if (daysSinceUpdate >= Number(runtimeSettings.autoCloseResolvedDays)) {
         next.statusCode = 'closed';
@@ -820,8 +820,8 @@ const getEndOfDayISO = (dateStr) => {
 
 const addDaysISO = (dateLike, days) => {
   if (!dateLike || !Number.isFinite(Number(days))) return null;
-  const d = new Date(dateLike);
-  if (Number.isNaN(d.getTime())) return null;
+  const d = toDateSafe(dateLike);
+  if (!d) return null;
   d.setDate(d.getDate() + Number(days));
   return d.toISOString();
 };
@@ -1147,8 +1147,8 @@ const resolveStatusChangedAt = (ticket = {}) =>
 
 const isRollbackWindowOpen = (value) => {
   if (!value) return false;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return false;
+  const date = toDateSafe(value);
+  if (!date) return false;
   return Date.now() - date.getTime() <= STATUS_ROLLBACK_WINDOW_MS;
 };
 

@@ -1,6 +1,7 @@
 ﻿import React from 'react';
 import Icon from '../../../components/AppIcon';
 import { useTranslation } from 'react-i18next';
+import { toDateSafe } from '../../../utils/slaUtils';
 
 const StatCard = ({ icon, label, value, color, bgColor }) => (
   <div className={`${bgColor} rounded-xl border border-border p-4 hover:shadow-md transition-shadow`}>
@@ -54,9 +55,10 @@ const QuickStats = ({ tickets, currentHandlerId, workflowStatusMap = new Map() }
       getTicketHandlerId(t) === currentHandlerId
     )?.length || 0,
     // Today
-    today: tickets?.filter(t =>
-      t?.submittedAt && new Date(t.submittedAt).toDateString() === todayKey
-    )?.length || 0,
+    today: tickets?.filter(t => {
+      const submittedAt = toDateSafe(t?.submittedAt || t?.submitted_at);
+      return submittedAt ? submittedAt.toDateString() === todayKey : false;
+    })?.length || 0,
   };
 
   return (

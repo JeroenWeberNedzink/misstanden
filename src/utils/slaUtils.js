@@ -10,16 +10,34 @@ const normalizeText = (value) =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '_');
 
+const SQL_DATETIME_WITHOUT_ZONE_RE =
+  /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,7})?)?$/;
+const HAS_TIME_ZONE_RE = /(?:z|[+\-]\d{2}:?\d{2})$/i;
+
+export const normalizeUtcDateInput = (value) => {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  if (SQL_DATETIME_WITHOUT_ZONE_RE.test(trimmed) && !HAS_TIME_ZONE_RE.test(trimmed)) {
+    return `${trimmed.replace(' ', 'T')}Z`;
+  }
+  return trimmed;
+};
+
 export const toDateSafe = (value) => {
   if (!value) return null;
-  const d = new Date(value);
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : new Date(value.getTime());
+  }
+  const d = new Date(normalizeUtcDateInput(value));
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
 export const addHours = (date, hours) => {
   const hoursNum = toNumber(hours);
   if (!date || !hoursNum) return null;
-  const d = new Date(date);
+  const d = toDateSafe(date);
+  if (!d) return null;
   d.setHours(d.getHours() + hoursNum);
   return d;
 };

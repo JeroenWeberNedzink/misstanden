@@ -2,6 +2,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
+import { toDateSafe } from '../../../utils/slaUtils';
 
 const TicketCard = ({
   ticket,
@@ -64,7 +65,7 @@ const TicketCard = ({
   const statusInfo = getStatusInfo(ticket?.statusCode, ticket?.workflowType);
   const severityInfo = getSeverityInfo(ticket?.severityCode);
 
-  const submittedAt = ticket?.submittedAt ? new Date(ticket.submittedAt) : null;
+  const submittedAt = toDateSafe(ticket?.submittedAt || ticket?.submitted_at);
   const hasSubmittedAt = submittedAt && !Number.isNaN(submittedAt.getTime());
   const submittedDate = hasSubmittedAt
     ? dateFormatter.format(submittedAt)

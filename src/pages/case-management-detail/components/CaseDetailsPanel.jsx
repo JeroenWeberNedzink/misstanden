@@ -4,12 +4,13 @@ import Input from '../../../components/ui/Input';
 import PermissionGuard from '../../../components/auth/PermissionGuard';
 import { PERMISSIONS } from '../../../utils/permissions';
 import { useTranslation } from 'react-i18next';
+import { toDateSafe } from '../../../utils/slaUtils';
 
 const fmtDateTime = (value, locale) => {
   if (!value) return '';
   try {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return String(value);
+    const d = toDateSafe(value);
+    if (!d) return String(value);
     return d.toLocaleString(locale || undefined, {
       day: '2-digit',
       month: '2-digit',

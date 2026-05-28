@@ -15,7 +15,13 @@ function Convert-BridgeValue {
     }
 
     if ($Value -is [DateTime]) {
-        return ([DateTime]$Value).ToString('o')
+        $dateValue = [DateTime]$Value
+        if ($dateValue.Kind -eq [DateTimeKind]::Unspecified) {
+            $dateValue = [DateTime]::SpecifyKind($dateValue, [DateTimeKind]::Utc)
+        } else {
+            $dateValue = $dateValue.ToUniversalTime()
+        }
+        return $dateValue.ToString('o')
     }
 
     if ($Value -is [byte[]]) {

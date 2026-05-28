@@ -2,6 +2,7 @@
 import Icon from '../../../components/AppIcon';
 import { useTranslation } from 'react-i18next';
 import TicketCard from './TicketCard';
+import { toDateSafe } from '../../../utils/slaUtils';
 
 const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
@@ -72,8 +73,8 @@ const TicketCardGrid = ({
   const sortedTickets = useMemo(() => {
     const list = Array.isArray(tickets) ? [...tickets] : [];
     return list.sort((a, b) => {
-      const ad = a?.submittedAt ? new Date(a.submittedAt).getTime() : 0;
-      const bd = b?.submittedAt ? new Date(b.submittedAt).getTime() : 0;
+      const ad = toDateSafe(a?.submittedAt || a?.submitted_at)?.getTime() || 0;
+      const bd = toDateSafe(b?.submittedAt || b?.submitted_at)?.getTime() || 0;
       return bd - ad;
     });
   }, [tickets]);

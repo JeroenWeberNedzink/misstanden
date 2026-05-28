@@ -84,6 +84,23 @@
             "avgResolutionTime": "Avg Resolution Time",
             "hours": "hours"
         },
+        "summary": {
+            "open": "Abertos",
+            "unassigned": "Nao atribuidos",
+            "urgent": "Urgentes",
+            "today": "Hoje",
+            "closed": "Fechados",
+            "mineOpen": "Meus abertos"
+        },
+        "quickViews": {
+            "all": "Todos",
+            "active": "Ativos",
+            "mine": "Meus",
+            "unassigned": "Nao atribuidos",
+            "urgent": "Urgentes",
+            "today": "Hoje",
+            "closed": "Fechados"
+        },
         "filters": {
             "allStatuses": "All Statuses",
             "allSeverities": "All Severities",

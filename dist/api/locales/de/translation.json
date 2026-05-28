@@ -100,14 +100,17 @@
             "unassigned": "Nicht zugewiesen",
             "urgent": "Dringend",
             "today": "Heute",
+            "closed": "Geschlossen",
             "mineOpen": "Meine offenen Faelle"
         },
         "quickViews": {
             "all": "Alle",
+            "active": "Aktiv",
             "mine": "Meine",
             "unassigned": "Nicht zugewiesen",
             "urgent": "Dringend",
-            "today": "Heute"
+            "today": "Heute",
+            "closed": "Geschlossen"
         },
         "quickStats": {
             "totalTickets": "Gesamtfaelle",

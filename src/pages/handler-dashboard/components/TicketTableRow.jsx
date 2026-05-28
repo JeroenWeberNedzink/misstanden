@@ -7,6 +7,7 @@ import StatusBadge from './StatusBadge';
 import SeverityBadge from './SeverityBadge';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { PERMISSIONS } from '../../../utils/permissions';
+import { toDateSafe } from '../../../utils/slaUtils';
 
 const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
@@ -88,8 +89,8 @@ const TicketTableRow = ({
   const formatDate = (dateString) => {
     if (!dateString) return '-';
     try {
-      const date = new Date(dateString);
-      if (Number.isNaN(date.getTime())) return '-';
+      const date = toDateSafe(dateString);
+      if (!date) return '-';
       return date.toLocaleDateString(activeLocale, { day: '2-digit', month: '2-digit', year: 'numeric' });
     } catch {
       return '-';

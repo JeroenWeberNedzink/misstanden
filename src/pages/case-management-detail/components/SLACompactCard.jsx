@@ -1,11 +1,10 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
+import { toDateSafe } from '../../../utils/slaUtils';
 
 const toDate = (value) => {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
+  return toDateSafe(value);
 };
 
 const getState = ({ dueAt, doneAt }) => {

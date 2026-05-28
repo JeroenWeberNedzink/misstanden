@@ -98,14 +98,17 @@
             "unassigned": "Unassigned",
             "urgent": "Urgent",
             "today": "Today",
+            "closed": "Closed",
             "mineOpen": "My Open"
         },
         "quickViews": {
             "all": "All",
+            "active": "Active",
             "mine": "Mine",
             "unassigned": "Unassigned",
             "urgent": "Urgent",
-            "today": "Today"
+            "today": "Today",
+            "closed": "Closed"
         },
         "quickStats": {
             "totalTickets": "Total Tickets",

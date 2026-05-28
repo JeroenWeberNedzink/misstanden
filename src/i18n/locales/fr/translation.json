@@ -100,14 +100,17 @@
             "unassigned": "Non assignes",
             "urgent": "Urgents",
             "today": "Aujourd'hui",
+            "closed": "Clotures",
             "mineOpen": "Mes dossiers ouverts"
         },
         "quickViews": {
             "all": "Tous",
+            "active": "Actifs",
             "mine": "Mes dossiers",
             "unassigned": "Non assignes",
             "urgent": "Urgents",
-            "today": "Aujourd'hui"
+            "today": "Aujourd'hui",
+            "closed": "Clotures"
         },
         "quickStats": {
             "totalTickets": "Total des dossiers",

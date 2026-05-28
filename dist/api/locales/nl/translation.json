@@ -98,14 +98,17 @@
             "unassigned": "Niet toegewezen",
             "urgent": "Urgent",
             "today": "Vandaag",
+            "closed": "Gesloten",
             "mineOpen": "Mijn open dossiers"
         },
         "quickViews": {
             "all": "Alles",
+            "active": "Actief",
             "mine": "Van mij",
             "unassigned": "Niet toegewezen",
             "urgent": "Urgent",
-            "today": "Vandaag"
+            "today": "Vandaag",
+            "closed": "Gesloten"
         },
         "quickStats": {
             "totalTickets": "Totaal dossiers",

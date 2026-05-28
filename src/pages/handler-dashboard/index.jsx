@@ -18,9 +18,31 @@ import {
   isValidApiAudience,
 } from '../../lib/auth0ApiToken';
 import { normalizeHandlerRecord } from '../../services/utils/handlerNormalization';
+import { toDateSafe } from '../../utils/slaUtils';
 
 const safeTrim = (v) => String(v ?? '').trim();
 const safeLower = (v) => String(v ?? '').toLowerCase();
+const TERMINAL_STATUS_FALLBACKS = new Set([
+  'closed',
+  'resolved',
+  'completed',
+  'complete',
+  'finalized',
+  'gesloten',
+  'afgesloten',
+  'opgelost',
+  'afgerond',
+  'abgeschlossen',
+  'geschlossen',
+  'erledigt',
+  'cloture',
+  'cloturee',
+  'resolu',
+  'resolue',
+  'encerrado',
+  'resolvido',
+  'finalizado',
+]);
 const DASHBOARD_BOOTSTRAP_CACHE_KEY = 'handler_dashboard_bootstrap_v1';
 const DASHBOARD_BOOTSTRAP_CACHE_TTL_MS = 2 * 60 * 1000;
 const readCachedHandlerProfile = () => {
@@ -172,7 +194,7 @@ export default function HandlerDashboard() {
     });
     return Array.from(byCode.values())
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-      .map((s) => ({ value: s.code, label: s.label, color: s.color }));
+      .map((s) => ({ value: s.code, label: s.label, color: s.color, isTerminal: s.isTerminal }));
   }, [workflows]);
 
   const severityOptions = useMemo(() => {
@@ -186,11 +208,32 @@ export default function HandlerDashboard() {
     );
   }, [severities, t]);
 
+  const getTicketDisplayStatusCode = (ticket) =>
+    safeTrim(ticket?.currentStage || ticket?.current_stage || ticket?.statusCode || ticket?.status_code);
+
   const getStatusMetaForTicket = (ticket) => {
     const wfCode = safeTrim(ticket?.workflowType || ticket?.workflow_type);
-    const statusCode = safeTrim(ticket?.statusCode || ticket?.status_code);
+    const statusCode = getTicketDisplayStatusCode(ticket);
     const wfMap = workflowStatusMap.get(wfCode);
-    return wfMap?.get(safeLower(statusCode)) || null;
+    const meta = wfMap?.get(safeLower(statusCode));
+    if (meta) return meta;
+
+    const fallbackStatusCode = safeTrim(ticket?.statusCode || ticket?.status_code);
+    return wfMap?.get(safeLower(fallbackStatusCode)) || null;
+  };
+
+  const isTicketClosed = (ticket) => {
+    const meta = getStatusMetaForTicket(ticket);
+    if (meta) return Boolean(meta.isTerminal);
+
+    return [
+      getTicketDisplayStatusCode(ticket),
+      ticket?.statusCode,
+      ticket?.status_code,
+      ticket?.status,
+      ticket?.statusLabel,
+      ticket?.status_label,
+    ].some((value) => TERMINAL_STATUS_FALLBACKS.has(safeLower(value)));
   };
 
   const applyDashboardData = (ticketsData = [], workflowsData = [], severitiesData = [], role = currentHandlerRole) => {
@@ -483,24 +526,25 @@ export default function HandlerDashboard() {
 
   const stats = useMemo(() => {
     const list = tickets ?? [];
-    const isOpen = (t) => !getStatusMetaForTicket(t)?.isTerminal;
+    const isOpen = (t) => !isTicketClosed(t);
     const isUnassigned = (t) => !getTicketHandlerId(t) && isOpen(t);
     const isHigh = (t) => t?.severityCode === 'critical' || t?.severityCode === 'high';
     const isMine = (t) => getTicketHandlerId(t) && getTicketHandlerId(t) === currentHandlerId;
     const isToday = (t) => {
-      if (!t?.submittedAt) return false;
-      return new Date(t.submittedAt).toDateString() === todayKey;
+      const submittedAt = toDateSafe(t?.submittedAt || t?.submitted_at);
+      return submittedAt ? submittedAt.toDateString() === todayKey : false;
     };
 
     return {
-      total: list.length,
+      total: list.filter(isOpen).length,
       open: list.filter(isOpen).length,
+      closed: list.filter(isTicketClosed).length,
       unassigned: list.filter(isUnassigned).length,
-      highPriority: list.filter(isHigh).length,
+      highPriority: list.filter((t) => isOpen(t) && isHigh(t)).length,
       mineOpen: list.filter((t) => isOpen(t) && isMine(t)).length,
-      today: list.filter(isToday).length,
+      today: list.filter((t) => isOpen(t) && isToday(t)).length,
     };
-  }, [tickets, currentHandlerId, todayKey]);
+  }, [tickets, currentHandlerId, todayKey, workflowStatusMap]);
 
   const applyQuickView = (key) => {
     if (key === 'all') {
@@ -533,6 +577,12 @@ export default function HandlerDashboard() {
       setSeverityFilter('all');
       return;
     }
+    if (key === 'closed') {
+      setScopeFilter('closed');
+      setStatusFilter('all');
+      setSeverityFilter('all');
+      return;
+    }
     if (statusOptions.some((o) => o.value === key)) {
       setStatusFilter(key);
       setScopeFilter('all');
@@ -542,8 +592,20 @@ export default function HandlerDashboard() {
 
   // Filter tickets
   const filteredTickets = (tickets ?? []).filter((ticket) => {
-    const matchesStatus = statusFilter === 'all' || ticket?.statusCode === statusFilter;
+    const statusCandidates = [
+      ticket?.statusCode,
+      ticket?.status_code,
+      ticket?.currentStage,
+      ticket?.current_stage,
+    ].map(safeLower);
+    const matchesStatus = statusFilter === 'all' || statusCandidates.includes(safeLower(statusFilter));
     const matchesSeverity = severityFilter === 'all' || ticket?.severityCode === severityFilter;
+    const ticketClosed = isTicketClosed(ticket);
+    const closedScopeActive = scopeFilter === 'closed';
+    const explicitClosedStatusSelected = statusFilter !== 'all' && matchesStatus && ticketClosed;
+    const matchesClosedVisibility = closedScopeActive
+      ? ticketClosed
+      : (!ticketClosed || explicitClosedStatusSelected);
 
     const q = search.trim().toLowerCase();
     const matchesSearch = !q ||
@@ -556,21 +618,23 @@ export default function HandlerDashboard() {
       if (scopeFilter === 'unassigned') return !getTicketHandlerId(ticket);
       if (scopeFilter === 'urgent') return ticket?.severityCode === 'critical' || ticket?.severityCode === 'high';
       if (scopeFilter === 'today') {
-        if (!ticket?.submittedAt) return false;
-        return new Date(ticket.submittedAt).toDateString() === todayKey;
+        const submittedAt = toDateSafe(ticket?.submittedAt || ticket?.submitted_at);
+        return submittedAt ? submittedAt.toDateString() === todayKey : false;
       }
+      if (scopeFilter === 'closed') return ticketClosed;
       return true;
     })();
 
-    return matchesStatus && matchesSeverity && matchesSearch && matchesScope;
+    return matchesClosedVisibility && matchesStatus && matchesSeverity && matchesSearch && matchesScope;
   });
 
   const quickViews = [
-    { key: 'all', label: t('handlerDashboard.quickViews.all'), count: stats.total, icon: 'LayoutGrid', tone: 'bg-muted text-muted-foreground' },
+    { key: 'all', label: t('handlerDashboard.quickViews.active'), count: stats.total, icon: 'LayoutGrid', tone: 'bg-muted text-muted-foreground' },
     { key: 'mine', label: t('handlerDashboard.quickViews.mine'), count: stats.mineOpen, icon: 'UserCheck', tone: 'bg-sky-50 text-sky-700' },
     { key: 'unassigned', label: t('handlerDashboard.quickViews.unassigned'), count: stats.unassigned, icon: 'UserX', tone: 'bg-amber-50 text-amber-700' },
     { key: 'urgent', label: t('handlerDashboard.quickViews.urgent'), count: stats.highPriority, icon: 'AlertTriangle', tone: 'bg-red-50 text-red-700' },
     { key: 'today', label: t('handlerDashboard.quickViews.today'), count: stats.today, icon: 'Calendar', tone: 'bg-emerald-50 text-emerald-700' },
+    { key: 'closed', label: t('handlerDashboard.quickViews.closed'), count: stats.closed, icon: 'CheckCircle', tone: 'bg-slate-100 text-slate-700' },
   ];
 
   const lastUpdatedLabel = lastUpdated
@@ -613,12 +677,13 @@ export default function HandlerDashboard() {
                       </span>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full xl:w-auto">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 w-full xl:w-auto">
                     {[
                       { label: t('handlerDashboard.summary.open'), value: stats.open, icon: 'Inbox' },
                       { label: t('handlerDashboard.summary.unassigned'), value: stats.unassigned, icon: 'UserX' },
                       { label: t('handlerDashboard.summary.urgent'), value: stats.highPriority, icon: 'AlertTriangle' },
                       { label: t('handlerDashboard.summary.today'), value: stats.today, icon: 'Calendar' },
+                      { label: t('handlerDashboard.summary.closed'), value: stats.closed, icon: 'CheckCircle' },
                     ].map((item) => (
                       <div key={item.label} className="rounded-2xl bg-white/10 border border-white/10 px-4 py-3">
                         <div className="flex items-center justify-between text-xs text-slate-200 mb-2">
