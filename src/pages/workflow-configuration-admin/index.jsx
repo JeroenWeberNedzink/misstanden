@@ -422,23 +422,29 @@ export default function WorkflowConfigurationAdmin() {
                     onToggleStatus={handleToggleStatus}
                     onDuplicate={handleDuplicateWorkflow}
                     isBusy={isBusy}
+                    settingsPanel={(
+                      <WorkflowRuntimeSettingsPanel
+                        values={workflowRuntimeDraft}
+                        initialValues={workflowRuntimeOriginal}
+                        isLoading={isLoadingWorkflowRuntimeSettings}
+                        isSaving={isSavingWorkflowRuntimeSettings}
+                        error={workflowRuntimeError}
+                        successMessage={workflowRuntimeSuccess}
+                        onToggle={handleToggleWorkflowRuntimeSetting}
+                        onSave={handleSaveWorkflowRuntimeSettings}
+                        onReset={handleResetWorkflowRuntimeSettings}
+                        title={selectedWorkflow ? `Workflow instellingen: ${selectedWorkflow.name}` : 'Workflow instellingen'}
+                        description="Aanvullende toewijzings- en notificatie-instellingen voor de geselecteerde workflow."
+                        collapsible
+                        defaultExpanded={false}
+                        compact
+                      />
+                    )}
                   />
                 </div>
 
                 <div className="lg:sticky lg:top-24 h-fit">
                   <div className="space-y-4">
-                    <WorkflowRuntimeSettingsPanel
-                      values={workflowRuntimeDraft}
-                      initialValues={workflowRuntimeOriginal}
-                      isLoading={isLoadingWorkflowRuntimeSettings}
-                      isSaving={isSavingWorkflowRuntimeSettings}
-                      error={workflowRuntimeError}
-                      successMessage={workflowRuntimeSuccess}
-                      onToggle={handleToggleWorkflowRuntimeSetting}
-                      onSave={handleSaveWorkflowRuntimeSettings}
-                      onReset={handleResetWorkflowRuntimeSettings}
-                    />
-
                     {selectedWorkflow ? (
                       <WorkflowEditorPanel
                         workflow={selectedWorkflow}

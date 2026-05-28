@@ -79,7 +79,19 @@ function wf_try_ensure_performance_indexes(): void {
     }
 }
 
+function wf_invalidate_catalog_cache(): void {
+    $dir = sqlserver_project_root() . DIRECTORY_SEPARATOR . 'run' . DIRECTORY_SEPARATOR . 'cache';
+    foreach (glob($dir . DIRECTORY_SEPARATOR . 'catalog-*.json') ?: [] as $file) {
+        if (is_file($file)) {
+            @unlink($file);
+        }
+    }
+}
+
 function wf_json(int $status, bool $success, string $message, $data = null): void {
+    if ($success && $status >= 200 && $status < 300 && ($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
+        wf_invalidate_catalog_cache();
+    }
     http_response_code($status);
     echo json_encode(['success' => $success, 'message' => $message, 'data' => $data], JSON_UNESCAPED_UNICODE);
     exit;

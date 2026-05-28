@@ -7,6 +7,10 @@
     "dev": "vite --port 3000 --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "npm run test:api",
+    "test:api": "node scripts/api-backend-test.mjs --start-server",
+    "test:api:full": "node scripts/api-backend-test.mjs --start-server --mutate --performance",
+    "test:performance": "node scripts/api-backend-test.mjs --start-server --performance",
     "check:no-rocket": "node scripts/check-no-rocket.mjs"
   },
   "dependencies": {

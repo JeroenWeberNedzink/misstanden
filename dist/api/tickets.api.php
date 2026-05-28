@@ -174,7 +174,7 @@ function ticket_action_logging_enabled(array $settings): bool { return ticket_se
 function ticket_runtime_schema_marker_file(): string {
     $dir = __DIR__ . '/../../run/cache';
     if (!is_dir($dir)) @mkdir($dir, 0775, true);
-    return $dir . '/tickets-runtime-schema-v3.ok';
+    return $dir . '/tickets-runtime-schema-v4.ok';
 }
 
 function ticket_ensure_runtime_schema(): void {
@@ -187,7 +187,27 @@ function ticket_ensure_runtime_schema(): void {
     }
 
     sqlserver_execute(
-        "IF OBJECT_ID(N'dbo.ticket_handlers', N'U') IS NULL
+        "IF COL_LENGTH(N'dbo.tickets', N'description_encrypted') IS NULL
+         BEGIN
+             ALTER TABLE dbo.tickets ADD description_encrypted NVARCHAR(MAX) NULL;
+         END;
+
+         IF COL_LENGTH(N'dbo.tickets', N'location_encrypted') IS NULL
+         BEGIN
+             ALTER TABLE dbo.tickets ADD location_encrypted NVARCHAR(MAX) NULL;
+         END;
+
+         IF COL_LENGTH(N'dbo.tickets', N'reporter_name_encrypted') IS NULL
+         BEGIN
+             ALTER TABLE dbo.tickets ADD reporter_name_encrypted NVARCHAR(MAX) NULL;
+         END;
+
+         IF COL_LENGTH(N'dbo.tickets', N'reporter_phone_encrypted') IS NULL
+         BEGIN
+             ALTER TABLE dbo.tickets ADD reporter_phone_encrypted NVARCHAR(MAX) NULL;
+         END;
+
+         IF OBJECT_ID(N'dbo.ticket_handlers', N'U') IS NULL
          BEGIN
              CREATE TABLE dbo.ticket_handlers (
                  id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_ticket_handlers PRIMARY KEY DEFAULT NEWID(),
@@ -561,6 +581,45 @@ function ticket_reporter_ticket_by_id_from_results(array $results, int $ticketIn
     );
 }
 
+function ticket_json_object($value): ?array {
+    if (is_array($value)) {
+        return $value;
+    }
+    if (!is_string($value) || trim($value) === '') {
+        return null;
+    }
+    $decoded = json_decode($value, true);
+    return is_array($decoded) ? $decoded : null;
+}
+
+function ticket_json_rows($value): array {
+    if (is_array($value)) {
+        return $value;
+    }
+    if (!is_string($value) || trim($value) === '') {
+        return [];
+    }
+    $decoded = json_decode($value, true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+function ticket_reporter_ticket_from_json_bundle(array $row): ?array {
+    $ticketRow = ticket_json_object($row['ticket_json'] ?? null);
+    if (!$ticketRow) {
+        return null;
+    }
+
+    return array_merge(
+        ticket_normalize_ticket_row($ticketRow),
+        [
+            'attachments' => ticket_json_rows($row['attachments_json'] ?? null),
+            'messages' => array_map('ticket_crypto_decrypt_message_row', ticket_json_rows($row['messages_json'] ?? null)),
+            'ticket_actions' => array_map('ticket_crypto_decrypt_action_row', ticket_json_rows($row['ticket_actions_json'] ?? null)),
+            'ticket_comments' => array_map('ticket_crypto_decrypt_comment_row', ticket_json_rows($row['ticket_comments_json'] ?? null)),
+        ]
+    );
+}
+
 function ticket_lookup_by_credentials(string $ticketInput, string $accessCode): ?array {
     $meta = normalize_ticket_input($ticketInput);
     if (!$meta['ok'] || $accessCode === '') return null;
@@ -595,15 +654,18 @@ function ticket_load_ticket_by_credentials(string $ticketInput, string $accessCo
     $lookup = ticket_lookup_by_credentials($ticketInput, $accessCode);
     if (!$lookup) return null;
 
-    $results = sqlserver_run_commands(
-        array_merge(
-            [ticket_command_by_credentials($lookup)],
-            ticket_reporter_relation_commands_for_lookup($lookup)
-        ),
-        false
+    $idSubquery = 'SELECT TOP 1 t.id FROM dbo.tickets t WHERE ' . $lookup['where_sql'];
+    $rows = sqlserver_query(
+        "SELECT
+            (SELECT TOP 1 t.* FROM dbo.tickets t WHERE " . $lookup['where_sql'] . " FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES) AS ticket_json,
+            COALESCE((SELECT * FROM dbo.attachments WHERE ticket_id = (" . $idSubquery . ") ORDER BY created_at ASC FOR JSON PATH, INCLUDE_NULL_VALUES), '[]') AS attachments_json,
+            COALESCE((SELECT * FROM dbo.messages WHERE ticket_id = (" . $idSubquery . ") ORDER BY created_at ASC FOR JSON PATH, INCLUDE_NULL_VALUES), '[]') AS messages_json,
+            COALESCE((SELECT * FROM dbo.ticket_actions WHERE ticket_id = (" . $idSubquery . ") ORDER BY created_at DESC FOR JSON PATH, INCLUDE_NULL_VALUES), '[]') AS ticket_actions_json,
+            COALESCE((SELECT * FROM dbo.ticket_comments WHERE ticket_id = (" . $idSubquery . ") ORDER BY created_at ASC FOR JSON PATH, INCLUDE_NULL_VALUES), '[]') AS ticket_comments_json",
+        $lookup['params']
     );
 
-    return ticket_reporter_ticket_by_id_from_results($results, 0, 1);
+    return ticket_reporter_ticket_from_json_bundle($rows[0] ?? []);
 }
 
 function ticket_sanitize_reporter_ticket(array $ticket, array $settings): array {
@@ -672,18 +734,42 @@ function ticket_insert_action(array $payload, array $settings): void {
 
 function ticket_try_auto_assign_handler(string $ticketId, string $workflowType): ?array {
     $rows = sqlserver_query(
-        'SELECT TOP 1 h.* FROM dbo.handler_workflows hw INNER JOIN dbo.workflows w ON w.id = hw.workflow_id INNER JOIN dbo.handlers h ON h.id = hw.handler_id WHERE w.code = @code AND h.active = @active ORDER BY h.name ASC',
-        ['code' => $workflowType, 'active' => true]
+        "DECLARE @handler_id UNIQUEIDENTIFIER;
+         SELECT TOP 1 @handler_id = h.id
+         FROM dbo.handler_workflows hw
+         INNER JOIN dbo.workflows w ON w.id = hw.workflow_id
+         INNER JOIN dbo.handlers h ON h.id = hw.handler_id
+         WHERE w.code = @code AND h.active = @active
+         ORDER BY h.name ASC;
+
+         IF @handler_id IS NOT NULL
+         BEGIN
+             UPDATE dbo.tickets
+             SET handler_id = @handler_id, last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME()
+             WHERE id = @ticket_id;
+
+             DELETE FROM dbo.ticket_handlers
+             WHERE ticket_id = @ticket_id AND role = @role AND handler_id <> @handler_id;
+
+             MERGE dbo.ticket_handlers AS target
+             USING (SELECT @ticket_id AS ticket_id, @handler_id AS handler_id, @role AS role) AS source
+             ON target.ticket_id = source.ticket_id AND target.handler_id = source.handler_id
+             WHEN MATCHED THEN
+                 UPDATE SET role = source.role, assigned_at = COALESCE(target.assigned_at, SYSUTCDATETIME())
+             WHEN NOT MATCHED THEN
+                 INSERT (ticket_id, handler_id, role, assigned_at, created_at)
+                 VALUES (source.ticket_id, source.handler_id, source.role, SYSUTCDATETIME(), SYSUTCDATETIME());
+         END;
+
+         SELECT TOP 1 h.*
+         FROM dbo.handlers h
+         WHERE h.id = @handler_id",
+        ['code' => $workflowType, 'active' => true, 'ticket_id' => $ticketId, 'role' => 'primary']
     );
     $handler = $rows[0] ?? null;
     if (!$handler) return null;
     $handlerId = trim((string)($handler['id'] ?? ''));
     if (!ticket_is_uuid($handlerId)) return null;
-    sqlserver_execute('UPDATE dbo.tickets SET handler_id = @handler_id, last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id', ['handler_id' => $handlerId, 'id' => $ticketId]);
-    sqlserver_execute('DELETE FROM dbo.ticket_handlers WHERE ticket_id = @ticket_id AND role = @role AND handler_id <> @handler_id', ['ticket_id' => $ticketId, 'role' => 'primary', 'handler_id' => $handlerId]);
-    $existing = sqlserver_scalar('SELECT TOP 1 id FROM dbo.ticket_handlers WHERE ticket_id = @ticket_id AND handler_id = @handler_id', ['ticket_id' => $ticketId, 'handler_id' => $handlerId]);
-    if ($existing) sqlserver_execute('UPDATE dbo.ticket_handlers SET role = @role, assigned_at = COALESCE(assigned_at, SYSUTCDATETIME()) WHERE id = @id', ['role' => 'primary', 'id' => $existing]);
-    else sqlserver_execute('INSERT INTO dbo.ticket_handlers (ticket_id, handler_id, role, assigned_at, created_at) VALUES (@ticket_id, @handler_id, @role, SYSUTCDATETIME(), SYSUTCDATETIME())', ['ticket_id' => $ticketId, 'handler_id' => $handlerId, 'role' => 'primary']);
     return $handler;
 }
 
@@ -733,8 +819,13 @@ function handle_create(array $data): void {
             'is_anonymous' => $isAnonymous,
         ];
         $stage = 'insert_ticket';
-        sqlserver_execute(
-            'INSERT INTO dbo.tickets (
+        $replyToken = ticket_generate_secure_token();
+        $replyExpiresAtTs = ticket_reply_token_expiry_timestamp();
+        $replyExpiresAtSql = ticket_sql_utc_datetime($replyExpiresAtTs);
+        $createdRows = sqlserver_query(
+            'SET NOCOUNT ON;
+
+             INSERT INTO dbo.tickets (
                 id, ticket_number, access_code, description, description_encrypted, location, location_encrypted,
                 workflow_type, severity_code, reporter_name, reporter_name_encrypted, reporter_phone, reporter_phone_encrypted,
                 email_notify, status_email_notify, status_code, current_stage, metadata, reporter_email, reporter_email_encrypted,
@@ -745,16 +836,25 @@ function handle_create(array $data): void {
                 @workflow_type, @severity_code, @reporter_name, @reporter_name_encrypted, @reporter_phone, @reporter_phone_encrypted,
                 @email_notify, @status_email_notify, @status_code, @current_stage, @metadata, @reporter_email, @reporter_email_encrypted,
                 @reporter_email_hash, @next_step_due, @is_anonymous, SYSUTCDATETIME(), SYSUTCDATETIME(), SYSUTCDATETIME()
-            )',
-            $payload
+            );
+
+             INSERT INTO dbo.ticket_reply_tokens (ticket_id, token, expires_at, created_at)
+             VALUES (@id, @reply_token, @reply_expires_at, SYSUTCDATETIME());
+
+             SELECT TOP 1 * FROM dbo.tickets WHERE id = @id;',
+            array_merge($payload, [
+                'reply_token' => $replyToken,
+                'reply_expires_at' => $replyExpiresAtSql,
+            ])
         );
         $stage = 'load_ticket';
-        $row = ticket_load_ticket_row_by_id((string)$payload['id']); if (!$row) throw new Exception('Ticket create failed');
+        $createdRow = $createdRows[0] ?? null;
+        $row = is_array($createdRow) ? ticket_normalize_ticket_row($createdRow) : null; if (!$row) throw new Exception('Ticket create failed');
         $stage = 'auto_assign';
         if (ticket_setting_bool_for_workflow($settings, $workflowType, ['tickets.auto_assign_enabled', 'workflow.auto_assign'], true)) {
             $assigned = ticket_try_auto_assign_handler((string)$payload['id'], $workflowType); if ($assigned) $row['handler_id'] = $assigned['id'] ?? null;
         }
-        try { $replyToken = ticket_create_reply_token((string)$payload['id']); $row['reply_token'] = $replyToken; $row['reply_url_path'] = '/reply/' . rawurlencode($replyToken); $row['reply_expires_at'] = ticket_reply_token_expiry_iso(); } catch (Throwable $e) {}
+        $row['reply_token'] = $replyToken; $row['reply_url_path'] = '/reply/' . rawurlencode($replyToken); $row['reply_expires_at'] = gmdate('Y-m-d\TH:i:s\Z', $replyExpiresAtTs);
         api_json(200, true, 'Ticket created', $row);
     } catch (Throwable $e) {
         $errorId = api_log_exception('tickets.api.create', $e, ['action' => 'create', 'stage' => $stage, 'workflow_type' => $workflowType]);
@@ -780,52 +880,67 @@ function handle_reporter_message(array $data): void {
     if (ticket_strlen($body) > 1000) api_json(400, false, 'Message body exceeds 1000 characters');
     ticket_enforce_request_rate_limit('message', $ticketInput);
     $lookup = ticket_lookup_by_credentials($ticketInput, $accessCode);
-    $lookupResults = $lookup ? sqlserver_run_commands([ticket_command_by_credentials($lookup)], false) : [];
-    $ticketRow = sqlserver_result_rows($lookupResults, 0)[0] ?? null;
-    $ticket = is_array($ticketRow) ? ticket_normalize_ticket_row($ticketRow) : null;
+    if (!$lookup) {
+        ticket_register_failed_auth_attempt($ticketInput); usleep(random_int(150000, 350000)); api_json(401, false, 'Invalid ticket ID or access code');
+    }
+    $settings = ticket_load_system_settings();
+    $messageId = ticket_uuid4();
+    $params = array_merge($lookup['params'], [
+        'message_id' => $messageId,
+        'sender' => 'reporter',
+        'body' => TICKET_ENCRYPTED_PLACEHOLDER,
+        'body_encrypted' => ticket_crypto_encrypt_nullable($body, null, false),
+        'is_internal' => false,
+    ]);
+    $actionSql = '';
+    if (ticket_action_logging_enabled($settings)) {
+        $actionSql = "
+            INSERT INTO dbo.ticket_actions (
+                ticket_id, action_type, action, description, description_encrypted,
+                handler_id, handler_name, handler_email, performed_by, created_at
+            )
+            VALUES (
+                @ticket_id, @action_type, @action, @action_description, @action_description_encrypted,
+                NULL, NULL, NULL, @performed_by, SYSUTCDATETIME()
+            );";
+        $params['action_type'] = 'message_sent';
+        $params['action'] = 'Message Sent';
+        $params['action_description'] = null;
+        $params['action_description_encrypted'] = ticket_crypto_encrypt_nullable('Reporter sent a message');
+        $params['performed_by'] = 'Reporter';
+    }
+
+    $rows = sqlserver_query(
+        "DECLARE @ticket_id UNIQUEIDENTIFIER;
+         SELECT TOP 1 @ticket_id = t.id FROM dbo.tickets t WHERE " . $lookup['where_sql'] . ";
+
+         IF @ticket_id IS NOT NULL
+         BEGIN
+             INSERT INTO dbo.messages (id, ticket_id, sender, body, body_encrypted, is_internal, visible_at, created_at)
+             VALUES (@message_id, @ticket_id, @sender, @body, @body_encrypted, @is_internal, SYSUTCDATETIME(), SYSUTCDATETIME());
+
+             UPDATE dbo.tickets
+             SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME()
+             WHERE id = @ticket_id;
+             " . $actionSql . "
+         END;
+
+         SELECT
+            (SELECT TOP 1 * FROM dbo.messages WHERE id = @message_id FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES) AS message_json,
+            (SELECT TOP 1 t.* FROM dbo.tickets t WHERE t.id = @ticket_id FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES) AS ticket_json,
+            COALESCE((SELECT * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at ASC FOR JSON PATH, INCLUDE_NULL_VALUES), '[]') AS attachments_json,
+            COALESCE((SELECT * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at ASC FOR JSON PATH, INCLUDE_NULL_VALUES), '[]') AS messages_json,
+            COALESCE((SELECT * FROM dbo.ticket_actions WHERE ticket_id = @ticket_id ORDER BY created_at DESC FOR JSON PATH, INCLUDE_NULL_VALUES), '[]') AS ticket_actions_json,
+            COALESCE((SELECT * FROM dbo.ticket_comments WHERE ticket_id = @ticket_id ORDER BY created_at ASC FOR JSON PATH, INCLUDE_NULL_VALUES), '[]') AS ticket_comments_json",
+        $params
+    );
+    $bundleRow = $rows[0] ?? [];
+    $ticket = is_array($bundleRow) ? ticket_reporter_ticket_from_json_bundle($bundleRow) : null;
     if (!$ticket) { ticket_register_failed_auth_attempt($ticketInput); usleep(random_int(150000, 350000)); api_json(401, false, 'Invalid ticket ID or access code'); }
     ticket_reset_failed_auth_attempts($ticketInput);
-    $settings = ticket_load_system_settings();
-    $ticketId = (string)($ticket['id'] ?? ''); if (!ticket_is_uuid($ticketId)) throw new Exception('Ticket lookup returned invalid data');
-
-    $commands = [
-        sqlserver_command(
-            'nonquery',
-            'INSERT INTO dbo.messages (ticket_id, sender, body, body_encrypted, is_internal, visible_at, created_at) VALUES (@ticket_id, @sender, @body, @body_encrypted, @is_internal, SYSUTCDATETIME(), SYSUTCDATETIME())',
-            [
-                'ticket_id' => $ticketId,
-                'sender' => 'reporter',
-                'body' => TICKET_ENCRYPTED_PLACEHOLDER,
-                'body_encrypted' => ticket_crypto_encrypt_nullable($body, null, false),
-                'is_internal' => false,
-            ]
-        ),
-        sqlserver_command(
-            'nonquery',
-            'UPDATE dbo.tickets SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id',
-            ['id' => $ticketId]
-        ),
-    ];
-    $actionCommand = ticket_action_command([
-        'ticket_id' => $ticketId,
-        'action_type' => 'message_sent',
-        'action' => 'Message Sent',
-        'description' => 'Reporter sent a message',
-        'performed_by' => trim((string)($ticket['reporter_name'] ?? '')) ?: 'Reporter',
-    ], $settings);
-    if ($actionCommand) $commands[] = $actionCommand;
-
-    $messageIndex = count($commands);
-    $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
-    $ticketIndex = count($commands);
-    $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.tickets WHERE id = @id', ['id' => $ticketId]);
-    $relationsStartIndex = count($commands);
-    foreach (ticket_reporter_relation_commands($ticketId) as $command) $commands[] = $command;
-
-    $results = sqlserver_run_commands($commands, true);
-    $messageRow = sqlserver_result_rows($results, $messageIndex)[0] ?? null;
+    $messageRow = ticket_json_object($bundleRow['message_json'] ?? null);
     if (is_array($messageRow)) $messageRow = ticket_crypto_decrypt_message_row($messageRow);
-    $updatedTicket = ticket_reporter_ticket_by_id_from_results($results, $ticketIndex, $relationsStartIndex) ?: $ticket;
+    $updatedTicket = $ticket;
 
     api_json(200, true, 'Message sent', ['message' => $messageRow, 'ticket' => ticket_sanitize_reporter_ticket($updatedTicket, $settings)]);
 }

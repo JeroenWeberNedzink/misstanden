@@ -39,7 +39,9 @@ export const reportService = {
     const contentType = String(resp.headers.get('content-type') || '').toLowerCase();
     if (!resp.ok || contentType.includes('application/json')) {
       const json = await resp.json().catch(() => null);
-      throw new Error(json?.message || `Report API error (${resp.status})`);
+      const errorId = String(json?.data?.error_id || json?.error_id || json?.errorId || '').trim();
+      const message = json?.message || `Report API error (${resp.status})`;
+      throw new Error(errorId ? `${message} [error_id: ${errorId}]` : message);
     }
 
     const blob = await resp.blob();

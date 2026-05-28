@@ -118,6 +118,10 @@ const CommunicationPanel = ({ messages, canContact, onSendMessage, isLoading = f
               ) : (
                 safeMessages.map((message) => {
                   const isHandler = message?.sender === 'handler';
+                  const handlerPublicName = String(
+                    message?.senderName || message?.handlerName || message?.handler_name || ''
+                  ).trim();
+                  const isHandlerIdentityVisible = isHandler && handlerPublicName.length > 0;
 
                   return (
                     <div key={message?.id} className={['flex', isHandler ? 'justify-end' : 'justify-start'].join(' ')}>
@@ -130,16 +134,23 @@ const CommunicationPanel = ({ messages, canContact, onSendMessage, isLoading = f
                         >
                           {!isHandler ? (
                             <span className="inline-flex items-center gap-1">
-                              <Icon name="UserCircle" size={12} />
+                              <Icon name="User" size={12} />
                               <span className="truncate max-w-[180px]">
                                 {message?.senderName || t('caseManagement.reporter')}
                               </span>
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1">
-                              <Icon name="User" size={12} />
-                              <span className="truncate max-w-[140px]">
-                                {message?.senderName || t('caseManagement.handler')}
+                            <span className="inline-flex items-center gap-1.5 min-w-0">
+                              <Icon name={isHandlerIdentityVisible ? 'User' : 'UserX'} size={12} />
+                              <span className="truncate max-w-[150px]">
+                                {isHandlerIdentityVisible
+                                  ? handlerPublicName
+                                  : t('caseManagementDetail.communication.anonymousHandler')}
+                              </span>
+                              <span className="hidden sm:inline-flex shrink-0 rounded border border-border bg-background/70 px-1.5 py-0.5 text-[10px] leading-none">
+                                {isHandlerIdentityVisible
+                                  ? t('caseManagementDetail.communication.nameVisibleToReporter')
+                                  : t('caseManagementDetail.communication.nameHiddenFromReporter')}
                               </span>
                             </span>
                           )}
@@ -183,14 +194,35 @@ const CommunicationPanel = ({ messages, canContact, onSendMessage, isLoading = f
                     onChange={(e) => setMessageText(e?.target?.value)}
                     description=""
                   />
-                  <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                  <label
+                    className={[
+                      'flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors',
+                      discloseHandlerIdentity
+                        ? 'border-primary/40 bg-primary/5'
+                        : 'border-border bg-muted/20',
+                    ].join(' ')}
+                  >
                     <input
                       type="checkbox"
-                      className="h-3.5 w-3.5 rounded border-border accent-primary"
+                      className="mt-0.5 h-4 w-4 rounded border-border accent-primary"
                       checked={discloseHandlerIdentity}
                       onChange={(e) => setDiscloseHandlerIdentity(Boolean(e?.target?.checked))}
                     />
-                    <span>{t('caseManagementDetail.communication.discloseIdentity')}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                        <Icon name={discloseHandlerIdentity ? 'Eye' : 'UserX'} size={14} />
+                        <span>
+                          {discloseHandlerIdentity
+                            ? t('caseManagementDetail.communication.identityDisclosedTitle')
+                            : t('caseManagementDetail.communication.identityAnonymousTitle')}
+                        </span>
+                      </span>
+                      <span className="mt-1 block text-xs leading-snug text-muted-foreground">
+                        {discloseHandlerIdentity
+                          ? t('caseManagementDetail.communication.identityDisclosedDescription')
+                          : t('caseManagementDetail.communication.identityAnonymousDescription')}
+                      </span>
+                    </span>
                   </label>
 
                   <div className="flex items-center gap-2">

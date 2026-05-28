@@ -183,8 +183,18 @@ Local IIS deploy from your workstation:
 ```
 
 This runs a fresh `npm run build` and syncs `dist/` into `\\nz-web02\Websites\misstanden.nedzink.nl`.
+Before building, it runs the backend/API pipeline tests with mutation and performance probes. After deploy, it runs the settings health check and a non-mutating smoke/performance probe against the IIS URL.
 It also copies `.env`, optional `.env.local`, `cacert.pem`, and mirrors `vendor/` and `private/` when present so the IIS PHP runtime can boot correctly.
 After deploy it calls `https://misstanden.nedzink.nl/api/settings.api.php?debug=1` (or `MISSTANDEN_DEPLOY_URL`) and prints the response for a quick sanity check.
+
+Emergency skip flags:
+
+```powershell
+.\nz-startup.ps1 local -SkipTests
+.\nz-startup.ps1 local -SkipPerformance
+.\nz-startup.ps1 local -SkipMutatingTests
+.\nz-startup.ps1 local -SkipPostDeploySmoke
+```
 
 Optional strict audience check:
 
@@ -202,6 +212,48 @@ npm run dev
 Default local URLs:
 - Frontend: `http://127.0.0.1:3000`
 - PHP API: `http://127.0.0.1:8081`
+
+## Backend Testing And Performance
+
+The project includes a lightweight backend smoke runner with no extra npm packages. It checks PHP syntax, sends `OPTIONS` requests to every `public/api/*.api.php` endpoint, tests public read endpoints, confirms protected endpoints reject unauthenticated access, and can optionally run API latency checks.
+
+Quick local API check:
+
+```powershell
+npm run test:api
+```
+
+Full local check with a disposable ticket and performance probes:
+
+```powershell
+npm run test:api:full
+```
+
+Performance-only probe:
+
+```powershell
+npm run test:performance
+```
+
+Useful options:
+
+```powershell
+node scripts/api-backend-test.mjs --base-url=https://misstanden.nedzink.nl --performance
+node scripts/api-backend-test.mjs --start-server --mutate --performance
+```
+
+Environment variables:
+- `API_TEST_BASE_URL`: API host to test. Defaults to `http://127.0.0.1:8081`.
+- `API_TEST_AUTH_TOKEN`: optional Auth0 bearer token for admin/handler-only endpoint checks.
+- `AUTH0_API_TEST_CLIENT_ID` / `AUTH0_API_TEST_CLIENT_SECRET`: recommended Machine-to-Machine client credentials used by `.\nz-startup.ps1 local` to fetch a short-lived API token automatically.
+- `API_TEST_MUTATE=1`: creates a disposable ticket and verifies reporter access/message flows.
+- `API_TEST_PERFORMANCE=1`: runs repeated timing probes.
+- `API_TEST_WARN_MS` / `API_TEST_FAIL_MS`: latency thresholds for performance probes.
+
+Auth0 token source:
+- Best option: Auth0 Dashboard > Applications > `Misstanden API (Test Application)` > Credentials. Put its Client ID and Client Secret in `.env.local` or `.env` as `AUTH0_API_TEST_CLIENT_ID` and `AUTH0_API_TEST_CLIENT_SECRET`.
+- Also verify Auth0 Dashboard > APIs > your Misstanden API > Machine to Machine Applications: the test application must be authorized for the API and granted the scopes in `API_TEST_AUTH_SCOPE`.
+- One-off option: paste a short-lived access token into the current PowerShell session with `$env:API_TEST_AUTH_TOKEN="..."`. The startup script will use that token instead of requesting one.
 
 ## Environment Variables
 
@@ -340,13 +392,20 @@ Translation API:
 
 ## Build and Validation
 
-Build:
+Full local IIS pipeline:
+
+```powershell
+.\nz-startup.ps1 local
+```
+
+Build only:
 
 ```bash
 npm run build
 ```
 
 Quick checks before release:
+- `npm run test:api:full` passes locally
 - Build succeeds
 - Settings API responds in target environment
 - Access-request approval flow works end-to-end
@@ -363,4 +422,4 @@ Quick checks before release:
 - Register new pages in `src/Routes.jsx`
 - Keep domain logic in `src/services`, not in page components
 - Keep translation keys namespaced (for example `settings.*`, `caseManagement.*`)
-- There is no dedicated automated test suite configured in `package.json`; validate with focused manual checks and `npm run build`
+- Use `npm run test:api`, `npm run test:api:full`, and `npm run test:performance` before risky backend changes

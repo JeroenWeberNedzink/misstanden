@@ -11,6 +11,7 @@ import CommunicationPanel from './components/CommunicationPanel';
 import ActionHistoryPanel from './components/ActionHistoryPanel';
 import StatusUpdateModal from './components/StatusUpdateModal';
 import CaseManagementPanel from './components/CaseManagementPanel';
+import CasePriorityPanel from './components/CasePriorityPanel';
 import SLACompactCard from './components/SLACompactCard';
 import Icon from '../../components/AppIcon';
 import { ticketService } from '../../services/ticketService';
@@ -682,13 +683,13 @@ export default function CaseManagementDetail() {
                 String(coreTicket?.reporterName || coreTicket?.reporter_name || '').trim()
                 || String(coreTicket?.reporterEmail || coreTicket?.reporter_email || '').trim()
                 || t('caseManagement.reporter');
+              const handlerPublicName = String(msg?.handlerName || msg?.handler_name || '').trim();
 
               return {
                 id: msg?.id,
                 sender: msg?.sender,
-                senderName: msg?.sender === 'handler'
-                  ? (msg?.handlerName || coreTicket?.handlers?.name || user?.name || t('caseManagement.handler'))
-                  : reporterDisplayName,
+                senderName: msg?.sender === 'handler' ? (handlerPublicName || null) : reporterDisplayName,
+                handlerName: msg?.sender === 'handler' ? (handlerPublicName || null) : null,
                 timestamp: msg?.createdAt ? fmtDateTime(msg.createdAt, i18n?.resolvedLanguage || i18n?.language) : '-',
                 content: msg?.body,
                 read: msg?.read ?? msg?.isRead ?? false,
@@ -877,12 +878,17 @@ export default function CaseManagementDetail() {
       const currentHandlerName = currentHandlerId
         ? (availableHandlers.find(h => h.id === currentHandlerId)?.name || user?.name || user?.email)
         : (user?.name || user?.email);
+      const createdHandlerName = String(created?.handlerName || created?.handler_name || '').trim();
+      const publicSenderName = discloseHandlerIdentity
+        ? (createdHandlerName || currentHandlerName || t('caseManagement.handler'))
+        : null;
 
       setCommunicationMessages((prev) => [
         {
           id: created?.id || `${Date.now()}`,
           sender: 'handler',
-          senderName: currentHandlerName || t('caseManagement.handler'),
+          senderName: publicSenderName,
+          handlerName: publicSenderName,
           timestamp: created?.createdAt
             ? fmtDateTime(created.createdAt, i18n?.resolvedLanguage || i18n?.language)
             : fmtDateTime(new Date().toISOString(), i18n?.resolvedLanguage || i18n?.language),
@@ -1297,11 +1303,15 @@ export default function CaseManagementDetail() {
                 currentStatusDurationDays={caseData?.sla?.currentStatusDurationDays}
               />
 
+              <CasePriorityPanel
+                caseData={caseData}
+                onPriorityChange={handlePriorityChange}
+              />
+
               <CaseManagementPanel
                 caseData={caseData}
                 onAssignmentChange={handleAssignmentChange}
                 onAssignmentRoleChange={handleAssignmentRoleChange}
-                onPriorityChange={handlePriorityChange}
                 onStatusChange={() => setShowStatusModal(true)}
                 onStatusEmailNotifyChange={handleStatusEmailNotifyChange}
                 handlers={availableHandlers}

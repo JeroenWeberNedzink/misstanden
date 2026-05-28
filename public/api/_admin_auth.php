@@ -342,8 +342,21 @@ function api_authz_can_use_email_match(array $identity): bool {
     return api_authz_subject_allows_email_link($subject);
 }
 
+function api_authz_is_machine_token(array $claims): bool {
+    $grantType = strtolower(trim((string)($claims['gty'] ?? ($claims['grant_type'] ?? ''))));
+    if ($grantType === 'client-credentials' || $grantType === 'client_credentials') {
+        return true;
+    }
+
+    $subject = strtolower(trim((string)($claims['sub'] ?? '')));
+    return $subject !== '' && str_ends_with($subject, '@clients');
+}
+
 function api_authz_enrich_identity_claims(array $claims, string $accessToken = ''): array {
     $claims = api_authz_apply_claim_identity_defaults($claims);
+    if (api_authz_is_machine_token($claims)) {
+        return $claims;
+    }
     if (trim((string)($claims['email'] ?? '')) !== '') {
         return $claims;
     }
@@ -368,6 +381,35 @@ function api_authz_enrich_identity_claims(array $claims, string $accessToken = '
         }
     }
     return $claims;
+}
+
+function api_authz_handler_negative_cache_file(array $claims): string {
+    $dir = sqlserver_project_root() . DIRECTORY_SEPARATOR . 'run' . DIRECTORY_SEPARATOR . 'cache';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+
+    $parts = [
+        'sub' => trim((string)($claims['sub'] ?? '')),
+        'email' => strtolower(api_authz_claim_email($claims)),
+    ];
+    return $dir . DIRECTORY_SEPARATOR . 'authz-handler-miss-' . hash('sha256', json_encode($parts, JSON_UNESCAPED_UNICODE)) . '.json';
+}
+
+function api_authz_handler_negative_cache_hit(array $claims): bool {
+    $ttl = max(0, (int)(getenv('AUTHZ_HANDLER_NEGATIVE_CACHE_TTL_SECONDS') ?: 30));
+    if ($ttl <= 0) {
+        return false;
+    }
+    $file = api_authz_handler_negative_cache_file($claims);
+    return is_file($file) && (time() - (int)@filemtime($file)) <= $ttl;
+}
+
+function api_authz_handler_negative_cache_set(array $claims): void {
+    if (max(0, (int)(getenv('AUTHZ_HANDLER_NEGATIVE_CACHE_TTL_SECONDS') ?: 30)) <= 0) {
+        return;
+    }
+    @file_put_contents(api_authz_handler_negative_cache_file($claims), json_encode(['missed_at' => time()], JSON_UNESCAPED_UNICODE), LOCK_EX);
 }
 
 function api_authz_normalize_handler(array $row): array {
@@ -567,6 +609,13 @@ function api_authz_fetch_handler(string $baseUrl, string $serviceKey, array $cla
     if ($sub === '' && $email === '') {
         return null;
     }
+    if (api_authz_is_machine_token($claims) && $email === '') {
+        api_authz_handler_negative_cache_set($claims);
+        return null;
+    }
+    if (api_authz_handler_negative_cache_hit($claims)) {
+        return null;
+    }
 
     if ($sub !== '') {
         $row = api_authz_fetch_handler_row('h.user_id = @sub', ['sub' => $sub]);
@@ -587,6 +636,7 @@ function api_authz_fetch_handler(string $baseUrl, string $serviceKey, array $cla
         }
     }
 
+    api_authz_handler_negative_cache_set($claims);
     return null;
 }
 

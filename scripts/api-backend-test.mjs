@@ -1,0 +1,594 @@
+#!/usr/bin/env node
+import { spawn, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { performance } from 'node:perf_hooks';
+
+const root = process.cwd();
+const defaultBaseUrl = process.env.API_TEST_BASE_URL || 'http://127.0.0.1:8081';
+const args = new Map();
+const flags = new Set();
+
+for (const raw of process.argv.slice(2)) {
+  if (raw.startsWith('--') && raw.includes('=')) {
+    const [key, ...rest] = raw.slice(2).split('=');
+    args.set(key, rest.join('='));
+  } else if (raw.startsWith('--')) {
+    flags.add(raw.slice(2));
+  }
+}
+
+const config = {
+  baseUrl: normalizeBaseUrl(args.get('base-url') || defaultBaseUrl),
+  startServer: flags.has('start-server') || process.env.API_TEST_START_SERVER === '1',
+  mutate: flags.has('mutate') || process.env.API_TEST_MUTATE === '1',
+  performance: flags.has('performance') || process.env.API_TEST_PERFORMANCE === '1',
+  authToken: args.get('auth-token') || process.env.API_TEST_AUTH_TOKEN || '',
+  timeoutMs: Number(args.get('timeout-ms') || process.env.API_TEST_TIMEOUT_MS || 15000),
+  iterations: Number(args.get('iterations') || process.env.API_TEST_ITERATIONS || 3),
+  warnMs: Number(args.get('warn-ms') || process.env.API_TEST_WARN_MS || 1200),
+  failMs: Number(args.get('fail-ms') || process.env.API_TEST_FAIL_MS || 5000),
+  skipLint: flags.has('skip-lint'),
+  json: flags.has('json'),
+};
+
+const results = [];
+const timings = [];
+let serverProcess = null;
+let sharedState = {
+  workflows: [],
+  severities: [],
+  locations: [],
+  createdTicket: null,
+  authzAvailable: false,
+};
+
+function normalizeBaseUrl(value) {
+  return String(value || '').replace(/\/+$/, '');
+}
+
+function apiPath(file, query = '') {
+  return `/api/${file}${query ? `?${query}` : ''}`;
+}
+
+function urlFor(file, query = '') {
+  return `${config.baseUrl}${apiPath(file, query)}`;
+}
+
+function record(status, name, detail = '', extra = {}) {
+  results.push({ status, name, detail, ...extra });
+  if (!config.json) {
+    const mark = status === 'pass' ? 'PASS' : status === 'skip' ? 'SKIP' : 'FAIL';
+    const suffix = detail ? ` - ${detail}` : '';
+    console.log(`${mark} ${name}${suffix}`);
+  }
+}
+
+function pass(name, detail = '', extra = {}) {
+  record('pass', name, detail, extra);
+}
+
+function fail(name, detail = '', extra = {}) {
+  record('fail', name, detail, extra);
+}
+
+function skip(name, detail = '', extra = {}) {
+  record('skip', name, detail, extra);
+}
+
+function discoverPhpFiles() {
+  const candidates = [];
+  for (const dir of ['public/api', 'scripts', 'run']) {
+    const abs = path.join(root, dir);
+    if (!fs.existsSync(abs)) continue;
+    walk(abs, (file) => {
+      if (!file.endsWith('.php')) return;
+      if (file.includes(`${path.sep}public${path.sep}api${path.sep}src${path.sep}`)) return;
+      candidates.push(path.relative(root, file));
+    });
+  }
+  return candidates.sort();
+}
+
+function discoverApiEndpoints() {
+  const apiDir = path.join(root, 'public', 'api');
+  return fs.readdirSync(apiDir)
+    .filter((file) => file.endsWith('.api.php'))
+    .sort();
+}
+
+function walk(dir, visit) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const abs = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === 'vendor' || entry.name === 'node_modules') continue;
+      walk(abs, visit);
+    } else {
+      visit(abs);
+    }
+  }
+}
+
+function runPhpLint() {
+  if (config.skipLint) {
+    skip('php lint', 'disabled with --skip-lint');
+    return;
+  }
+
+  const files = discoverPhpFiles();
+  if (!files.length) {
+    fail('php lint', 'no PHP files found');
+    return;
+  }
+
+  let failed = 0;
+  for (const file of files) {
+    const result = spawnSync('php', ['-l', file], {
+      cwd: root,
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    if (result.status !== 0) {
+      failed += 1;
+      fail(`php lint ${file}`, (result.stderr || result.stdout || '').trim());
+    }
+  }
+
+  if (failed === 0) {
+    pass('php lint', `${files.length} files`);
+  }
+}
+
+async function maybeStartServer() {
+  if (await isServerReachable()) {
+    pass('api server reachable', config.baseUrl);
+    return;
+  }
+
+  if (!config.startServer) {
+    fail('api server reachable', `${config.baseUrl} is not responding. Start .\\nz-startup.ps1 or rerun with --start-server.`);
+    return;
+  }
+
+  const publicRoot = path.join(root, 'public');
+  serverProcess = spawn('php', ['-S', '127.0.0.1:8081', '-t', publicRoot], {
+    cwd: root,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+
+  serverProcess.stdout.on('data', () => {});
+  serverProcess.stderr.on('data', () => {});
+
+  for (let i = 0; i < 40; i += 1) {
+    await wait(250);
+    if (await isServerReachable()) {
+      pass('api server started', config.baseUrl);
+      return;
+    }
+  }
+  fail('api server started', 'PHP built-in server did not become reachable');
+}
+
+async function isServerReachable() {
+  try {
+    const response = await fetchWithTimeout(`${config.baseUrl}/api/settings.api.php`, { method: 'OPTIONS' }, 3000);
+    return response.status >= 200 && response.status < 500;
+  } catch {
+    return false;
+  }
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = config.timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function request(name, file, {
+  method = 'GET',
+  query = '',
+  body,
+  auth = false,
+  expectedStatuses = [200],
+  expectSuccess,
+  expectJson = true,
+  validate,
+  timeoutMs,
+} = {}) {
+  const headers = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (auth && config.authToken) headers.Authorization = `Bearer ${config.authToken}`;
+
+  const start = performance.now();
+  let response;
+  let text = '';
+  let json = null;
+  try {
+    response = await fetchWithTimeout(urlFor(file, query), {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    }, timeoutMs || config.timeoutMs);
+    text = await response.text();
+    if (text.trim() !== '') {
+      try {
+        json = JSON.parse(text);
+      } catch {}
+    }
+  } catch (error) {
+    fail(name, error?.name === 'AbortError' ? `timeout after ${timeoutMs || config.timeoutMs}ms` : error.message);
+    return { ok: false, response: null, json: null, ms: performance.now() - start };
+  }
+
+  const ms = performance.now() - start;
+  timings.push({ name, file, method, status: response.status, ms });
+
+  if (!expectedStatuses.includes(response.status)) {
+    fail(name, `HTTP ${response.status}, expected ${expectedStatuses.join('/')}${text ? `, body: ${truncate(text)}` : ''}`, { ms });
+    return { ok: false, response, json, ms };
+  }
+
+  if (expectJson && !json) {
+    fail(name, `response was not JSON: ${truncate(text)}`, { ms });
+    return { ok: false, response, json, ms };
+  }
+
+  if (typeof expectSuccess === 'boolean' && Boolean(json?.success) !== expectSuccess) {
+    fail(name, `success=${json?.success}, expected ${expectSuccess}${json?.message ? ` (${json.message})` : ''}`, { ms });
+    return { ok: false, response, json, ms };
+  }
+
+  if (validate) {
+    const validation = validate(json, response);
+    if (validation !== true) {
+      fail(name, String(validation || 'validation failed'), { ms });
+      return { ok: false, response, json, ms };
+    }
+  }
+
+  pass(name, `${response.status} in ${Math.round(ms)}ms`, { ms });
+  return { ok: true, response, json, ms };
+}
+
+function truncate(value, max = 240) {
+  const clean = String(value || '').replace(/\s+/g, ' ').trim();
+  return clean.length > max ? `${clean.slice(0, max)}...` : clean;
+}
+
+async function runOptionsSmoke() {
+  for (const endpoint of discoverApiEndpoints()) {
+    await request(`OPTIONS ${endpoint}`, endpoint, {
+      method: 'OPTIONS',
+      expectedStatuses: [200, 204],
+      expectJson: false,
+    });
+  }
+}
+
+async function runPublicReadSmoke() {
+  const settings = await request('GET settings public', 'settings.api.php', {
+    expectedStatuses: [200],
+    expectSuccess: true,
+    validate: (json) => Array.isArray(json?.data?.rows) || 'data.rows is not an array',
+  });
+
+  const workflows = await request('GET catalog workflows', 'catalog.api.php', {
+    query: 'action=workflows&include_inactive=1',
+    expectedStatuses: [200],
+    expectSuccess: true,
+    validate: (json) => Array.isArray(json?.data?.rows) || 'data.rows is not an array',
+  });
+  sharedState.workflows = workflows.json?.data?.rows || [];
+
+  await request('GET catalog dashboard catalog', 'catalog.api.php', {
+    query: 'action=handler_dashboard_catalog&include_inactive=1',
+    expectedStatuses: [200],
+    expectSuccess: true,
+    validate: (json) => Array.isArray(json?.data?.workflows) || 'data.workflows is not an array',
+  });
+
+  const locations = await request('GET catalog locations', 'catalog.api.php', {
+    query: 'action=locations&include_inactive=1',
+    expectedStatuses: [200],
+    expectSuccess: true,
+    validate: (json) => Array.isArray(json?.data?.rows) || 'data.rows is not an array',
+  });
+  sharedState.locations = locations.json?.data?.rows || [];
+
+  const severities = await request('GET catalog severities', 'catalog.api.php', {
+    query: 'action=severities',
+    expectedStatuses: [200],
+    expectSuccess: true,
+    validate: (json) => Array.isArray(json?.data?.rows) || 'data.rows is not an array',
+  });
+  sharedState.severities = severities.json?.data?.rows || [];
+
+  await request('POST tickets unsupported action contract', 'tickets.api.php', {
+    method: 'POST',
+    body: { action: '__smoke_unknown__' },
+    expectedStatuses: [400],
+    expectSuccess: false,
+  });
+
+  return settings.ok && workflows.ok && locations.ok && severities.ok;
+}
+
+async function runProtectedContractSmoke() {
+  if (config.authToken) {
+    const me = await request('GET me context authenticated', 'me.api.php', {
+      auth: true,
+      expectedStatuses: [200, 403],
+      expectJson: true,
+    });
+    sharedState.authzAvailable = me.ok && me.response?.status === 200;
+    if (!sharedState.authzAvailable) {
+      skip('protected authorization performance', 'API token is valid, but it is not linked to an active handler/admin account');
+    }
+  } else {
+    await request('GET me context auth guard', 'me.api.php', {
+      expectedStatuses: [401, 403],
+      expectSuccess: false,
+    });
+  }
+
+  const protectedReads = [
+    ['GET handler dashboard', 'handler-dashboard.api.php', 'summary=1'],
+    ['GET ticket read list', 'ticket-read.api.php', 'action=list&summary=1'],
+    ['GET analytics', 'analytics.api.php', ''],
+    ['GET workflows stats', 'workflows.api.php', 'action=list_with_stats'],
+    ['GET translations languages', 'translations.api.php', 'action=languages'],
+    ['GET security self-test', 'security-self-test.api.php', ''],
+    ['GET email event types', 'email-settings.api.php', 'action=event_types'],
+  ];
+
+  for (const [name, file, query] of protectedReads) {
+    if (config.authToken) {
+      await request(`${name} authenticated`, file, {
+        query,
+        auth: true,
+        expectedStatuses: [200, 403],
+        expectJson: true,
+      });
+    } else {
+      await request(`${name} auth guard`, file, {
+        query,
+        expectedStatuses: [401, 403],
+        expectSuccess: false,
+      });
+    }
+  }
+
+  await request('POST email verification auth guard', 'email-verification.api.php', {
+    method: 'POST',
+    body: { action: 'status' },
+    expectedStatuses: config.authToken ? [200, 401, 403, 500] : [401],
+    auth: Boolean(config.authToken),
+    expectJson: true,
+  });
+}
+
+async function runMutationSmoke() {
+  if (!config.mutate) {
+    skip('mutation smoke', 'disabled; rerun with --mutate to create a disposable ticket');
+    return;
+  }
+
+  const workflow = sharedState.workflows.find((item) => item?.code) || null;
+  if (!workflow) {
+    fail('mutation smoke', 'no workflow with code was available for ticket creation');
+    return;
+  }
+
+  const severity = sharedState.severities.find((item) => item?.code)?.code || 'low';
+  const unique = Date.now();
+  const create = await request('POST tickets create disposable', 'tickets.api.php', {
+    method: 'POST',
+    body: {
+      action: 'create',
+      workflow_type: workflow.code,
+      severity_code: severity,
+      description: `API smoke test disposable report ${unique}`,
+      location: 'API smoke test',
+      reporter_name: 'API Smoke Test',
+      reporter_email: `api-smoke-${unique}@example.test`,
+      reporter_phone: '+31000000000',
+      email_notify: false,
+      status_email_notify: false,
+      metadata: {
+        source: 'api-backend-test',
+        disposable: true,
+        created_at: new Date().toISOString(),
+      },
+    },
+    expectedStatuses: [200],
+    expectSuccess: true,
+    timeoutMs: Math.max(config.timeoutMs, 30000),
+    validate: (json) => {
+      const data = json?.data || {};
+      if (!data.id || !data.ticket_number || !data.access_code) return 'ticket id, ticket_number, or access_code missing';
+      if (data.description?.includes('API smoke test') !== true) return 'created ticket description was not returned decrypted';
+      return true;
+    },
+  });
+
+  if (!create.ok) return;
+  sharedState.createdTicket = create.json.data;
+
+  await request('POST tickets access disposable', 'tickets.api.php', {
+    method: 'POST',
+    body: {
+      action: 'access',
+      ticket_input: sharedState.createdTicket.ticket_number,
+      access_code: sharedState.createdTicket.access_code,
+    },
+    expectedStatuses: [200],
+    expectSuccess: true,
+    validate: (json) => {
+      const data = json?.data || {};
+      if (data.access_code || data.reporter_email || data.reporter_email_encrypted) {
+        return 'reporter-facing response leaked sensitive ticket fields';
+      }
+      return true;
+    },
+  });
+
+  await request('POST tickets reporter message disposable', 'tickets.api.php', {
+    method: 'POST',
+    body: {
+      action: 'message',
+      ticket_input: sharedState.createdTicket.ticket_number,
+      access_code: sharedState.createdTicket.access_code,
+      body: `Reporter reply from API smoke test ${unique}`,
+    },
+    expectedStatuses: [200],
+    expectSuccess: true,
+    validate: (json) => json?.data?.message?.body ? true : 'message body missing in response',
+  });
+
+  if (config.authToken) {
+    const expectedStatuses = sharedState.authzAvailable ? [200] : [403];
+    await request('GET ticket-read disposable with relations', 'ticket-read.api.php', {
+      query: `action=get&include_relations=1&ticket_id=${encodeURIComponent(sharedState.createdTicket.id)}`,
+      auth: true,
+      expectedStatuses,
+      expectJson: true,
+    });
+  }
+}
+
+async function runPerformanceSmoke() {
+  if (!config.performance) {
+    skip('performance smoke', 'disabled; rerun with --performance');
+    return;
+  }
+
+  const targets = [
+    ['settings public', 'settings.api.php', ''],
+    ['catalog workflows', 'catalog.api.php', 'action=workflows&include_inactive=1'],
+    ['catalog dashboard catalog', 'catalog.api.php', 'action=handler_dashboard_catalog&include_inactive=1'],
+    ['catalog locations', 'catalog.api.php', 'action=locations&include_inactive=1'],
+    ['catalog severities', 'catalog.api.php', 'action=severities'],
+  ];
+
+  if (config.authToken && sharedState.authzAvailable) {
+    targets.push(['workflows stats authenticated', 'workflows.api.php', 'action=list_with_stats&limit=25']);
+    targets.push(['ticket list summary authenticated', 'ticket-read.api.php', 'action=list&summary=1']);
+    targets.push(['analytics authenticated', 'analytics.api.php', '']);
+  } else if (config.authToken && !sharedState.authzAvailable) {
+    skip('authenticated performance probes', 'token is not linked to an active handler/admin account');
+  }
+
+  for (const [name, file, query] of targets) {
+    const samples = [];
+    let failedRequest = false;
+    for (let i = 0; i < config.iterations; i += 1) {
+      const result = await request(`PERF ${name} #${i + 1}`, file, {
+        query,
+        auth: name.includes('authenticated'),
+        expectedStatuses: [200],
+        expectJson: true,
+        timeoutMs: Math.max(config.timeoutMs, config.failMs + 1000),
+      });
+      if (!result.ok) {
+        failedRequest = true;
+        break;
+      }
+      samples.push(result.ms);
+    }
+    if (failedRequest || samples.length === 0) continue;
+
+    const sorted = samples.slice().sort((a, b) => a - b);
+    const avg = samples.reduce((sum, ms) => sum + ms, 0) / samples.length;
+    const max = Math.max(...samples);
+    const p95 = sorted[Math.ceil(sorted.length * 0.95) - 1] || max;
+    const detail = `avg ${Math.round(avg)}ms, p95 ${Math.round(p95)}ms, max ${Math.round(max)}ms`;
+    if (max > config.failMs) {
+      fail(`PERF threshold ${name}`, `${detail}; max exceeded ${config.failMs}ms`);
+    } else if (p95 > config.warnMs) {
+      pass(`PERF threshold ${name}`, `${detail}; warning threshold ${config.warnMs}ms exceeded`);
+    } else {
+      pass(`PERF threshold ${name}`, detail);
+    }
+  }
+}
+
+function printSummary() {
+  const counts = results.reduce((acc, item) => {
+    acc[item.status] = (acc[item.status] || 0) + 1;
+    return acc;
+  }, {});
+  const failed = counts.fail || 0;
+
+  const slowest = timings
+    .slice()
+    .sort((a, b) => b.ms - a.ms)
+    .slice(0, 8)
+    .map((item) => ({
+      name: item.name,
+      status: item.status,
+      ms: Math.round(item.ms),
+    }));
+
+  if (config.json) {
+    console.log(JSON.stringify({
+      success: failed === 0,
+      baseUrl: config.baseUrl,
+      counts,
+      slowest,
+      results,
+    }, null, 2));
+    return;
+  }
+
+  console.log('');
+  console.log(`Summary: ${counts.pass || 0} passed, ${counts.skip || 0} skipped, ${failed} failed`);
+  if (slowest.length) {
+    console.log('Slowest requests:');
+    for (const item of slowest) {
+      console.log(`- ${item.ms}ms ${item.status} ${item.name}`);
+    }
+  }
+}
+
+async function main() {
+  try {
+    runPhpLint();
+    await maybeStartServer();
+    if (results.some((item) => item.name === 'api server reachable' && item.status === 'fail')
+      || results.some((item) => item.name === 'api server started' && item.status === 'fail')) {
+      return;
+    }
+
+    await runOptionsSmoke();
+    await runPublicReadSmoke();
+    await runProtectedContractSmoke();
+    await runMutationSmoke();
+    await runPerformanceSmoke();
+  } finally {
+    if (serverProcess) {
+      serverProcess.kill();
+    }
+    printSummary();
+    const failed = results.some((item) => item.status === 'fail');
+    process.exitCode = failed ? 1 : 0;
+  }
+}
+
+main().catch((error) => {
+  fail('test runner crashed', error?.stack || error?.message || String(error));
+  printSummary();
+  if (serverProcess) serverProcess.kill();
+  process.exitCode = 1;
+});

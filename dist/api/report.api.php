@@ -60,6 +60,10 @@ function report_format_dt($value): string {
     return gmdate('Y-m-d H:i:s', $ts) . ' UTC';
 }
 
+function report_is_uuid(string $value): bool {
+    return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $value) === 1;
+}
+
 function report_vendor_autoload_path(): ?string {
     $candidates = [
         __DIR__ . '/../vendor/autoload.php',
@@ -73,6 +77,22 @@ function report_vendor_autoload_path(): ?string {
     }
 
     return null;
+}
+
+function report_runtime_dir(): string {
+    $dir = sqlserver_project_root() . DIRECTORY_SEPARATOR . 'run' . DIRECTORY_SEPARATOR . 'dompdf';
+    if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+        throw new Exception('Unable to create report runtime directory');
+    }
+    return $dir;
+}
+
+function report_output_html(string $html, string $ticketNumber): void {
+    $filename = 'investigation-report-' . $ticketNumber . '.html';
+    header('Content-Type: text/html; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    echo $html;
+    exit;
 }
 
 function report_build_timeline(array $ticket): array {
@@ -279,30 +299,25 @@ try {
         report_json(400, false, 'ticket_id is required');
     }
 
+    $ticketWhere = report_is_uuid($ticketId)
+        ? 't.id = @ticket_id'
+        : 'UPPER(t.ticket_number) = UPPER(@ticket_number)';
+    $ticketParams = report_is_uuid($ticketId)
+        ? ['ticket_id' => $ticketId]
+        : ['ticket_number' => $ticketId];
+
     $ticketRows = sqlserver_query(
-        'SELECT TOP 1
-            id,
-            ticket_number,
-            workflow_type,
-            status_code,
-            current_stage,
-            severity_code,
-            description,
-            description_encrypted,
-            location,
-            location_encrypted,
-            submitted_at,
-            last_update_at,
-            metadata
-         FROM dbo.tickets
-         WHERE id = @ticket_id',
-        ['ticket_id' => $ticketId]
+        'SELECT TOP 1 t.*
+         FROM dbo.tickets t
+         WHERE ' . $ticketWhere,
+        $ticketParams
     );
     $ticket = $ticketRows[0] ?? null;
     if (!$ticket) {
         report_json(404, false, 'Ticket not found');
     }
 
+    $ticketId = trim((string)($ticket['id'] ?? $ticketId));
     $ticket = ticket_crypto_decrypt_ticket_row($ticket, true);
     $ticket['metadata'] = report_parse_json($ticket['metadata'] ?? null, []);
     $ticket['attachments'] = sqlserver_query(
@@ -373,20 +388,25 @@ try {
     }
 
     if (!class_exists('Dompdf\\Dompdf')) {
-        $filename = 'investigation-report-' . $ticketNumber . '.html';
-        header('Content-Type: text/html; charset=utf-8');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
-        echo $html;
-        exit;
+        report_output_html($html, $ticketNumber);
     }
 
-    $dompdf = new Dompdf\Dompdf([
-        'isRemoteEnabled' => false,
-        'isHtml5ParserEnabled' => true,
-    ]);
-    $dompdf->loadHtml($html, 'UTF-8');
-    $dompdf->setPaper('A4', 'portrait');
-    $dompdf->render();
+    try {
+        $runtimeDir = report_runtime_dir();
+        $dompdf = new Dompdf\Dompdf([
+            'isRemoteEnabled' => false,
+            'isHtml5ParserEnabled' => true,
+            'tempDir' => $runtimeDir,
+            'fontDir' => $runtimeDir,
+            'fontCache' => $runtimeDir,
+        ]);
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+    } catch (Throwable $pdfError) {
+        api_log_exception('report.api.pdf', $pdfError, ['ticket_id' => $ticketId]);
+        report_output_html($html, $ticketNumber);
+    }
 
     $filename = 'investigation-report-' . $ticketNumber . '.pdf';
 

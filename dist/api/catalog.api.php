@@ -62,6 +62,60 @@ function catalog_normalize_status_row(array $row): array {
     return $row;
 }
 
+function catalog_cache_ttl_seconds(): int {
+    if (isset($_GET['cache']) && trim((string)$_GET['cache']) === '0') {
+        return 0;
+    }
+    return max(0, (int)(getenv('CATALOG_CACHE_TTL_SECONDS') ?: 60));
+}
+
+function catalog_cache_file(string $action, array $vary): string {
+    $dir = sqlserver_project_root() . DIRECTORY_SEPARATOR . 'run' . DIRECTORY_SEPARATOR . 'cache';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    ksort($vary);
+    $key = hash('sha256', $action . '|' . json_encode($vary, JSON_UNESCAPED_UNICODE));
+    return $dir . DIRECTORY_SEPARATOR . 'catalog-' . $key . '.json';
+}
+
+function catalog_cache_get(string $action, array $vary) {
+    $ttl = catalog_cache_ttl_seconds();
+    if ($ttl <= 0) {
+        return null;
+    }
+
+    $file = catalog_cache_file($action, $vary);
+    if (!is_file($file) || (time() - (int)@filemtime($file)) > $ttl) {
+        return null;
+    }
+
+    $raw = @file_get_contents($file);
+    $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+    return is_array($decoded) ? $decoded : null;
+}
+
+function catalog_cache_set(string $action, array $vary, array $data): void {
+    if (catalog_cache_ttl_seconds() <= 0) {
+        return;
+    }
+    @file_put_contents(catalog_cache_file($action, $vary), json_encode($data, JSON_UNESCAPED_UNICODE), LOCK_EX);
+}
+
+function catalog_json_decode_array($raw): array {
+    if (!is_string($raw) || trim($raw) === '') {
+        return [];
+    }
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+function catalog_normalize_workflow_tree(array $workflow): array {
+    $statuses = is_array($workflow['statuses'] ?? null) ? $workflow['statuses'] : [];
+    $workflow['statuses'] = array_map('catalog_normalize_status_row', $statuses);
+    return $workflow;
+}
+
 try {
     load_runtime_env(__DIR__);
 
@@ -76,6 +130,12 @@ try {
 
     if ($action === 'workflows') {
         $includeInactive = catalog_bool_query('include_inactive', false);
+        $cacheVary = ['include_inactive' => $includeInactive];
+        $cached = catalog_cache_get($action, $cacheVary);
+        if ($cached !== null) {
+            catalog_json(200, true, 'Workflows loaded', $cached);
+        }
+
         $sql = 'SELECT * FROM dbo.workflows';
         $params = [];
         if (!$includeInactive) {
@@ -83,68 +143,74 @@ try {
             $params['active'] = true;
         }
         $sql .= ' ORDER BY display_order ASC, name ASC';
-        catalog_json(200, true, 'Workflows loaded', ['rows' => sqlserver_query($sql, $params)]);
+        $data = ['rows' => sqlserver_query($sql, $params)];
+        catalog_cache_set($action, $cacheVary, $data);
+        catalog_json(200, true, 'Workflows loaded', $data);
     }
 
     if ($action === 'handler_dashboard_catalog') {
         $includeInactive = catalog_bool_query('include_inactive', false);
-        $workflowWhere = '';
-        $params = [];
-        if (!$includeInactive) {
-            $workflowWhere = ' WHERE active = @active';
-            $params['active'] = true;
+        $cacheVary = ['include_inactive' => $includeInactive];
+        $cached = catalog_cache_get($action, $cacheVary);
+        if ($cached !== null) {
+            catalog_json(200, true, 'Handler dashboard catalog loaded', $cached);
         }
 
-        $results = sqlserver_run_commands([
-            sqlserver_command(
-                'query',
-                'SELECT id, code, name, description, icon_name, color_scheme, active, display_order, statutory_deadline_days
-                 FROM dbo.workflows' . $workflowWhere . '
-                 ORDER BY display_order ASC, name ASC',
-                $params
-            ),
-            sqlserver_command(
-                'query',
-                'SELECT
-                    ws.id, ws.workflow_id, ws.code, ws.label, ws.color, ws.sort_order,
-                    ws.is_terminal, ws.is_first_response, ws.next_codes, ws.expected_duration_days
-                 FROM dbo.workflow_statuses ws
-                 INNER JOIN dbo.workflows w ON w.id = ws.workflow_id' . ($workflowWhere !== '' ? ' AND w.active = @active' : '') . '
-                 ORDER BY ws.workflow_id ASC, ws.sort_order ASC, ws.label ASC',
-                $params
-            ),
-            sqlserver_command(
-                'query',
-                'SELECT id, code, label, color, sort_order, active
-                 FROM dbo.incident_severities
-                 WHERE active = @severity_active
-                 ORDER BY sort_order ASC, label ASC',
-                ['severity_active' => true]
-            ),
-        ], false);
-
-        $statusMap = [];
-        foreach (sqlserver_result_rows($results, 1) as $statusRow) {
-            $workflowId = trim((string)($statusRow['workflow_id'] ?? ''));
-            if ($workflowId === '') {
-                continue;
-            }
-            if (!isset($statusMap[$workflowId])) {
-                $statusMap[$workflowId] = [];
-            }
-            $statusMap[$workflowId][] = catalog_normalize_status_row($statusRow);
-        }
-
-        $workflows = array_map(static function (array $workflow) use ($statusMap): array {
-            $workflowId = trim((string)($workflow['id'] ?? ''));
-            $workflow['statuses'] = $statusMap[$workflowId] ?? [];
-            return $workflow;
-        }, sqlserver_result_rows($results, 0));
-
-        catalog_json(200, true, 'Handler dashboard catalog loaded', [
-            'workflows' => $workflows,
-            'severities' => sqlserver_result_rows($results, 2),
-        ]);
+        $rows = sqlserver_query(
+            "SELECT
+                COALESCE((
+                    SELECT
+                        w.id,
+                        w.code,
+                        w.name,
+                        w.description,
+                        w.icon_name,
+                        w.color_scheme,
+                        w.active,
+                        w.display_order,
+                        w.statutory_deadline_days,
+                        JSON_QUERY(COALESCE((
+                            SELECT
+                                ws.id,
+                                ws.workflow_id,
+                                ws.code,
+                                ws.label,
+                                ws.color,
+                                ws.sort_order,
+                                ws.is_terminal,
+                                ws.is_first_response,
+                                JSON_QUERY(CASE WHEN ISJSON(ws.next_codes) = 1 THEN ws.next_codes ELSE '[]' END) AS next_codes,
+                                ws.expected_duration_days
+                            FROM dbo.workflow_statuses ws
+                            WHERE ws.workflow_id = w.id
+                            ORDER BY ws.sort_order ASC, ws.label ASC
+                            FOR JSON PATH
+                        ), '[]')) AS statuses
+                    FROM dbo.workflows w
+                    WHERE (@include_inactive = 1 OR w.active = @active)
+                    ORDER BY w.display_order ASC, w.name ASC
+                    FOR JSON PATH
+                ), '[]') AS workflows_json,
+                COALESCE((
+                    SELECT id, code, label, color, sort_order, active
+                    FROM dbo.incident_severities
+                    WHERE active = @severity_active
+                    ORDER BY sort_order ASC, label ASC
+                    FOR JSON PATH
+                ), '[]') AS severities_json",
+            [
+                'include_inactive' => $includeInactive,
+                'active' => true,
+                'severity_active' => true,
+            ]
+        );
+        $row = $rows[0] ?? [];
+        $data = [
+            'workflows' => array_map('catalog_normalize_workflow_tree', catalog_json_decode_array($row['workflows_json'] ?? null)),
+            'severities' => catalog_json_decode_array($row['severities_json'] ?? null),
+        ];
+        catalog_cache_set($action, $cacheVary, $data);
+        catalog_json(200, true, 'Handler dashboard catalog loaded', $data);
     }
 
     if ($action === 'workflow_by_id') {
@@ -236,6 +302,12 @@ try {
 
     if ($action === 'locations') {
         $includeInactive = catalog_bool_query('include_inactive', false);
+        $cacheVary = ['include_inactive' => $includeInactive];
+        $cached = catalog_cache_get($action, $cacheVary);
+        if ($cached !== null) {
+            catalog_json(200, true, 'Locations loaded', $cached);
+        }
+
         $sql = 'SELECT * FROM dbo.locations';
         $params = [];
         if (!$includeInactive) {
@@ -243,7 +315,9 @@ try {
             $params['active'] = true;
         }
         $sql .= ' ORDER BY display_order ASC, country_name ASC';
-        catalog_json(200, true, 'Locations loaded', ['rows' => sqlserver_query($sql, $params)]);
+        $data = ['rows' => sqlserver_query($sql, $params)];
+        catalog_cache_set($action, $cacheVary, $data);
+        catalog_json(200, true, 'Locations loaded', $data);
     }
 
     if ($action === 'location_by_id') {
@@ -276,13 +350,20 @@ try {
     }
 
     if ($action === 'severities') {
+        $cached = catalog_cache_get($action, []);
+        if ($cached !== null) {
+            catalog_json(200, true, 'Severities loaded', $cached);
+        }
+
         $rows = sqlserver_query(
             'SELECT * FROM dbo.incident_severities
              WHERE active = @active
              ORDER BY sort_order ASC, label ASC',
             ['active' => true]
         );
-        catalog_json(200, true, 'Severities loaded', ['rows' => $rows]);
+        $data = ['rows' => $rows];
+        catalog_cache_set($action, [], $data);
+        catalog_json(200, true, 'Severities loaded', $data);
     }
 
     catalog_json(400, false, 'Unsupported action');

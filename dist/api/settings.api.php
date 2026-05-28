@@ -85,11 +85,63 @@ function settings_decode_json($value) {
     return json_last_error() === JSON_ERROR_NONE ? $decoded : $value;
 }
 
+function settings_unwrap_value($raw) {
+    return is_array($raw) && array_key_exists('value', $raw) ? $raw['value'] : $raw;
+}
+
 function settings_normalize_row(array $row): array {
     if (array_key_exists('setting_value', $row)) {
         $row['setting_value'] = settings_decode_json($row['setting_value']);
     }
     return $row;
+}
+
+function settings_public_cache_ttl_seconds(): int {
+    if (isset($_GET['cache']) && trim((string)$_GET['cache']) === '0') {
+        return 0;
+    }
+    return max(0, (int)(getenv('SETTINGS_PUBLIC_CACHE_TTL_SECONDS') ?: 60));
+}
+
+function settings_public_cache_file(array $vary): string {
+    $dir = sqlserver_project_root() . DIRECTORY_SEPARATOR . 'run' . DIRECTORY_SEPARATOR . 'cache';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    ksort($vary);
+    return $dir . DIRECTORY_SEPARATOR . 'settings-public-' . hash('sha256', json_encode($vary, JSON_UNESCAPED_UNICODE)) . '.json';
+}
+
+function settings_public_cache_get(array $vary) {
+    $ttl = settings_public_cache_ttl_seconds();
+    if ($ttl <= 0) {
+        return null;
+    }
+
+    $file = settings_public_cache_file($vary);
+    if (!is_file($file) || (time() - (int)@filemtime($file)) > $ttl) {
+        return null;
+    }
+
+    $raw = @file_get_contents($file);
+    $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+    return is_array($decoded) ? $decoded : null;
+}
+
+function settings_public_cache_set(array $vary, array $data): void {
+    if (settings_public_cache_ttl_seconds() <= 0) {
+        return;
+    }
+    @file_put_contents(settings_public_cache_file($vary), json_encode($data, JSON_UNESCAPED_UNICODE), LOCK_EX);
+}
+
+function settings_invalidate_public_cache(): void {
+    $dir = sqlserver_project_root() . DIRECTORY_SEPARATOR . 'run' . DIRECTORY_SEPARATOR . 'cache';
+    foreach (glob($dir . DIRECTORY_SEPARATOR . 'settings-public-*.json') ?: [] as $file) {
+        if (is_file($file)) {
+            @unlink($file);
+        }
+    }
 }
 
 function settings_env_list(string $key): array {
@@ -187,6 +239,22 @@ function settings_invalidate_ticket_settings_cache(): void {
     if (is_file($file)) {
         @unlink($file);
     }
+    settings_invalidate_public_cache();
+}
+
+function settings_refresh_ticket_settings_cache_from_rows(array $rows): void {
+    $settings = [];
+    foreach ($rows as $row) {
+        $key = trim((string)($row['setting_key'] ?? ''));
+        if ($key === '') {
+            continue;
+        }
+        $settings[$key] = settings_unwrap_value($row['setting_value'] ?? null);
+    }
+    if (!$settings) {
+        return;
+    }
+    @file_put_contents(settings_ticket_system_settings_cache_file(), json_encode($settings, JSON_UNESCAPED_UNICODE), LOCK_EX);
 }
 
 function settings_upsert_one(array $payload): array {
@@ -281,6 +349,21 @@ function settings_handle_get(): void {
         }
     }
 
+    $publicCacheVary = [
+        'category' => $category,
+        'include_sensitive' => $includeSensitive,
+        'require_super_admin' => $requireSuperAdmin,
+    ];
+    if (!$adminContext) {
+        $cached = settings_public_cache_get($publicCacheVary);
+        if ($cached !== null) {
+            if ($category === '' && is_array($cached['rows'] ?? null)) {
+                settings_refresh_ticket_settings_cache_from_rows((array)$cached['rows']);
+            }
+            settings_api_json(200, true, 'Settings loaded', $cached);
+        }
+    }
+
     $sql = 'SELECT
                 id,
                 setting_key,
@@ -307,14 +390,21 @@ function settings_handle_get(): void {
     $sql .= ' ORDER BY category ASC, setting_key ASC';
 
     $rows = array_map('settings_normalize_row', sqlserver_query($sql, $params));
-    settings_api_json(200, true, 'Settings loaded', [
+    $data = [
         'rows' => $rows,
         'is_admin' => (bool)$adminContext,
         'is_super_admin' => $adminContext
             ? settings_is_super_admin_profile((array)$adminContext['handler'], (array)$adminContext['claims'])
             : false,
         'warning' => null,
-    ]);
+    ];
+    if (!$adminContext) {
+        if ($category === '') {
+            settings_refresh_ticket_settings_cache_from_rows($rows);
+        }
+        settings_public_cache_set($publicCacheVary, $data);
+    }
+    settings_api_json(200, true, 'Settings loaded', $data);
 }
 
 function settings_handle_post(): void {

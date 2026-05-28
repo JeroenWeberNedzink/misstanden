@@ -1,7 +1,11 @@
 param(
     [ValidateSet('dev', 'local')]
     [string]$Mode = 'dev',
-    [switch]$RequireAuth0Audience
+    [switch]$RequireAuth0Audience,
+    [switch]$SkipTests,
+    [switch]$SkipPerformance,
+    [switch]$SkipMutatingTests,
+    [switch]$SkipPostDeploySmoke
 )
 
 $ErrorActionPreference = "Stop"
@@ -133,6 +137,19 @@ function Invoke-RobocopyChecked($source, $destination, $files = @('*'), $extraAr
     }
 }
 
+function Invoke-CheckedCommand($label, $filePath, $argumentList, $workingDirectory) {
+    Info $label
+    Push-Location $workingDirectory
+    try {
+        & $filePath @argumentList
+        if ($LASTEXITCODE -ne 0) {
+            Die "$label failed with exit code $LASTEXITCODE"
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
 function Invoke-DeployHealthCheck($siteUrl) {
     $settingsUrl = ($siteUrl.TrimEnd('/') + '/api/settings.api.php?debug=1')
     Info "Running post-deploy health check: $settingsUrl"
@@ -161,6 +178,167 @@ function Invoke-DeployHealthCheck($siteUrl) {
     }
 }
 
+function Resolve-FirstConfigValue($keys, $rootDir) {
+    foreach ($key in $keys) {
+        $resolved = Resolve-ConfigValue $key $rootDir
+        if (-not [string]::IsNullOrWhiteSpace($resolved.Value)) {
+            return [PSCustomObject]@{
+                Key    = $key
+                Value  = $resolved.Value
+                Source = $resolved.Source
+                Path   = $resolved.Path
+            }
+        }
+    }
+
+    return [PSCustomObject]@{
+        Key    = ''
+        Value  = ''
+        Source = 'missing'
+        Path   = ''
+    }
+}
+
+function Normalize-Auth0Domain($domain) {
+    $value = ([string]$domain).Trim().TrimEnd('/')
+    if ($value -match '^https?://') {
+        try {
+            return ([Uri]$value).Host
+        } catch {
+            return $value -replace '^https?://', ''
+        }
+    }
+    return $value
+}
+
+function Resolve-Auth0ClientCredentialPair($rootDir) {
+    $pairs = @(
+        @('API_TEST_CLIENT_ID', 'API_TEST_CLIENT_SECRET', $false),
+        @('AUTH0_API_TEST_CLIENT_ID', 'AUTH0_API_TEST_CLIENT_SECRET', $false),
+        @('AUTH0_TEST_CLIENT_ID', 'AUTH0_TEST_CLIENT_SECRET', $false),
+        @('AUTH0_M2M_CLIENT_ID', 'AUTH0_M2M_CLIENT_SECRET', $false),
+        @('AUTH0_MGMT_CLIENT_ID', 'AUTH0_MGMT_CLIENT_SECRET', $true)
+    )
+
+    foreach ($pair in $pairs) {
+        $id = Resolve-ConfigValue $pair[0] $rootDir
+        $secret = Resolve-ConfigValue $pair[1] $rootDir
+        if (
+            -not [string]::IsNullOrWhiteSpace($id.Value) `
+            -and -not [string]::IsNullOrWhiteSpace($secret.Value)
+        ) {
+            return [PSCustomObject]@{
+                ClientIdKey     = $pair[0]
+                ClientId        = $id.Value
+                ClientSecretKey = $pair[1]
+                ClientSecret    = $secret.Value
+                IsMgmtFallback  = [bool]$pair[2]
+            }
+        }
+    }
+
+    return $null
+}
+
+function Set-ApiTestAuthToken($rootDir) {
+    $existingToken = ([string]$env:API_TEST_AUTH_TOKEN).Trim()
+    if ($existingToken -ne '') {
+        Info "Using API_TEST_AUTH_TOKEN from process environment for authenticated API tests"
+        return
+    }
+
+    $domain = Resolve-FirstConfigValue @('API_TEST_AUTH0_DOMAIN', 'AUTH0_DOMAIN', 'VITE_AUTH0_DOMAIN') $rootDir
+    $audience = Resolve-FirstConfigValue @('API_TEST_AUDIENCE', 'AUTH0_AUDIENCE', 'VITE_AUTH0_AUDIENCE') $rootDir
+    $clientCredentials = Resolve-Auth0ClientCredentialPair $rootDir
+    $scope = Resolve-FirstConfigValue @('API_TEST_AUTH_SCOPE', 'VITE_AUTH0_API_SCOPE') $rootDir
+
+    $missing = @()
+    if ([string]::IsNullOrWhiteSpace($domain.Value)) { $missing += 'API_TEST_AUTH0_DOMAIN/AUTH0_DOMAIN/VITE_AUTH0_DOMAIN' }
+    if ([string]::IsNullOrWhiteSpace($audience.Value)) { $missing += 'API_TEST_AUDIENCE/AUTH0_AUDIENCE/VITE_AUTH0_AUDIENCE' }
+    if ($null -eq $clientCredentials) { $missing += 'a matching Machine-to-Machine client id/secret pair such as AUTH0_API_TEST_CLIENT_ID + AUTH0_API_TEST_CLIENT_SECRET' }
+    if ($missing.Count -gt 0) {
+        Die "Authenticated API tests need an Auth0 API token. Set API_TEST_AUTH_TOKEN, or configure a Machine-to-Machine test client. Missing: $($missing -join ', ')"
+    }
+
+    if ($clientCredentials.IsMgmtFallback) {
+        Warn "Using AUTH0_MGMT_* credentials as fallback for API tests. Prefer AUTH0_API_TEST_CLIENT_ID and AUTH0_API_TEST_CLIENT_SECRET for the application API audience."
+    }
+
+    $auth0Domain = Normalize-Auth0Domain $domain.Value
+    $tokenUrl = "https://$auth0Domain/oauth/token"
+    $payload = @{
+        grant_type    = 'client_credentials'
+        client_id     = $clientCredentials.ClientId
+        client_secret = $clientCredentials.ClientSecret
+        audience      = $audience.Value
+    }
+    if (-not [string]::IsNullOrWhiteSpace($scope.Value)) {
+        $payload.scope = $scope.Value
+    }
+
+    Info "Requesting short-lived Auth0 API test token for audience $($audience.Value)"
+    try {
+        $response = Invoke-RestMethod `
+            -Method Post `
+            -Uri $tokenUrl `
+            -ContentType 'application/json' `
+            -Body ($payload | ConvertTo-Json -Compress) `
+            -TimeoutSec 30
+        $token = ([string]$response.access_token).Trim()
+        if ($token -eq '') {
+            Die "Auth0 token response did not include access_token"
+        }
+        $env:API_TEST_AUTH_TOKEN = $token
+        Ok "Auth0 API test token acquired for this process"
+    } catch {
+        Die "Could not obtain Auth0 API test token from $tokenUrl. Ensure the Machine-to-Machine app is authorized for audience '$($audience.Value)' and allowed scopes '$($scope.Value)'. $($_.Exception.Message)"
+    }
+}
+
+function Invoke-BackendPipelineTests($rootDir) {
+    $skipAllTests = $SkipTests -or (Is-Truthy $env:NZ_LOCAL_SKIP_TESTS)
+    if ($skipAllTests) {
+        Warn "Skipping backend/API tests before deploy"
+        return
+    }
+
+    Set-ApiTestAuthToken $rootDir
+
+    $testArgs = @('scripts/api-backend-test.mjs', '--start-server')
+    if (-not ($SkipMutatingTests -or (Is-Truthy $env:NZ_LOCAL_SKIP_MUTATING_TESTS))) {
+        $testArgs += '--mutate'
+    } else {
+        Warn "Skipping mutating backend/API tests"
+    }
+
+    if (-not ($SkipPerformance -or (Is-Truthy $env:NZ_LOCAL_SKIP_PERFORMANCE))) {
+        $testArgs += '--performance'
+    } else {
+        Warn "Skipping backend/API performance probes"
+    }
+
+    Invoke-CheckedCommand "Running backend/API pipeline tests" 'node' $testArgs $rootDir
+}
+
+function Invoke-PostDeploySmoke($rootDir, $siteUrl) {
+    if ($SkipPostDeploySmoke -or (Is-Truthy $env:NZ_LOCAL_SKIP_POST_DEPLOY_SMOKE)) {
+        Warn "Skipping post-deploy API smoke test"
+        return
+    }
+
+    $smokeArgs = @(
+        'scripts/api-backend-test.mjs',
+        "--base-url=$($siteUrl.TrimEnd('/'))",
+        '--performance'
+    )
+
+    if ($SkipTests -or (Is-Truthy $env:NZ_LOCAL_SKIP_TESTS)) {
+        Warn "Post-deploy smoke still runs because deploy tests were skipped. Use -SkipPostDeploySmoke to skip it too."
+    }
+
+    Invoke-CheckedCommand "Running post-deploy IIS API smoke test" 'node' $smokeArgs $rootDir
+}
+
 function Invoke-LocalDeploy($rootDir) {
     $deployTarget = '\\nz-web02\Websites\misstanden.nedzink.nl'
     $deploySiteUrl = if ($env:MISSTANDEN_DEPLOY_URL) { $env:MISSTANDEN_DEPLOY_URL } else { 'https://misstanden.nedzink.nl' }
@@ -174,16 +352,14 @@ function Invoke-LocalDeploy($rootDir) {
     $targetVendorDir = Join-Path $deployTarget 'vendor'
     $targetPrivateDir = Join-Path $deployTarget 'private'
 
-    Info "Running production build"
-    Push-Location $rootDir
-    try {
-        & npm run build
-        if ($LASTEXITCODE -ne 0) {
-            Die "npm run build failed"
+    foreach ($cmd in @('php','node','npm','robocopy')) {
+        if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
+            Die "$cmd not found in PATH"
         }
-    } finally {
-        Pop-Location
     }
+
+    Invoke-BackendPipelineTests $rootDir
+    Invoke-CheckedCommand "Running production build" 'npm' @('run', 'build') $rootDir
 
     if (-not (Test-Path $deployTarget)) {
         Die "Deploy target is not reachable: $deployTarget"
@@ -259,6 +435,7 @@ function Invoke-LocalDeploy($rootDir) {
     Write-Host "Site    : $deploySiteUrl"
 
     Invoke-DeployHealthCheck $deploySiteUrl
+    Invoke-PostDeploySmoke $rootDir $deploySiteUrl
 }
 
 # -----------------------------

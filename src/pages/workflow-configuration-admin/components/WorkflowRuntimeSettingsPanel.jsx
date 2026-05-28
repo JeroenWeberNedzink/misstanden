@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Button from '../../../components/ui/Button';
 import Icon from '../../../components/AppIcon';
@@ -65,8 +65,12 @@ export default function WorkflowRuntimeSettingsPanel({
   description = null,
   disabled = false,
   emptyStateMessage = null,
+  collapsible = false,
+  defaultExpanded = true,
+  compact = false,
 }) {
   const { t } = useTranslation();
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const changedCount = useMemo(
     () =>
       WORKFLOW_RUNTIME_SETTING_DEFS.reduce((count, item) => {
@@ -78,9 +82,23 @@ export default function WorkflowRuntimeSettingsPanel({
   );
 
   return (
-    <div className="bg-white border border-sky-100 rounded-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-sky-100 bg-gradient-to-r from-sky-50/70 to-white">
-        <div className="flex items-center justify-between gap-3">
+    <div className={[
+      compact
+        ? 'bg-muted/10 border border-border rounded-lg overflow-hidden'
+        : 'bg-white border border-sky-100 rounded-xl overflow-hidden',
+    ].join(' ')}>
+      <div className={[
+        compact
+          ? 'px-3 py-2 border-b border-border bg-muted/10'
+          : 'px-4 py-3 border-b border-sky-100 bg-gradient-to-r from-sky-50/70 to-white',
+      ].join(' ')}>
+        <button
+          type="button"
+          className="w-full flex items-center justify-between gap-3 text-left"
+          onClick={() => collapsible && setIsExpanded((prev) => !prev)}
+          aria-expanded={isExpanded}
+          disabled={!collapsible}
+        >
           <div className="min-w-0">
             {showStepHeader && (
               <div className="flex items-center gap-2 mb-1.5">
@@ -92,7 +110,7 @@ export default function WorkflowRuntimeSettingsPanel({
                 </div>
               </div>
             )}
-            <h3 className="text-base font-semibold text-foreground">
+            <h3 className={compact ? 'text-sm font-semibold text-foreground' : 'text-base font-semibold text-foreground'}>
               {title || t('workflowConfig.runtimeSettingsTitle', { defaultValue: 'Workflow instellingen (globaal)' })}
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -101,15 +119,21 @@ export default function WorkflowRuntimeSettingsPanel({
               })}
             </p>
           </div>
-          <span className="text-[10px] px-2 py-0.5 rounded-full border border-sky-200 bg-sky-50 text-sky-700">
-            {changedCount > 0
-              ? t('workflowConfig.changesCount', { count: changedCount, defaultValue: `${changedCount} gewijzigd` })
-              : t('workflowConfig.noChanges', { defaultValue: 'Geen wijzigingen' })}
-          </span>
-        </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[10px] px-2 py-0.5 rounded-full border border-sky-200 bg-sky-50 text-sky-700">
+              {changedCount > 0
+                ? t('workflowConfig.changesCount', { count: changedCount, defaultValue: `${changedCount} gewijzigd` })
+                : t('workflowConfig.noChanges', { defaultValue: 'Geen wijzigingen' })}
+            </span>
+            {collapsible && (
+              <Icon name={isExpanded ? 'ChevronUp' : 'ChevronDown'} size={18} className="text-sky-700" />
+            )}
+          </div>
+        </button>
       </div>
 
-      <div className="p-3 space-y-2">
+      {isExpanded && (
+      <div className={compact ? 'p-2 space-y-2' : 'p-3 space-y-2'}>
         {disabled && (
           <div className="p-2 rounded-lg border border-border bg-muted/20 text-sm text-muted-foreground">
             {emptyStateMessage || t('workflowConfig.selectWorkflowFirst', { defaultValue: 'Selecteer eerst een workflow.' })}
@@ -132,12 +156,13 @@ export default function WorkflowRuntimeSettingsPanel({
                 <div
                   key={item.key}
                   className={[
-                    'grid grid-cols-1 md:grid-cols-[1fr_auto] md:items-center gap-2 px-2 py-2.5',
-                    isChanged ? 'bg-sky-50/30' : 'bg-white',
+                    'grid grid-cols-1 md:grid-cols-[1fr_auto] md:items-center gap-2 px-2',
+                    compact ? 'py-2' : 'py-2.5',
+                    isChanged ? 'bg-sky-50/30' : compact ? 'bg-transparent' : 'bg-white',
                   ].join(' ')}
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground leading-5">{item.label}</p>
+                    <p className={compact ? 'text-xs font-semibold text-foreground leading-5' : 'text-sm font-semibold text-foreground leading-5'}>{item.label}</p>
                     <p className="text-xs text-muted-foreground mt-0.5 leading-5">{item.description}</p>
                   </div>
                   <div className="md:justify-self-end">
@@ -188,6 +213,7 @@ export default function WorkflowRuntimeSettingsPanel({
           </Button>
         </div>
       </div>
+      )}
     </div>
   );
 }
