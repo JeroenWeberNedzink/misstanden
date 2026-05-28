@@ -4,11 +4,12 @@ import AnonymousNavHeader from '../components/navigation/AnonymousNavHeader';
 import Icon from '../components/AppIcon';
 import Button from '../components/ui/Button';
 import { guestAccessService } from '../services/guestAccessService';
+import { toDateSafe } from '../utils/slaUtils';
 
 const fmt = (value) => {
   if (!value) return '-';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '-';
+  const d = toDateSafe(value);
+  if (!d) return '-';
   return d.toLocaleString();
 };
 
@@ -41,7 +42,11 @@ export default function GuestTicketViewPage() {
 
   const messages = useMemo(() => {
     const rows = Array.isArray(ticket?.messages) ? ticket.messages : [];
-    return [...rows].sort((a, b) => new Date(a?.created_at || 0) - new Date(b?.created_at || 0));
+    return [...rows].sort((a, b) => {
+      const at = toDateSafe(a?.created_at || a?.createdAt)?.getTime() || 0;
+      const bt = toDateSafe(b?.created_at || b?.createdAt)?.getTime() || 0;
+      return at - bt;
+    });
   }, [ticket?.messages]);
 
   return (

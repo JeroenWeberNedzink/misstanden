@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
+import { toDateSafe } from '../../../utils/slaUtils';
 
 const iconByType = {
   created: 'PlusCircle',
@@ -27,8 +28,8 @@ const ActionHistoryCard = ({ actions = [] }) => {
 
   const formatDate = (value) => {
     if (!value) return '-';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '-';
+    const d = toDateSafe(value);
+    if (!d) return '-';
     return d.toLocaleString(locale || undefined, {
       day: '2-digit',
       month: '2-digit',

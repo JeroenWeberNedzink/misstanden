@@ -1,3 +1,5 @@
+import { toDateSafe } from '../utils/slaUtils';
+
 const WORKFLOW_API_URL = '/api/workflows.api.php';
 
 const apiGet = async (action, params = {}) => {
@@ -149,7 +151,9 @@ export const workflowTimelineService = {
         };
       }
 
-      const createdAt = new Date(ticket.created_at || ticket.createdAt || ticket.submitted_at || ticket.submittedAt);
+      const createdAt =
+        toDateSafe(ticket.created_at || ticket.createdAt || ticket.submitted_at || ticket.submittedAt) ||
+        new Date();
       const now = new Date();
       const daysElapsed = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
       const daysRemaining = maxDeadlinePhase.deadline_days - daysElapsed;

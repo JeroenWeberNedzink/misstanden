@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
+import { toDateSafe } from '../../../utils/slaUtils';
 
 const SLAStatus = ({
   status,
@@ -14,8 +15,8 @@ const SLAStatus = ({
 
   const formatDate = (value) => {
     if (!value) return '-';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '-';
+    const d = toDateSafe(value);
+    if (!d) return '-';
     return d.toLocaleDateString(locale || undefined, {
       day: '2-digit',
       month: 'short',
@@ -28,8 +29,8 @@ const SLAStatus = ({
     if (!value) return null;
     if (isDone) return t('ticketDetailsView.sla.completed');
 
-    const target = new Date(value);
-    if (Number.isNaN(target.getTime())) return null;
+    const target = toDateSafe(value);
+    if (!target) return null;
 
     const diff = target.getTime() - Date.now();
     const overdue = diff < 0;
@@ -56,7 +57,8 @@ const SLAStatus = ({
   const getState = (dueAt, completedAt) => {
     if (completedAt) return 'completed';
     if (!dueAt) return 'pending';
-    return new Date(dueAt).getTime() < Date.now() ? 'overdue' : 'expected';
+    const dueDate = toDateSafe(dueAt);
+    return dueDate && dueDate.getTime() < Date.now() ? 'overdue' : 'expected';
   };
 
   const chipClass = {

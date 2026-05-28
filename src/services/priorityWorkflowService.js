@@ -1,5 +1,6 @@
 import { normalizeHandlerRecord, normalizeHandlerRecords } from './utils/handlerNormalization';
 import { ticketService } from './ticketService';
+import { toDateSafe } from '../utils/slaUtils';
 
 // Helper function to convert snake_case to camelCase
 const toCamelCase = (obj) => {
@@ -46,8 +47,8 @@ export const priorityWorkflowService = {
     // Calculate priority scores and sort
     return cases?.map(ticket => {
       const now = new Date();
-      const assignedAt = new Date(ticket?.submittedAt);
-      const deadline = ticket?.nextStepDue ? new Date(ticket?.nextStepDue) : null;
+      const assignedAt = toDateSafe(ticket?.submittedAt || ticket?.submitted_at) || now;
+      const deadline = toDateSafe(ticket?.nextStepDue || ticket?.next_step_due);
 
       // Calculate hours since assignment
       const hoursSinceAssignment = (now - assignedAt) / (1000 * 60 * 60);

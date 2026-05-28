@@ -13,8 +13,8 @@ import { addHours, getFirstResponseAt, getFirstResponseHoursForTicket, toDateSaf
 
 const formatDateTime = (value, locale, options = {}) => {
   if (!value) return '-';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '-';
+  const d = toDateSafe(value);
+  if (!d) return '-';
   return d.toLocaleDateString(locale || undefined, options);
 };
 

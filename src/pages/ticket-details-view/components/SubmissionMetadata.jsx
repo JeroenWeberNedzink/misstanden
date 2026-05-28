@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
+import { toDateSafe } from '../../../utils/slaUtils';
 
 const SubmissionMetadata = ({ metadata, submissionDate }) => {
   const { t, i18n } = useTranslation();
@@ -8,8 +9,8 @@ const SubmissionMetadata = ({ metadata, submissionDate }) => {
 
   const formatDate = (date) => {
     if (!date) return '-';
-    const d = new Date(date);
-    if (Number.isNaN(d.getTime())) return '-';
+    const d = toDateSafe(date);
+    if (!d) return '-';
     return d.toLocaleDateString(i18n?.resolvedLanguage || i18n?.language || undefined, {
       day: '2-digit',
       month: 'long',
