@@ -1272,7 +1272,24 @@
             "update": "Update"
         },
         "header": {
-            "share": "Share"
+            "share": "Share",
+            "guestLinkCreated": "One-time link created",
+            "guestLinkFailed": "Failed to create shared link",
+            "guestLinkAction": "Created one-time guest access link"
+        },
+        "shareModal": {
+            "title": "Share one-time access",
+            "subtitle": "Ticket {{ticketNumber}}",
+            "oneTimeTitle": "One-time link",
+            "oneTimeDescription": "After the first successful opening, this link becomes invalid. Create a new link after that.",
+            "creating": "Creating link...",
+            "linkLabel": "Access link",
+            "copy": "Copy",
+            "copied": "Copied",
+            "expires": "Expires in {{hours}} hours if the link is not opened earlier.",
+            "close": "Close",
+            "create": "Create link",
+            "createNew": "Create new link"
         },
         "details": {
             "createdClient": "Created (client)",
@@ -1344,7 +1361,8 @@
         "management": {
             "assignDescription": "Assign this case to a handler",
             "assignedCount": "{{count}} assigned",
-            "assignedHandlersRoles": "Assigned handlers and roles",
+            "assignedHandlers": "Assigned handlers",
+            "assignedHandlersRoles": "Assigned handlers",
             "assignmentRoleLabel": "Role",
             "changeStatusCta": "Change status (current: {{status}})",
             "assignBeforeStatusChange": "Assign at least one handler before changing status.",
@@ -1362,6 +1380,7 @@
             "rolePrimary": "Primary",
             "roleSecondary": "Secondary",
             "savingChange": "Saving changes...",
+            "updatingStatus": "Updating status...",
             "statusEmailsDescription": "Reporter receives an email when status changes",
             "statusEmailsLabel": "Status change emails"
         },
@@ -1410,6 +1429,7 @@
             "notePlaceholder": "Explain why you are changing this status",
             "noteRequired": "A note is required.",
             "pendingHint": "Pending",
+            "updating": "Updating status...",
             "workflowLoadError": "Could not load workflow statuses."
         },
         "statusModal": {
@@ -1430,6 +1450,8 @@
             "selected": "Selected",
             "selectStep": "Select a step",
             "title": "Update case status",
+            "updating": "Updating status...",
+            "updatingDescription": "Please wait while the backend processes this workflow change.",
             "whatNext": "What happens next?",
             "workflowFallback": "Workflow"
         },

@@ -9,6 +9,7 @@ const CaseHeader = ({
   onBack,
   onStatusUpdate,
   canUpdateStatus = true,
+  isStatusUpdating = false,
   onGenerateReport,
   generatingReport = false,
   onShare,
@@ -107,6 +108,7 @@ const CaseHeader = ({
           statusChangedAt={caseData?.sla?.statusChangedAt}
           onStatusUpdate={onStatusUpdate}
           disabled={!canUpdateStatus}
+          isUpdating={isStatusUpdating}
         />
       </div>
     </div>

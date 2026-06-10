@@ -668,16 +668,32 @@ const toSnakeCase = (obj) => {
 
 const isAbsoluteUrl = (value) => /^https?:\/\//i.test(String(value || '').trim());
 
+const filesApiDownloadPath = (rawUrl) => {
+  const value = String(rawUrl || '').trim();
+  if (!value) return null;
+
+  try {
+    const parsed = new URL(value, 'https://local.invalid');
+    if (!parsed.pathname.replace(/\\/g, '/').endsWith('/api/files.api.php')) {
+      return null;
+    }
+    const path = parsed.searchParams.get('path');
+    return path ? path.replace(/^\/+/, '') : null;
+  } catch {
+    return null;
+  }
+};
+
 const toStoragePath = (rawUrl, bucket = 'attachments') => {
   const value = String(rawUrl || '').trim();
   if (!value || value === '#') return null;
 
+  const existingDownloadPath = filesApiDownloadPath(value);
+  if (existingDownloadPath) return existingDownloadPath;
+
   if (!isAbsoluteUrl(value)) {
     const normalized = value.replace(/^\/+/, '');
     if (!normalized) return null;
-    if (normalized.startsWith(`${bucket}/`)) {
-      return normalized.slice(bucket.length + 1) || null;
-    }
     return normalized;
   }
 
@@ -1442,12 +1458,6 @@ export const ticketService = {
         .catch(err => console.error('Failed to send ticket creation email:', err));
     }
 
-    // Notify all active handlers that can access this workflow.
-    if (runtimeSettings.autoAssignEnabled) {
-      notificationService.notifyHandlersNewReport(createdTicket)
-        .catch(err => console.error('Failed to send workflow handler new-report emails:', err));
-    }
-
     return applyTicketRuntimePolicies(createdTicket, runtimeSettings, { reporterView: isAnonymous });
   },
 
@@ -1701,8 +1711,6 @@ async deleteHandler(handlerId, options = {}) {
     const normalizedHandlerIds = normalizeHandlerIds(handlerIds);
     const trustedHandlerIds = new Set(normalizeHandlerIds(options?.currentHandlerId));
     const assignmentRoles = buildAssignmentRolesMap(normalizedHandlerIds, options?.rolesByHandlerId || {});
-    const explicitPrimary = normalizedHandlerIds.find((id) => assignmentRoles[id] === 'primary') || null;
-    const primaryHandlerId = explicitPrimary || normalizedHandlerIds[0] || null;
     const handlerMap = new Map();
     const knownHandlers = Array.isArray(options?.knownHandlers) ? options.knownHandlers : [];
     knownHandlers.forEach((handler) => {
@@ -1815,21 +1823,6 @@ async deleteHandler(handlerId, options = {}) {
     }
 
     result = applyTicketRuntimePolicies(result, workflowRuntimeSettings);
-
-    // Send assignment notification only to newly added handlers.
-    const addedHandlerIds = syncResult.available
-      ? syncResult.addedIds
-      : primaryHandlerId
-        ? [primaryHandlerId]
-        : [];
-    if (shouldNotifyOnAssignment && addedHandlerIds.length > 0) {
-      for (const assignedId of addedHandlerIds) {
-        const assignedHandler = handlerMap.get(assignedId);
-        if (!assignedHandler) continue;
-        notificationService.notifyHandlerAssignment(result, assignedHandler)
-          .catch(err => console.error('Failed to send handler assignment notification:', err));
-      }
-    }
 
     const hadAnyAssignmentBefore = syncResult.available
       ? (syncResult.previousIds || []).length > 0

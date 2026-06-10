@@ -182,27 +182,10 @@ try {
         throw new Exception('SQL Server is not configured');
     }
 
-    $token = auth0_get_bearer_token();
-    if ($token === '') {
-        handler_dashboard_json(401, false, 'Authorization token required');
-    }
-
-    $auth0Domain = api_authz_env_required('VITE_AUTH0_DOMAIN');
-    $auth0Audience = auth0_expected_api_audience();
-    $auth0ClientId = api_authz_env_required('VITE_AUTH0_CLIENT_ID');
-    $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
-    $claims = api_authz_enrich_identity_claims($claims, $token);
-
-    $sub = trim((string)($claims['sub'] ?? ''));
-    $email = api_authz_claim_email($claims);
-    if ($sub === '' && $email === '') {
-        handler_dashboard_json(403, false, 'Handler account not active or not found');
-    }
-
-    $handler = api_authz_fetch_handler('', '', $claims);
-    if (!$handler || empty($handler['active'])) {
-        handler_dashboard_json(403, false, 'Handler account not active or not found');
-    }
+    $ctx = api_authz_require_active_handler(static function (int $status, string $message): void {
+        handler_dashboard_json($status, false, $message);
+    });
+    $handler = (array)($ctx['handler'] ?? []);
     $isAdmin = api_authz_is_admin($handler);
     $handlerId = trim((string)($handler['id'] ?? ''));
     if ($handlerId === '') {

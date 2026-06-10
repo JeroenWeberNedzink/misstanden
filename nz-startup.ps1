@@ -211,6 +211,39 @@ function Normalize-Auth0Domain($domain) {
     return $value
 }
 
+function Read-JwtPayload($token) {
+    $parts = ([string]$token).Split('.')
+    if ($parts.Count -lt 2) { return $null }
+
+    $payload = $parts[1].Replace('-', '+').Replace('_', '/')
+    switch ($payload.Length % 4) {
+        2 { $payload += '==' }
+        3 { $payload += '=' }
+        1 { return $null }
+    }
+
+    try {
+        $json = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload))
+        return $json | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+}
+
+function Test-ApiTestAuthTokenFresh($token, $minimumSecondsRemaining = 300) {
+    $payload = Read-JwtPayload $token
+    if ($null -eq $payload -or $null -eq $payload.exp) {
+        return $false
+    }
+
+    try {
+        $expiresAt = [DateTimeOffset]::FromUnixTimeSeconds([int64]$payload.exp)
+        return $expiresAt -gt ([DateTimeOffset]::UtcNow.AddSeconds($minimumSecondsRemaining))
+    } catch {
+        return $false
+    }
+}
+
 function Resolve-Auth0ClientCredentialPair($rootDir) {
     $pairs = @(
         @('API_TEST_CLIENT_ID', 'API_TEST_CLIENT_SECRET', $false),
@@ -243,8 +276,12 @@ function Resolve-Auth0ClientCredentialPair($rootDir) {
 function Set-ApiTestAuthToken($rootDir) {
     $existingToken = ([string]$env:API_TEST_AUTH_TOKEN).Trim()
     if ($existingToken -ne '') {
-        Info "Using API_TEST_AUTH_TOKEN from process environment for authenticated API tests"
-        return
+        if (Test-ApiTestAuthTokenFresh $existingToken) {
+            Info "Using API_TEST_AUTH_TOKEN from process environment for authenticated API tests"
+            return
+        }
+
+        Warn "API_TEST_AUTH_TOKEN is expired or near expiry; requesting a fresh API test token"
     }
 
     $domain = Resolve-FirstConfigValue @('API_TEST_AUTH0_DOMAIN', 'AUTH0_DOMAIN', 'VITE_AUTH0_DOMAIN') $rootDir

@@ -1133,7 +1133,24 @@
             "update": "Aktualisieren"
         },
         "header": {
-            "share": "Teilen"
+            "share": "Teilen",
+            "guestLinkCreated": "Einmaliger Link erstellt",
+            "guestLinkFailed": "Freigabelink konnte nicht erstellt werden",
+            "guestLinkAction": "Einmaligen Gastzugangslink erstellt"
+        },
+        "shareModal": {
+            "title": "Einmaligen Zugriff teilen",
+            "subtitle": "Ticket {{ticketNumber}}",
+            "oneTimeTitle": "Einmaliger Link",
+            "oneTimeDescription": "Nach dem ersten erfolgreichen Oeffnen wird dieser Link ungueltig. Danach muss ein neuer Link erstellt werden.",
+            "creating": "Link wird erstellt...",
+            "linkLabel": "Zugangslink",
+            "copy": "Kopieren",
+            "copied": "Kopiert",
+            "expires": "Laeuft in {{hours}} Stunden ab, wenn der Link nicht vorher geoeffnet wird.",
+            "close": "Schliessen",
+            "create": "Link erstellen",
+            "createNew": "Neuen Link erstellen"
         },
         "details": {
             "createdClient": "Erstellt (Client)",
@@ -1205,7 +1222,8 @@
         "management": {
             "assignDescription": "Diesen Fall einem Bearbeiter zuweisen",
             "assignedCount": "{{count}} zugewiesen",
-            "assignedHandlersRoles": "Zugewiesene Bearbeiter und Rollen",
+            "assignedHandlers": "Zugewiesene Bearbeiter",
+            "assignedHandlersRoles": "Zugewiesene Bearbeiter",
             "assignmentRoleLabel": "Rolle",
             "changeStatusCta": "Status aendern (aktuell: {{status}})",
             "assignBeforeStatusChange": "Weisen Sie mindestens einen Bearbeiter zu, bevor Sie den Status aendern.",
@@ -1223,6 +1241,7 @@
             "rolePrimary": "Primaer",
             "roleSecondary": "Sekundaer",
             "savingChange": "Aenderungen werden gespeichert...",
+            "updatingStatus": "Status wird aktualisiert...",
             "statusEmailsDescription": "Hinweisgeber erhaelt eine E-Mail bei Statusaenderung",
             "statusEmailsLabel": "Statusaenderungs-E-Mails"
         },
@@ -1271,6 +1290,7 @@
             "notePlaceholder": "Erklaeren Sie, warum Sie diesen Status aendern",
             "noteRequired": "Eine Notiz ist erforderlich.",
             "pendingHint": "Ausstehend",
+            "updating": "Status wird aktualisiert...",
             "workflowLoadError": "Workflow-Status konnten nicht geladen werden."
         },
         "statusModal": {
@@ -1291,6 +1311,8 @@
             "selected": "Ausgewaehlt",
             "selectStep": "Schritt auswaehlen",
             "title": "Fallstatus aktualisieren",
+            "updating": "Status wird aktualisiert...",
+            "updatingDescription": "Bitte warten Sie, waehrend das Backend diese Workflow-Aenderung verarbeitet.",
             "whatNext": "Was passiert als Naechstes?",
             "workflowFallback": "Workflow"
         },

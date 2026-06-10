@@ -80,8 +80,32 @@ const readCachedHandlerProfile = () => {
   }
 };
 
+const EMAIL_VERIFICATION_EXTERNALLY_MANAGED_MESSAGE =
+  'Verificatie wordt beheerd door uw organisatie (SSO/Entra). Er is geen actie nodig in dit portaal.';
+
+const getExternalIdentityProvider = (sub = '') => {
+  const provider = String(sub || '').split('|')[0]?.trim()?.toLowerCase();
+  if (!provider || !String(sub || '').includes('|')) return '';
+  return provider !== 'auth0' && provider !== 'email' ? provider : '';
+};
+
+const getExternalIdentityProviderLabel = (provider = '') => {
+  const normalized = String(provider || '').trim().toLowerCase();
+  const labels = {
+    waad: 'Entra ID',
+    azuread: 'Entra ID',
+    adfs: 'ADFS',
+    samlp: 'SAML SSO',
+    'google-oauth2': 'Google OAuth',
+    windowslive: 'Microsoft',
+  };
+  return labels[normalized] || normalized;
+};
+
 const HandlerProfileManagement = () => {
   const { user, getAccessTokenSilently } = useAuth0();
+  const externalIdentityProvider = getExternalIdentityProvider(user?.sub);
+  const isExternallyManagedUser = Boolean(externalIdentityProvider);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -96,11 +120,15 @@ const HandlerProfileManagement = () => {
   // Global email channel toggle (stored in notification settings table)
   const [emailChannel, setEmailChannel] = useState({ emailEnabled: true });
   const [emailVerification, setEmailVerification] = useState({
-    isVerified: Boolean(user?.email_verified),
+    isVerified: isExternallyManagedUser || Boolean(user?.email_verified),
     email: String(user?.email || ''),
-    statusAvailable: true,
-    sendAvailable: true,
-    warning: '',
+    statusAvailable: !isExternallyManagedUser,
+    sendAvailable: !isExternallyManagedUser,
+    verificationRequired: !isExternallyManagedUser && !Boolean(user?.email_verified),
+    externallyVerified: isExternallyManagedUser,
+    identityProvider: externalIdentityProvider,
+    identityProviderLabel: getExternalIdentityProviderLabel(externalIdentityProvider),
+    warning: isExternallyManagedUser ? EMAIL_VERIFICATION_EXTERNALLY_MANAGED_MESSAGE : '',
     loading: false,
     sending: false,
     message: '',
@@ -149,12 +177,21 @@ const HandlerProfileManagement = () => {
   }, [user?.sub]);
 
   useEffect(() => {
+    const provider = getExternalIdentityProvider(user?.sub);
+    const externallyManaged = Boolean(provider);
     setEmailVerification((prev) => ({
       ...prev,
-      isVerified: Boolean(user?.email_verified),
+      isVerified: externallyManaged || Boolean(user?.email_verified),
       email: String(user?.email || prev.email || ''),
+      statusAvailable: externallyManaged ? false : prev.statusAvailable,
+      sendAvailable: externallyManaged ? false : prev.sendAvailable,
+      verificationRequired: externallyManaged ? false : !Boolean(user?.email_verified),
+      externallyVerified: externallyManaged,
+      identityProvider: provider || prev.identityProvider || '',
+      identityProviderLabel: provider ? getExternalIdentityProviderLabel(provider) : prev.identityProviderLabel || '',
+      warning: externallyManaged ? EMAIL_VERIFICATION_EXTERNALLY_MANAGED_MESSAGE : prev.warning,
     }));
-  }, [user?.email, user?.email_verified]);
+  }, [user?.email, user?.email_verified, user?.sub]);
 
   const refreshEmailVerificationStatus = async ({ silent = false } = {}) => {
     try {
@@ -166,15 +203,27 @@ const HandlerProfileManagement = () => {
 
       const token = await getApiAccessToken(getAccessTokenSilently);
       const status = await emailVerificationService.getStatus(token);
+      const localProvider = getExternalIdentityProvider(user?.sub);
+      const externallyVerified = Boolean(localProvider) || Boolean(status?.externallyVerified);
+      const verificationRequired =
+        externallyVerified ? false : (status?.verificationRequired ?? !Boolean(status?.emailVerified));
       setEmailVerification((prev) => ({
         ...prev,
         loading: false,
-        isVerified: Boolean(status?.emailVerified),
+        isVerified: Boolean(status?.emailVerified) || externallyVerified || verificationRequired === false,
         email: status?.email || prev.email,
         updatedAt: status?.updatedAt || prev.updatedAt || null,
         statusAvailable: status?.verificationAvailable !== false,
         sendAvailable: status?.sendAvailable !== false,
-        warning: status?.warning || '',
+        verificationRequired,
+        externallyVerified,
+        identityProvider: status?.identityProvider || localProvider || prev.identityProvider || '',
+        identityProviderLabel:
+          status?.identityProviderLabel ||
+          (localProvider ? getExternalIdentityProviderLabel(localProvider) : '') ||
+          prev.identityProviderLabel ||
+          '',
+        warning: status?.warning || (externallyVerified ? EMAIL_VERIFICATION_EXTERNALLY_MANAGED_MESSAGE : ''),
       }));
     } catch (err) {
       console.error('Error loading email verification status:', err);
@@ -188,6 +237,20 @@ const HandlerProfileManagement = () => {
 
   const handleSendVerificationEmail = async () => {
     try {
+      if (emailVerification?.externallyVerified || emailVerification?.verificationRequired === false) {
+        const alreadyExternallyVerified = Boolean(emailVerification?.externallyVerified);
+        setEmailVerification((prev) => ({
+          ...prev,
+          isVerified: true,
+          message: alreadyExternallyVerified
+            ? EMAIL_VERIFICATION_EXTERNALLY_MANAGED_MESSAGE
+            : 'E-mailadres is al geverifieerd.',
+          error: '',
+          sending: false,
+        }));
+        return;
+      }
+
       setEmailVerification((prev) => ({
         ...prev,
         sending: true,
@@ -197,13 +260,27 @@ const HandlerProfileManagement = () => {
 
       const token = await getApiAccessToken(getAccessTokenSilently);
       const result = await emailVerificationService.sendVerificationEmail(token);
+      const localProvider = getExternalIdentityProvider(user?.sub);
+      const externallyVerified = Boolean(localProvider) || Boolean(result?.externallyVerified);
+      const verificationRequired =
+        externallyVerified ? false : (result?.verificationRequired ?? !Boolean(result?.emailVerified));
       setEmailVerification((prev) => ({
         ...prev,
         sending: false,
-        isVerified: Boolean(result?.emailVerified),
+        isVerified: Boolean(result?.emailVerified) || externallyVerified || verificationRequired === false,
         email: result?.email || prev.email,
         requestedAt: result?.requestedAt || prev.requestedAt || null,
-        message: Boolean(result?.emailVerified)
+        verificationRequired,
+        externallyVerified,
+        identityProvider: result?.identityProvider || localProvider || prev.identityProvider || '',
+        identityProviderLabel:
+          result?.identityProviderLabel ||
+          (localProvider ? getExternalIdentityProviderLabel(localProvider) : '') ||
+          prev.identityProviderLabel ||
+          '',
+        message: externallyVerified
+          ? EMAIL_VERIFICATION_EXTERNALLY_MANAGED_MESSAGE
+          : Boolean(result?.emailVerified)
           ? 'E-mailadres is al geverifieerd.'
           : 'Verificatie e-mail verzonden. Controleer uw inbox.',
       }));
@@ -506,10 +583,14 @@ const AccountOverviewPanel = ({
   const displayName = user?.name || handlerProfile?.name || 'Handler';
   const displayEmail = emailVerification?.email || handlerProfile?.email || user?.email || '-';
   const primaryRole = formatRoleLabel(pickPrimaryRole(roles, handlerProfile?.role));
-  const isEmailVerified = Boolean(emailVerification?.isVerified);
-  const statusAvailable = emailVerification?.statusAvailable !== false;
+  const externallyVerified = Boolean(emailVerification?.externallyVerified);
+  const verificationRequired =
+    emailVerification?.verificationRequired !== false && !Boolean(emailVerification?.isVerified) && !externallyVerified;
+  const isEmailVerified =
+    Boolean(emailVerification?.isVerified) || externallyVerified || emailVerification?.verificationRequired === false;
   const sendAvailable = emailVerification?.sendAvailable !== false;
-  const isExternallyManagedEmail = !isEmailVerified && statusAvailable && !sendAvailable;
+  const isExternallyManagedEmail = externallyVerified;
+  const providerLabel = String(emailVerification?.identityProviderLabel || '').trim();
   const verificationWarning = String(emailVerification?.warning || '').trim();
   const verificationMessage = String(emailVerification?.message || '').trim();
   const verificationError = String(emailVerification?.error || '').trim();
@@ -552,9 +633,9 @@ const AccountOverviewPanel = ({
               <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${(isEmailVerified || isExternallyManagedEmail) ? 'bg-success/10 text-success border-success/20' : 'bg-warning/10 text-warning border-warning/20'}`}>
                 <Icon name={isEmailVerified || isExternallyManagedEmail ? 'CheckCircle' : 'AlertCircle'} size={12} />
                 {isEmailVerified
-                  ? 'E-mail geverifieerd'
+                  ? (isExternallyManagedEmail ? 'OAuth geverifieerd' : 'E-mail geverifieerd')
                   : isExternallyManagedEmail
-                    ? 'E-mailstatus via organisatie (SSO)'
+                    ? 'E-mailstatus via organisatie'
                     : 'E-mail niet geverifieerd'}
               </span>
             </div>
@@ -565,7 +646,7 @@ const AccountOverviewPanel = ({
                   <div>
                     <p className="text-sm font-medium text-foreground">E-mailstatus is correct ingesteld</p>
                     <p className="text-xs text-muted-foreground">
-                      Verificatie wordt beheerd door uw organisatie (SSO/Entra). Er is geen actie nodig in dit portaal.
+                      Verificatie wordt beheerd door uw organisatie{providerLabel ? ` (${providerLabel})` : ' (SSO/Entra)'}. Er is geen actie nodig in dit portaal.
                     </p>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2">
@@ -584,7 +665,7 @@ const AccountOverviewPanel = ({
               </div>
             )}
 
-            {!isEmailVerified && !isExternallyManagedEmail && (
+            {!isEmailVerified && !isExternallyManagedEmail && verificationRequired && (
               <div className="mt-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <div>
@@ -610,7 +691,7 @@ const AccountOverviewPanel = ({
                       iconName="Mail"
                       onClick={onSendVerification}
                       loading={emailVerification?.sending}
-                      disabled={emailVerification?.sending || !sendAvailable}
+                      disabled={emailVerification?.sending || !sendAvailable || !verificationRequired}
                       className="w-full sm:w-auto"
                     >
                       Verificatie e-mail sturen

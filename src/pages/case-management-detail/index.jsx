@@ -10,6 +10,7 @@ import InvestigationNotesPanel from './components/InvestigationNotesPanel';
 import CommunicationPanel from './components/CommunicationPanel';
 import ActionHistoryPanel from './components/ActionHistoryPanel';
 import StatusUpdateModal from './components/StatusUpdateModal';
+import GuestAccessShareModal from './components/GuestAccessShareModal';
 import CaseManagementPanel from './components/CaseManagementPanel';
 import CasePriorityPanel from './components/CasePriorityPanel';
 import SLACompactCard from './components/SLACompactCard';
@@ -211,6 +212,7 @@ const hasAssignedHandlers = (ticketLike) => {
 
 const HANDLER_OPTIONS_CACHE_KEY = 'case_detail_handler_options_v1';
 const HANDLER_OPTIONS_CACHE_TTL_MS = 5 * 60 * 1000;
+const GUEST_ACCESS_EXPIRES_IN_HOURS = 72;
 
 export default function CaseManagementDetail() {
   const [caseData, setCaseData] = useState(null);
@@ -229,6 +231,10 @@ export default function CaseManagementDetail() {
   const [currentHandlerId, setCurrentHandlerId] = useState(null);
   const [generatingReport, setGeneratingReport] = useState(false);
   const [creatingGuestAccess, setCreatingGuestAccess] = useState(false);
+  const [showGuestAccessModal, setShowGuestAccessModal] = useState(false);
+  const [guestAccessLink, setGuestAccessLink] = useState('');
+  const [guestAccessError, setGuestAccessError] = useState('');
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   const navigate = useNavigate();
   const isMountedRef = useRef(true);
@@ -734,7 +740,10 @@ export default function CaseManagementDetail() {
   }, [loadCaseData, loadHandlers]);
 
   const handleBack = () => navigate('/handler-dashboard');
-  const handleStatusChange = () => setShowStatusModal(true);
+  const handleStatusChange = () => {
+    if (updatingStatus) return;
+    setShowStatusModal(true);
+  };
 
   // Status update supports both modal and FlowBar payloads.
   const handleStatusUpdate = async (payload) => {
@@ -744,8 +753,10 @@ export default function CaseManagementDetail() {
       showToast(t('caseManagementDetail.management.assignBeforeStatusChange'));
       return;
     }
+    if (updatingStatus) return null;
 
     try {
+      setUpdatingStatus(true);
       // IMPORTANT: ticketService.updateTicketStatus returns updated ticket (because updateTicketProgress does select().single())
       const updatedTicket = await ticketService.updateTicketStatus(
         ticketId,
@@ -787,9 +798,13 @@ export default function CaseManagementDetail() {
       });
 
       showToast(t('caseManagement.statusUpdated'));
+      return updatedTicket;
     } catch (err) {
       console.error('Error updating status:', err);
       showToast(err?.message || t('caseManagement.statusUpdateFailed'));
+      throw err;
+    } finally {
+      if (isMountedRef.current) setUpdatingStatus(false);
     }
   };
 
@@ -992,20 +1007,10 @@ export default function CaseManagementDetail() {
         : newHandlerIds
           ? [newHandlerIds]
           : [];
-      const existingRoles = {};
-      for (const row of caseData?.assignedHandlers || []) {
-        if (row?.id) {
-          existingRoles[row.id] = row.role || 'secondary';
-        }
-      }
       const rolesByHandlerId = {};
       normalizedHandlerIds.forEach((handlerId, index) => {
-        rolesByHandlerId[handlerId] = existingRoles[handlerId] || (index === 0 ? 'primary' : 'secondary');
+        rolesByHandlerId[handlerId] = index === 0 ? 'primary' : 'secondary';
       });
-      const hasExplicitPrimary = Object.values(rolesByHandlerId).some((role) => role === 'primary');
-      if (!hasExplicitPrimary && normalizedHandlerIds[0]) {
-        rolesByHandlerId[normalizedHandlerIds[0]] = 'primary';
-      }
 
       const updatedTicket = await ticketService.setTicketHandlers(ticketId, normalizedHandlerIds, null, {
         currentHandlerId,
@@ -1028,30 +1033,6 @@ export default function CaseManagementDetail() {
       showToast(t('caseManagement.assignmentChanged'));
     } catch (err) {
       console.error('Error assigning handler:', err);
-      showToast(t('caseManagement.assignmentChangeFailed'));
-    }
-  };
-
-  const handleAssignmentRoleChange = async (handlerId, role) => {
-    const ticketId = getStoredTicketId();
-    if (!ticketId) return navigate('/handler-dashboard');
-
-    try {
-      const result = await ticketService.setTicketHandlerRole(ticketId, handlerId, role);
-      const updatedTicket = result?.ticket || result;
-      setCaseData(formatCase(updatedTicket, null, availableHandlers));
-      pushAction({
-        actionType: 'assignment_role_updated',
-        action: t('caseManagementDetail.management.roleUpdated', { defaultValue: 'Assignment role updated' }),
-        description: t('caseManagementDetail.management.roleUpdatedDescription', {
-          defaultValue: `Updated handler role to ${role}`,
-          role,
-        }),
-        performedBy: user?.name || user?.email || t('caseManagement.handler'),
-      });
-      showToast(t('caseManagementDetail.management.roleUpdatedToast', { defaultValue: 'Handler role updated' }));
-    } catch (err) {
-      console.error('Error updating assignment role:', err);
       showToast(t('caseManagement.assignmentChangeFailed'));
     }
   };
@@ -1087,34 +1068,41 @@ export default function CaseManagementDetail() {
     }
   };
 
+  const normalizeGuestAccessUrl = (url) => {
+    const value = String(url || '').trim();
+    if (value === '') return '';
+    if (/^https?:\/\//i.test(value)) return value;
+    if (value.startsWith('/')) return `${window.location.origin}${value}`;
+    return value;
+  };
+
   const handleCreateGuestAccess = async () => {
     const ticketId = getStoredTicketId();
     if (!ticketId) return navigate('/handler-dashboard');
 
     try {
+      setShowGuestAccessModal(true);
       setCreatingGuestAccess(true);
+      setGuestAccessError('');
+      setGuestAccessLink('');
       const data = await guestAccessService.createGuestAccess(ticketId, {
         role: 'viewer',
-        expiresInHours: 72,
+        expiresInHours: GUEST_ACCESS_EXPIRES_IN_HOURS,
       });
-      const url = data?.guest_url || data?.guest_url_path || '';
-      if (url && navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(url);
-      }
-      showToast(
-        url
-          ? t('caseManagementDetail.header.guestLinkCreated', { defaultValue: 'Guest link created and copied to clipboard' })
-          : t('caseManagementDetail.header.guestLinkCreatedNoCopy', { defaultValue: 'Guest link created' })
-      );
+      const url = normalizeGuestAccessUrl(data?.guest_url || data?.guest_url_path || '');
+      setGuestAccessLink(url);
+      showToast(t('caseManagementDetail.header.guestLinkCreated', { defaultValue: 'Eenmalige link aangemaakt' }));
       pushAction({
         actionType: 'guest_access_created',
         action: t('caseManagementDetail.header.share', { defaultValue: 'Share' }),
-        description: t('caseManagementDetail.header.guestLinkAction', { defaultValue: 'Created temporary guest access link' }),
+        description: t('caseManagementDetail.header.guestLinkAction', { defaultValue: 'Created one-time guest access link' }),
         performedBy: user?.name || user?.email || t('caseManagement.handler'),
       });
     } catch (err) {
       console.error('Error creating guest access link:', err);
-      showToast(err?.message || t('caseManagementDetail.header.guestLinkFailed', { defaultValue: 'Failed to create guest link' }));
+      const message = err?.message || t('caseManagementDetail.header.guestLinkFailed', { defaultValue: 'Failed to create guest link' });
+      setGuestAccessError(message);
+      showToast(message);
     } finally {
       setCreatingGuestAccess(false);
     }
@@ -1260,9 +1248,10 @@ export default function CaseManagementDetail() {
           <CaseHeader
             caseData={caseData}
             onBack={handleBack}
-            onStatusChange={() => setShowStatusModal(true)}
+            onStatusChange={handleStatusChange}
             onStatusUpdate={handleStatusUpdate} // FlowBar uses this.
             canUpdateStatus={hasAssignedHandlers(caseData)}
+            isStatusUpdating={updatingStatus}
             onGenerateReport={handleGenerateReport}
             generatingReport={generatingReport}
             onShare={handleCreateGuestAccess}
@@ -1311,11 +1300,11 @@ export default function CaseManagementDetail() {
               <CaseManagementPanel
                 caseData={caseData}
                 onAssignmentChange={handleAssignmentChange}
-                onAssignmentRoleChange={handleAssignmentRoleChange}
-                onStatusChange={() => setShowStatusModal(true)}
+                onStatusChange={handleStatusChange}
                 onStatusEmailNotifyChange={handleStatusEmailNotifyChange}
                 handlers={availableHandlers}
                 isWhistleblower={isWhistleblower}
+                isStatusUpdating={updatingStatus}
               />
 
               <ActionHistoryPanel history={actionHistory} isLoading={isRelationsLoading} />
@@ -1329,10 +1318,26 @@ export default function CaseManagementDetail() {
             currentStatus={caseData?.status}
             currentStage={caseData?.currentStage}
             statusChangedAt={caseData?.sla?.statusChangedAt}
-            onClose={() => setShowStatusModal(false)}
+            onClose={() => {
+              if (!updatingStatus) setShowStatusModal(false);
+            }}
             onUpdate={handleStatusUpdate}
+            isUpdating={updatingStatus}
           />
         )}
+
+        <GuestAccessShareModal
+          open={showGuestAccessModal}
+          ticketNumber={caseData?.ticketNumber}
+          link={guestAccessLink}
+          loading={creatingGuestAccess}
+          error={guestAccessError}
+          expiresInHours={GUEST_ACCESS_EXPIRES_IN_HOURS}
+          onCreateLink={handleCreateGuestAccess}
+          onClose={() => {
+            if (!creatingGuestAccess) setShowGuestAccessModal(false);
+          }}
+        />
 
         {showSuccessToast && (
           <div className="fixed bottom-4 md:bottom-6 right-4 md:right-6 z-50 animate-in slide-in-from-bottom-5">

@@ -1348,7 +1348,24 @@
             "update": "Bijwerken"
         },
         "header": {
-            "share": "Delen"
+            "share": "Delen",
+            "guestLinkCreated": "Eenmalige link aangemaakt",
+            "guestLinkFailed": "Kon gedeelde link niet maken",
+            "guestLinkAction": "Eenmalige gedeelde toegangslink aangemaakt"
+        },
+        "shareModal": {
+            "title": "Deel eenmalige toegang",
+            "subtitle": "Ticket {{ticketNumber}}",
+            "oneTimeTitle": "Eenmalige link",
+            "oneTimeDescription": "Na de eerste succesvolle opening wordt deze link ongeldig. Maak daarna een nieuwe link.",
+            "creating": "Link maken...",
+            "linkLabel": "Toegangslink",
+            "copy": "Kopieer",
+            "copied": "Gekopieerd",
+            "expires": "Verloopt over {{hours}} uur als de link niet eerder wordt geopend.",
+            "close": "Sluiten",
+            "create": "Link maken",
+            "createNew": "Nieuwe link maken"
         },
         "details": {
             "createdClient": "Aangemaakt (client)",
@@ -1420,7 +1437,8 @@
         "management": {
             "assignDescription": "Wijs deze zaak toe aan een behandelaar",
             "assignedCount": "{{count}} toegewezen",
-            "assignedHandlersRoles": "Toegewezen behandelaren en rollen",
+            "assignedHandlers": "Toegewezen behandelaars",
+            "assignedHandlersRoles": "Toegewezen behandelaars",
             "assignmentRoleLabel": "Rol",
             "changeStatusCta": "Status wijzigen (huidig: {{status}})",
             "assignBeforeStatusChange": "Wijs eerst minimaal een behandelaar toe voordat u de status wijzigt.",
@@ -1438,6 +1456,7 @@
             "rolePrimary": "Primair",
             "roleSecondary": "Secundair",
             "savingChange": "Wijzigingen opslaan...",
+            "updatingStatus": "Status bijwerken...",
             "statusEmailsDescription": "Melder ontvangt een e-mail bij statuswijziging",
             "statusEmailsLabel": "Statuswijziging e-mails"
         },
@@ -1486,6 +1505,7 @@
             "notePlaceholder": "Leg uit waarom je deze status wijzigt",
             "noteRequired": "Een notitie is verplicht.",
             "pendingHint": "In afwachting",
+            "updating": "Status bijwerken...",
             "workflowLoadError": "Kon workflowstatussen niet laden."
         },
         "statusModal": {
@@ -1506,6 +1526,8 @@
             "selected": "Geselecteerd",
             "selectStep": "Selecteer een stap",
             "title": "Status van zaak bijwerken",
+            "updating": "Status bijwerken...",
+            "updatingDescription": "Even geduld terwijl de backend deze workflowwijziging verwerkt.",
             "whatNext": "Wat gebeurt er hierna?",
             "workflowFallback": "Workflow"
         },

@@ -1,8 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import AnonymousNavHeader from '../components/navigation/AnonymousNavHeader';
 import Icon from '../components/AppIcon';
-import Button from '../components/ui/Button';
 import { guestAccessService } from '../services/guestAccessService';
 import { toDateSafe } from '../utils/slaUtils';
 
@@ -19,6 +18,7 @@ export default function GuestTicketViewPage() {
   const [error, setError] = useState('');
   const [guest, setGuest] = useState(null);
   const [ticket, setTicket] = useState(null);
+  const attemptedTokenRef = useRef('');
 
   const load = async () => {
     if (!token) return;
@@ -29,13 +29,22 @@ export default function GuestTicketViewPage() {
       setTicket(data?.ticket || null);
       setError('');
     } catch (err) {
-      setError(err?.message || 'Failed to load guest case');
+      const message = String(err?.message || '');
+      if (message.toLowerCase().includes('already been used')) {
+        setError('Deze gedeelde link is al gebruikt. Vraag de behandelaar om een nieuwe link.');
+      } else if (message.toLowerCase().includes('expired')) {
+        setError('Deze gedeelde link is verlopen. Vraag de behandelaar om een nieuwe link.');
+      } else {
+        setError(message || 'Failed to load guest case');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    if (!token || attemptedTokenRef.current === token) return;
+    attemptedTokenRef.current = token;
     load().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
@@ -63,6 +72,7 @@ export default function GuestTicketViewPage() {
               <div className="mt-3 text-sm text-muted-foreground">
                 <div>Role: {guest?.role || '-'}</div>
                 <div>Expires: {fmt(guest?.expires_at)}</div>
+                <div>Opened: {fmt(guest?.consumed_at)}</div>
               </div>
             )}
           </div>
@@ -136,8 +146,9 @@ export default function GuestTicketViewPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end">
-                <Button variant="outline" onClick={load}>Refresh</Button>
+              <div className="rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm text-muted-foreground flex items-start gap-2">
+                <Icon name="Lock" size={16} className="mt-0.5 text-warning" />
+                <span>Deze link is nu gebruikt en kan niet opnieuw worden geopend.</span>
               </div>
             </>
           )}

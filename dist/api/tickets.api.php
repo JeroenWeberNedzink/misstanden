@@ -732,6 +732,382 @@ function ticket_insert_action(array $payload, array $settings): void {
     sqlserver_run_commands([$command], true);
 }
 
+function ticket_env_optional(string $key, string $default = ''): string {
+    $value = trim((string)(getenv($key) ?: ''));
+    return $value !== '' ? $value : $default;
+}
+
+function ticket_escape_html($value): string {
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+}
+
+function ticket_normalize_email(?string $email): string {
+    return strtolower(trim((string)$email));
+}
+
+function ticket_parse_bool_env(string $value): bool {
+    $normalized = strtolower(trim($value));
+    return in_array($normalized, ['1', 'true', 'yes', 'on'], true);
+}
+
+function ticket_server_base_url(): string {
+    $configured = ticket_env_optional('PORTAL_BASE_URL', '');
+    if ($configured !== '') return rtrim($configured, '/');
+    $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+    if ($host === '') return '';
+    $isHttps =
+        (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
+        || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
+        || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+    return ($isHttps ? 'https' : 'http') . '://' . $host;
+}
+
+function ticket_mail_api_candidate_urls(): array {
+    $candidates = [];
+    foreach ([ticket_env_optional('MAIL_API_INTERNAL_URL', ''), ticket_env_optional('PHP_MAIL_API_URL', '')] as $explicit) {
+        if ($explicit !== '' && !in_array($explicit, $candidates, true)) {
+            $candidates[] = $explicit;
+        }
+    }
+    $base = ticket_server_base_url();
+    if ($base !== '') {
+        $candidates[] = $base . '/api/mail.api.php';
+    }
+    $serverPort = (int)($_SERVER['SERVER_PORT'] ?? 0);
+    $localPort = ($serverPort > 0 && !in_array($serverPort, [80, 443], true)) ? (':' . $serverPort) : '';
+    foreach (['http://127.0.0.1', 'http://localhost'] as $host) {
+        $url = $host . $localPort . '/api/mail.api.php';
+        if (!in_array($url, $candidates, true)) {
+            $candidates[] = $url;
+        }
+    }
+    return $candidates ?: ['http://127.0.0.1:8081/api/mail.api.php'];
+}
+
+function ticket_mail_outbox_write(array $to, string $subject, string $html, string $text = '', array $bcc = []): array {
+    $outbox = ticket_env_optional('MAIL_OUTBOX_DIR', __DIR__ . '/outbox');
+    if (!is_dir($outbox) && !@mkdir($outbox, 0755, true) && !is_dir($outbox)) {
+        return ['success' => false, 'message' => 'Unable to create mail outbox'];
+    }
+    $id = date('Ymd_His') . '_' . bin2hex(random_bytes(4));
+    $file = rtrim($outbox, '/\\') . DIRECTORY_SEPARATOR . "mail_{$id}.json";
+    $payload = [
+        'id' => $id,
+        'ts' => date('c'),
+        'from' => ticket_env_optional('MAIL_DEFAULT_FROM', 'noreply@nedzink.nl'),
+        'to' => $to,
+        'cc' => [],
+        'bcc' => $bcc,
+        'subject' => $subject,
+        'html' => $html,
+        'text' => $text !== '' ? $text : strip_tags(str_replace(['<br>', '<br/>', '<br />'], "\n", $html)),
+        'note' => 'DEV SINK enabled: email not sent via SMTP',
+    ];
+    @file_put_contents($file, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    return ['success' => true, 'outbox_file' => $file];
+}
+
+function ticket_is_local_mail_api_self_call(string $url): bool {
+    if (PHP_SAPI !== 'cli-server') return false;
+
+    $parts = parse_url($url);
+    if (!is_array($parts)) return false;
+
+    $host = strtolower(trim((string)($parts['host'] ?? '')));
+    if (!in_array($host, ['127.0.0.1', 'localhost', '::1'], true)) return false;
+
+    $port = (int)($parts['port'] ?? 0);
+    $serverPort = (int)($_SERVER['SERVER_PORT'] ?? 0);
+    return $port > 0 && $serverPort > 0 && $port === $serverPort;
+}
+
+function ticket_send_mail(array $to, string $subject, string $html, string $text = '', array $bcc = []): array {
+    $to = array_values(array_filter(array_unique(array_map('ticket_normalize_email', $to)), 'ticket_valid_email'));
+    $bcc = array_values(array_filter(array_unique(array_map('ticket_normalize_email', $bcc)), 'ticket_valid_email'));
+    if (!$to) return ['success' => false, 'message' => 'No valid recipient email'];
+
+    if (ticket_parse_bool_env(ticket_env_optional('MAIL_DEV_SINK', 'false'))) {
+        return ticket_mail_outbox_write($to, $subject, $html, $text, $bcc);
+    }
+
+    if (!function_exists('curl_init')) {
+        return ['success' => false, 'message' => 'cURL is not available for mail API call'];
+    }
+
+    $payload = [
+        'to' => $to,
+        'bcc' => $bcc,
+        'subject' => trim($subject),
+        'html' => $html,
+        'text' => $text !== '' ? $text : strip_tags(str_replace(['<br>', '<br/>', '<br />'], "\n", $html)),
+    ];
+    $errors = [];
+    foreach (ticket_mail_api_candidate_urls() as $url) {
+        $isLocalSelfCall = ticket_is_local_mail_api_self_call($url);
+        $ch = curl_init();
+        $options = [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            CURLOPT_TIMEOUT => $isLocalSelfCall ? 1 : 12,
+        ];
+        if ($isLocalSelfCall) {
+            $options[CURLOPT_TIMEOUT_MS] = 250;
+            $options[CURLOPT_CONNECTTIMEOUT_MS] = 250;
+        }
+        if (function_exists('auth0_apply_ssl_options')) {
+            auth0_apply_ssl_options($options, $url);
+        }
+        curl_setopt_array($ch, $options);
+        $resp = curl_exec($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = trim((string)curl_error($ch));
+        curl_close($ch);
+
+        if ($resp !== false) {
+            $decoded = json_decode($resp, true);
+            if ($code >= 200 && $code < 300 && is_array($decoded) && !empty($decoded['success'])) {
+                return ['success' => true];
+            }
+            $errors[] = $url . ' -> ' . (is_array($decoded) ? (string)($decoded['message'] ?? 'mail.api error') : ('HTTP ' . $code));
+            continue;
+        }
+        if ($isLocalSelfCall && stripos($err, 'timed out') !== false) {
+            return ['success' => true, 'queued' => true, 'message' => 'Mail API queued on local PHP server'];
+        }
+        $errors[] = $url . ' -> ' . ($err !== '' ? $err : 'unknown curl error');
+    }
+    return ['success' => false, 'message' => 'mail.api call failed: ' . implode(' | ', $errors)];
+}
+
+function ticket_severity_label(string $severityCode): string {
+    $map = ['critical' => 'Kritiek', 'high' => 'Hoog', 'medium' => 'Gemiddeld', 'low' => 'Laag'];
+    return $map[strtolower(trim($severityCode))] ?? ucfirst($severityCode);
+}
+
+function ticket_severity_level(string $severityCode): int {
+    $map = ['critical' => 4, 'high' => 3, 'medium' => 2, 'low' => 1];
+    return $map[strtolower(trim($severityCode))] ?? 2;
+}
+
+function ticket_email_event_enabled_for_handlers(string $eventCode): bool {
+    try {
+        $rows = sqlserver_query(
+            'SELECT TOP 1
+                ISNULL(eas.is_enabled, et.enabled_by_default) AS is_enabled,
+                ISNULL(eas.send_to_handlers, 1) AS send_to_handlers
+             FROM dbo.email_event_types et
+             LEFT JOIN dbo.email_admin_settings eas ON eas.event_type_code = et.code
+             WHERE et.code = @code',
+            ['code' => $eventCode]
+        );
+        if (!$rows) return true;
+        $row = $rows[0];
+        return !empty($row['is_enabled']) && !empty($row['send_to_handlers']);
+    } catch (Throwable $e) {
+        api_log_exception('tickets.api.email_event_enabled', $e, ['event' => $eventCode]);
+        return true;
+    }
+}
+
+function ticket_quiet_hours_active(?string $start, ?string $end): bool {
+    $start = trim((string)$start);
+    $end = trim((string)$end);
+    if ($start === '' || $end === '') return false;
+    if (!preg_match('/^\d{1,2}:\d{2}$/', $start) || !preg_match('/^\d{1,2}:\d{2}$/', $end)) return false;
+    [$sh, $sm] = array_map('intval', explode(':', $start));
+    [$eh, $em] = array_map('intval', explode(':', $end));
+    $now = (int)date('G') * 60 + (int)date('i');
+    $startMinutes = $sh * 60 + $sm;
+    $endMinutes = $eh * 60 + $em;
+    if ($startMinutes > $endMinutes) {
+        return $now >= $startMinutes || $now <= $endMinutes;
+    }
+    return $now >= $startMinutes && $now <= $endMinutes;
+}
+
+function ticket_should_notify_created_handler(array $handler, string $severityCode): bool {
+    if (!ticket_valid_email((string)($handler['email'] ?? ''))) return false;
+    if (empty($handler['event_enabled'])) return false;
+    if (isset($handler['email_enabled']) && empty($handler['email_enabled'])) return false;
+    if ((int)date('N') >= 6 && empty($handler['weekend_notifications'])) return false;
+    if (ticket_quiet_hours_active($handler['quiet_hours_start'] ?? null, $handler['quiet_hours_end'] ?? null) && strtolower($severityCode) !== 'critical') return false;
+    $threshold = trim((string)($handler['min_severity_immediate'] ?? ''));
+    if ($threshold !== '' && ticket_severity_level($severityCode) < ticket_severity_level($threshold)) return false;
+    return true;
+}
+
+function ticket_created_handler_recipients(string $workflowType): array {
+    return sqlserver_query(
+        'SELECT
+            h.id,
+            h.name,
+            h.email,
+            COALESCE(hep.is_enabled, et.enabled_by_default, 1) AS event_enabled,
+            COALESCE(hns.email_enabled, 1) AS email_enabled,
+            hns.min_severity_immediate,
+            hns.quiet_hours_start,
+            hns.quiet_hours_end,
+            COALESCE(hns.weekend_notifications, 0) AS weekend_notifications
+         FROM dbo.handlers h
+         LEFT JOIN dbo.email_event_types et ON et.code = @event_code
+         LEFT JOIN dbo.handler_email_preferences hep ON hep.handler_id = h.id AND hep.event_type_code = @event_code
+         LEFT JOIN dbo.handler_notification_settings hns ON hns.handler_id = h.id
+         WHERE h.active = @active
+           AND h.email IS NOT NULL
+           AND LTRIM(RTRIM(h.email)) <> @empty
+           AND (
+                EXISTS (
+                    SELECT 1
+                    FROM dbo.handler_workflows hw
+                    INNER JOIN dbo.workflows w ON w.id = hw.workflow_id
+                    WHERE hw.handler_id = h.id AND w.code = @workflow_type
+                )
+                OR EXISTS (
+                    SELECT 1
+                    FROM dbo.handler_roles hr
+                    INNER JOIN dbo.roles r ON r.id = hr.role_id
+                    WHERE hr.handler_id = h.id AND UPPER(r.code) IN (@role_admin, @role_super_admin)
+                )
+                OR h.roles LIKE @admin_role_json
+                OR h.roles LIKE @super_admin_role_json
+                OR h.permissions LIKE @admin_permission_json
+           )
+         ORDER BY h.name ASC',
+        [
+            'workflow_type' => $workflowType,
+            'event_code' => 'TICKET_CREATED',
+            'active' => true,
+            'empty' => '',
+            'role_admin' => 'ADMIN',
+            'role_super_admin' => 'SUPER_ADMIN',
+            'admin_role_json' => '%"ADMIN"%',
+            'super_admin_role_json' => '%"SUPER_ADMIN"%',
+            'admin_permission_json' => '%"admin"%',
+        ]
+    );
+}
+
+function ticket_notification_log(?string $handlerId, string $status, string $event, string $message = '', array $metadata = []): void {
+    try {
+        sqlserver_execute(
+            'INSERT INTO dbo.notification_logs (user_id, channel, status, event, error_message, metadata, created_at)
+             VALUES (@user_id, @channel, @status, @event, @error_message, @metadata, SYSUTCDATETIME())',
+            [
+                'user_id' => $handlerId,
+                'channel' => 'email',
+                'status' => $status,
+                'event' => $event,
+                'error_message' => $message !== '' ? ticket_substr($message, 0, 1000) : null,
+                'metadata' => $metadata ? json_encode($metadata, JSON_UNESCAPED_UNICODE) : null,
+            ]
+        );
+    } catch (Throwable $e) {
+        api_log_exception('tickets.api.notification_log', $e, ['event' => $event]);
+    }
+}
+
+function ticket_created_handler_email_html(array $ticket, array $handler): string {
+    $metadata = is_array($ticket['metadata'] ?? null) ? $ticket['metadata'] : [];
+    $ticketNumber = trim((string)($ticket['ticket_number'] ?? ''));
+    $statusLabel = trim((string)($metadata['status_label'] ?? $ticket['status_code'] ?? $ticket['current_stage'] ?? '-'));
+    $severityCode = strtolower(trim((string)($ticket['severity_code'] ?? 'medium')));
+    $portalBase = ticket_server_base_url();
+    $dashboardUrl = $portalBase !== '' ? $portalBase . '/handler-dashboard' : '';
+    $reporterName = trim((string)($ticket['reporter_name'] ?? '')) ?: 'Anoniem';
+    $reporterEmail = trim((string)($ticket['reporter_email'] ?? '')) ?: 'Niet opgegeven';
+    $submittedAt = trim((string)($ticket['submitted_at'] ?? $ticket['created_at'] ?? ''));
+
+    $html = '<h2>Nieuwe melding beschikbaar</h2>'
+        . '<p>Hallo ' . ticket_escape_html($handler['name'] ?? 'collega') . ',</p>'
+        . '<p>Er is een nieuwe melding ingediend in een workflow die u kunt behandelen.</p>'
+        . '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin:12px 0;">'
+        . '<h3 style="margin:0 0 8px 0;">Meldingsoverzicht</h3>'
+        . '<table role="presentation" style="width:100%;border-collapse:collapse;">'
+        . '<tr><td style="padding:5px 0;color:#64748b;width:150px;">Ticketnummer</td><td>' . ticket_escape_html($ticketNumber ?: '-') . '</td></tr>'
+        . '<tr><td style="padding:5px 0;color:#64748b;">Huidige status</td><td>' . ticket_escape_html($statusLabel ?: '-') . '</td></tr>'
+        . '<tr><td style="padding:5px 0;color:#64748b;">Ernst</td><td>' . ticket_escape_html(ticket_severity_label($severityCode)) . '</td></tr>'
+        . '<tr><td style="padding:5px 0;color:#64748b;">Workflow</td><td>' . ticket_escape_html($ticket['workflow_type'] ?? '-') . '</td></tr>'
+        . '<tr><td style="padding:5px 0;color:#64748b;">Locatie</td><td>' . ticket_escape_html($ticket['location'] ?? 'Niet opgegeven') . '</td></tr>'
+        . '<tr><td style="padding:5px 0;color:#64748b;">Ingediend op</td><td>' . ticket_escape_html($submittedAt ?: '-') . '</td></tr>'
+        . '</table>'
+        . '<h3 style="margin:14px 0 8px 0;">Omschrijving</h3>'
+        . '<div>' . nl2br(ticket_escape_html($ticket['description'] ?? '-')) . '</div>'
+        . '</div>'
+        . '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin:12px 0;">'
+        . '<h3 style="margin:0 0 8px 0;">Melder (indien bekend)</h3>'
+        . '<table role="presentation" style="width:100%;border-collapse:collapse;">'
+        . '<tr><td style="padding:5px 0;color:#64748b;width:150px;">Naam</td><td>' . ticket_escape_html($reporterName) . '</td></tr>'
+        . '<tr><td style="padding:5px 0;color:#64748b;">E-mail</td><td>' . ticket_escape_html($reporterEmail) . '</td></tr>'
+        . '</table>'
+        . '</div>';
+    if ($dashboardUrl !== '') {
+        $html .= '<p><a href="' . ticket_escape_html($dashboardUrl) . '">Open het handler-dashboard</a></p>';
+    }
+    $html .= '<p style="font-size:12px;color:#64748b;">Log in op het portaal om deze melding te bekijken en op te pakken.</p>';
+    return $html;
+}
+
+function ticket_notify_handlers_new_report(array $ticket): array {
+    $eventCode = 'TICKET_CREATED';
+    $workflowType = trim((string)($ticket['workflow_type'] ?? ''));
+    $severityCode = strtolower(trim((string)($ticket['severity_code'] ?? 'medium'))) ?: 'medium';
+    $ticketNumber = trim((string)($ticket['ticket_number'] ?? ''));
+
+    if ($workflowType === '') {
+        return ['success' => false, 'skipped' => true, 'reason' => 'Missing workflow type'];
+    }
+    if (!ticket_email_event_enabled_for_handlers($eventCode)) {
+        return ['success' => true, 'skipped' => true, 'reason' => 'Ticket created handler email disabled'];
+    }
+
+    $handlers = ticket_created_handler_recipients($workflowType);
+    $sent = 0;
+    $skipped = 0;
+    $errors = [];
+
+    foreach ($handlers as $handler) {
+        $handlerId = trim((string)($handler['id'] ?? ''));
+        if (!ticket_should_notify_created_handler($handler, $severityCode)) {
+            $skipped++;
+            ticket_notification_log($handlerId !== '' ? $handlerId : null, 'skipped', $eventCode, 'Handler preference or notification window skipped email', ['ticket_number' => $ticketNumber, 'workflow_type' => $workflowType]);
+            continue;
+        }
+
+        $subject = 'Nieuwe melding beschikbaar: ' . ($ticketNumber !== '' ? $ticketNumber : 'Onbekend');
+        $html = ticket_created_handler_email_html($ticket, $handler);
+        $result = ticket_send_mail([(string)$handler['email']], $subject, $html);
+        if (!empty($result['success'])) {
+            $sent++;
+            ticket_notification_log($handlerId !== '' ? $handlerId : null, 'sent', $eventCode, '', ['ticket_number' => $ticketNumber, 'workflow_type' => $workflowType]);
+        } else {
+            $message = (string)($result['message'] ?? 'Failed to send handler ticket-created email');
+            $errors[] = $message;
+            ticket_notification_log($handlerId !== '' ? $handlerId : null, 'failed', $eventCode, $message, ['ticket_number' => $ticketNumber, 'workflow_type' => $workflowType]);
+        }
+    }
+
+    return [
+        'success' => empty($errors),
+        'workflow_type' => $workflowType,
+        'total_candidates' => count($handlers),
+        'sent' => $sent,
+        'skipped' => $skipped,
+        'errors' => $errors,
+    ];
+}
+
+function ticket_notify_handlers_new_report_safe(array $ticket): array {
+    try {
+        return ticket_notify_handlers_new_report($ticket);
+    } catch (Throwable $e) {
+        $errorId = api_log_exception('tickets.api.notify_handlers_new_report', $e, ['ticket_id' => $ticket['id'] ?? null, 'ticket_number' => $ticket['ticket_number'] ?? null]);
+        return ['success' => false, 'error_id' => $errorId, 'error' => $e->getMessage()];
+    }
+}
+
 function ticket_try_auto_assign_handler(string $ticketId, string $workflowType): ?array {
     $rows = sqlserver_query(
         "DECLARE @handler_id UNIQUEIDENTIFIER;
@@ -854,6 +1230,7 @@ function handle_create(array $data): void {
         if (ticket_setting_bool_for_workflow($settings, $workflowType, ['tickets.auto_assign_enabled', 'workflow.auto_assign'], true)) {
             $assigned = ticket_try_auto_assign_handler((string)$payload['id'], $workflowType); if ($assigned) $row['handler_id'] = $assigned['id'] ?? null;
         }
+        ticket_notify_handlers_new_report_safe($row);
         $row['reply_token'] = $replyToken; $row['reply_url_path'] = '/reply/' . rawurlencode($replyToken); $row['reply_expires_at'] = gmdate('Y-m-d\TH:i:s\Z', $replyExpiresAtTs);
         api_json(200, true, 'Ticket created', $row);
     } catch (Throwable $e) {

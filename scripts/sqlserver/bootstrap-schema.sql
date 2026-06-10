@@ -514,10 +514,31 @@ BEGIN
         expires_at DATETIME2(3) NOT NULL,
         created_at DATETIME2(3) NOT NULL CONSTRAINT DF_guest_access_created_at DEFAULT SYSUTCDATETIME(),
         created_by UNIQUEIDENTIFIER NULL,
+        consumed_at DATETIME2(3) NULL,
+        consumed_ip NVARCHAR(64) NULL,
+        consumed_user_agent NVARCHAR(512) NULL,
         CONSTRAINT FK_guest_access_ticket FOREIGN KEY (ticket_id) REFERENCES dbo.tickets(id) ON DELETE CASCADE,
         CONSTRAINT FK_guest_access_created_by FOREIGN KEY (created_by) REFERENCES dbo.handlers(id)
     );
     CREATE UNIQUE INDEX UX_guest_access_token ON dbo.guest_access(token);
+END;
+
+IF OBJECT_ID(N'dbo.guest_access', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'dbo.guest_access', N'consumed_at') IS NULL
+    BEGIN
+        ALTER TABLE dbo.guest_access ADD consumed_at DATETIME2(3) NULL;
+    END;
+
+    IF COL_LENGTH(N'dbo.guest_access', N'consumed_ip') IS NULL
+    BEGIN
+        ALTER TABLE dbo.guest_access ADD consumed_ip NVARCHAR(64) NULL;
+    END;
+
+    IF COL_LENGTH(N'dbo.guest_access', N'consumed_user_agent') IS NULL
+    BEGIN
+        ALTER TABLE dbo.guest_access ADD consumed_user_agent NVARCHAR(512) NULL;
+    END;
 END;
 
 IF OBJECT_ID(N'dbo.sla_escalations', N'U') IS NULL

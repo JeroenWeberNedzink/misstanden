@@ -669,6 +669,15 @@ const getPortalAccessUrl = () => {
   return 'https://misstanden.nedzink.nl/ticket-access-portal';
 };
 
+const getPortalOrigin = () => getPortalAccessUrl().replace(/\/ticket-access-portal\/?$/i, '');
+
+const toAbsolutePortalUrl = (url) => {
+  const value = String(url || '').trim();
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+  return `${getPortalOrigin()}${value.startsWith('/') ? value : `/${value}`}`;
+};
+
 const baseStyles = `
 <style>
   .email-shell { background: #ffffff; border: 1px solid #d9e6f2; border-radius: 18px; overflow: hidden; margin: 0; }
@@ -1420,7 +1429,7 @@ export async function sendAttachmentAddedEmail(ticket, attachment, uploaderName)
   const fileName = attachment?.fileName || attachment?.name || '-';
   const fileType = attachment?.mimeType || attachment?.type || '-';
   const fileSize = formatFileSize(attachment?.sizeBytes || attachment?.size || 0);
-  const fileUrl = attachment?.fileUrl || attachment?.url || '';
+  const fileUrl = toAbsolutePortalUrl(attachment?.fileUrl || attachment?.url || '');
 
   const html = `
 ${baseStyles}

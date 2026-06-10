@@ -41,6 +41,7 @@ export default function StatusUpdateModal({
   statusChangedAt = null,
   onClose,
   onUpdate,
+  isUpdating = false,
 }) {
   const { t } = useTranslation();
   const [workflow, setWorkflow] = useState(null);
@@ -121,6 +122,7 @@ export default function StatusUpdateModal({
   const selectedOption = useMemo(() => options.find((o) => o.value === selectedValue) || null, [options, selectedValue]);
   const nextOption = useMemo(() => (selectedIndex < 0 ? null : options[selectedIndex + 1] || null), [options, selectedIndex]);
   const rollbackWindowOpen = useMemo(() => isRollbackWindowOpen(statusChangedAt), [statusChangedAt]);
+  const requiresNote = workflowRuntimeSettings?.requireCommentOnStatusChange !== false;
 
   const currentComparable = useMemo(() => {
     const findByCode = (val) => options.find((o) => safeLower(o.value) === safeLower(val))?.value;
@@ -144,10 +146,14 @@ export default function StatusUpdateModal({
     return safeLower(selectedValue) === safeLower(currentComparable);
   }, [selectedValue, currentComparable]);
 
-  const handleUpdate = () => {
-    if (!selectedValue || isUnchanged) return;
+  const handleClose = () => {
+    if (isUpdating) return;
+    onClose?.();
+  };
 
-    const requiresNote = workflowRuntimeSettings?.requireCommentOnStatusChange !== false;
+  const handleUpdate = async () => {
+    if (isUpdating || !selectedValue || isUnchanged) return;
+
     if (requiresNote && !safeTrim(updateNote)) {
       alert(t('caseManagementDetail.statusModal.noteRequiredAlert'));
       return;
@@ -160,20 +166,23 @@ export default function StatusUpdateModal({
       return;
     }
 
-    onUpdate?.({
-      workflowType: safeTrim(workflowType) || null,
-      statusCode: selectedValue,
-      note: safeTrim(updateNote),
-    });
-
-    onClose?.();
+    try {
+      await onUpdate?.({
+        workflowType: safeTrim(workflowType) || null,
+        statusCode: selectedValue,
+        note: safeTrim(updateNote),
+      });
+      onClose?.();
+    } catch {
+      // Parent handles the toast and keeps the modal open for retry.
+    }
   };
 
   const currentDisplay = currentStage || currentStatus || '-';
 
   return (
     <>
-      <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm" onClick={handleClose} />
 
       <div className="fixed inset-0 z-[10001] flex items-start justify-center p-4 pt-24 overflow-y-auto">
         <div
@@ -198,12 +207,28 @@ export default function StatusUpdateModal({
               </div>
             </div>
 
-            <Button variant="ghost" size="icon" onClick={onClose}>
+            <Button variant="ghost" size="icon" onClick={handleClose} disabled={isUpdating}>
               <Icon name="X" size={24} />
             </Button>
           </div>
 
           <div className="p-4 md:p-6">
+            {isUpdating && (
+              <div
+                className="mb-4 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <Icon name="Loader2" size={18} className="text-primary" />
+                <div className="min-w-0">
+                  <div className="font-medium text-foreground">{t('caseManagementDetail.statusModal.updating')}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {t('caseManagementDetail.statusModal.updatingDescription')}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {loadError && (
               <div className="mb-4 p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
                 {loadError}
@@ -235,12 +260,12 @@ export default function StatusUpdateModal({
                         <button
                           key={opt.value}
                           type="button"
-                          onClick={() => !isRollbackLocked && setSelectedValue(opt.value)}
-                          disabled={isRollbackLocked}
+                          onClick={() => !isUpdating && !isRollbackLocked && setSelectedValue(opt.value)}
+                          disabled={isUpdating || isRollbackLocked}
                           className={[
                             'w-full text-left rounded-xl border p-4 transition-smooth',
                             isSelected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40',
-                            isRollbackLocked ? 'opacity-60 cursor-not-allowed' : '',
+                            isUpdating || isRollbackLocked ? 'opacity-60 cursor-not-allowed' : '',
                           ].join(' ')}
                         >
                           <div className="flex items-start gap-3">
@@ -323,6 +348,7 @@ export default function StatusUpdateModal({
                     onChange={(e) => setUpdateNote(e?.target?.value)}
                     description={t('caseManagementDetail.statusModal.noteDescription')}
                     required
+                    disabled={isUpdating}
                   />
 
                   <div className="flex flex-col gap-2">
@@ -331,11 +357,12 @@ export default function StatusUpdateModal({
                       iconName="Save"
                       iconPosition="left"
                       onClick={handleUpdate}
-                      disabled={isUnchanged || !selectedValue || !safeTrim(updateNote)}
+                      loading={isUpdating}
+                      disabled={isUpdating || isUnchanged || !selectedValue || (requiresNote && !safeTrim(updateNote))}
                     >
-                      {t('caseManagementDetail.common.update')}
+                      {isUpdating ? t('caseManagementDetail.statusModal.updating') : t('caseManagementDetail.common.update')}
                     </Button>
-                    <Button variant="outline" onClick={onClose}>
+                    <Button variant="outline" onClick={handleClose} disabled={isUpdating}>
                       {t('common.cancel')}
                     </Button>
                   </div>

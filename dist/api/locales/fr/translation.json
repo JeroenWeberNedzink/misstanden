@@ -1133,7 +1133,24 @@
             "update": "Mettre a jour"
         },
         "header": {
-            "share": "Partager"
+            "share": "Partager",
+            "guestLinkCreated": "Lien a usage unique cree",
+            "guestLinkFailed": "Impossible de creer le lien partage",
+            "guestLinkAction": "Lien d acces invite a usage unique cree"
+        },
+        "shareModal": {
+            "title": "Partager un acces unique",
+            "subtitle": "Ticket {{ticketNumber}}",
+            "oneTimeTitle": "Lien a usage unique",
+            "oneTimeDescription": "Apres la premiere ouverture reussie, ce lien devient invalide. Creez ensuite un nouveau lien.",
+            "creating": "Creation du lien...",
+            "linkLabel": "Lien d acces",
+            "copy": "Copier",
+            "copied": "Copie",
+            "expires": "Expire dans {{hours}} heures si le lien n est pas ouvert avant.",
+            "close": "Fermer",
+            "create": "Creer le lien",
+            "createNew": "Creer un nouveau lien"
         },
         "details": {
             "createdClient": "Cree (client)",
@@ -1205,7 +1222,8 @@
         "management": {
             "assignDescription": "Assigner ce dossier a un gestionnaire",
             "assignedCount": "{{count}} assigne(s)",
-            "assignedHandlersRoles": "Gestionnaires assignes et roles",
+            "assignedHandlers": "Gestionnaires assignes",
+            "assignedHandlersRoles": "Gestionnaires assignes",
             "assignmentRoleLabel": "Role",
             "changeStatusCta": "Changer le statut (actuel : {{status}})",
             "assignBeforeStatusChange": "Assignez au moins un gestionnaire avant de changer le statut.",
@@ -1223,6 +1241,7 @@
             "rolePrimary": "Principal",
             "roleSecondary": "Secondaire",
             "savingChange": "Enregistrement des modifications...",
+            "updatingStatus": "Mise a jour du statut...",
             "statusEmailsDescription": "Le declarant recoit un e-mail lors d un changement de statut",
             "statusEmailsLabel": "E-mails de changement de statut"
         },
@@ -1271,6 +1290,7 @@
             "notePlaceholder": "Expliquez pourquoi vous changez ce statut",
             "noteRequired": "Une note est obligatoire.",
             "pendingHint": "En attente",
+            "updating": "Mise a jour du statut...",
             "workflowLoadError": "Impossible de charger les statuts du workflow."
         },
         "statusModal": {
@@ -1291,6 +1311,8 @@
             "selected": "Selectionne",
             "selectStep": "Selectionner une etape",
             "title": "Mettre a jour le statut du dossier",
+            "updating": "Mise a jour du statut...",
+            "updatingDescription": "Veuillez patienter pendant que le backend traite ce changement de workflow.",
             "whatNext": "Que se passe-t-il ensuite ?",
             "workflowFallback": "Workflow"
         },

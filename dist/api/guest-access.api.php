@@ -51,9 +51,29 @@ function guest_access_download_url(?string $raw): ?string {
     return '/api/files.api.php?action=download&path=' . rawurlencode($value);
 }
 
+function guest_access_ensure_schema(): void {
+    sqlserver_execute(
+        "IF OBJECT_ID(N'dbo.guest_access', N'U') IS NOT NULL
+         BEGIN
+             IF COL_LENGTH(N'dbo.guest_access', N'consumed_at') IS NULL
+             BEGIN
+                 ALTER TABLE dbo.guest_access ADD consumed_at DATETIME2(3) NULL;
+             END;
+             IF COL_LENGTH(N'dbo.guest_access', N'consumed_ip') IS NULL
+             BEGIN
+                 ALTER TABLE dbo.guest_access ADD consumed_ip NVARCHAR(64) NULL;
+             END;
+             IF COL_LENGTH(N'dbo.guest_access', N'consumed_user_agent') IS NULL
+             BEGIN
+                 ALTER TABLE dbo.guest_access ADD consumed_user_agent NVARCHAR(512) NULL;
+             END;
+         END"
+    );
+}
+
 function guest_access_load_record(string $token): ?array {
     $rows = sqlserver_query(
-        'SELECT TOP 1 id, ticket_id, token, role, expires_at, created_at
+        'SELECT TOP 1 id, ticket_id, token, role, expires_at, created_at, consumed_at
          FROM dbo.guest_access
          WHERE token = @token
          ORDER BY created_at DESC',
@@ -63,6 +83,10 @@ function guest_access_load_record(string $token): ?array {
 }
 
 function guest_access_assert_valid(array $row): void {
+    $consumedAt = trim((string)($row['consumed_at'] ?? ''));
+    if ($consumedAt !== '') {
+        guest_access_json(410, false, 'Guest access link has already been used');
+    }
     $expiresAt = trim((string)($row['expires_at'] ?? ''));
     if ($expiresAt === '') {
         guest_access_json(403, false, 'Invalid guest access configuration');
@@ -71,6 +95,42 @@ function guest_access_assert_valid(array $row): void {
     if ($expiresTs !== false && $expiresTs < time()) {
         guest_access_json(410, false, 'Guest access link has expired');
     }
+}
+
+function guest_access_client_ip(): string {
+    $forwarded = trim((string)($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''));
+    if ($forwarded !== '') {
+        $parts = array_map('trim', explode(',', $forwarded));
+        return substr((string)($parts[0] ?? ''), 0, 64);
+    }
+    return substr(trim((string)($_SERVER['REMOTE_ADDR'] ?? '')), 0, 64);
+}
+
+function guest_access_consume_record(string $token): ?array {
+    $rows = sqlserver_query(
+        'UPDATE dbo.guest_access
+         SET consumed_at = SYSUTCDATETIME(),
+             consumed_ip = @consumed_ip,
+             consumed_user_agent = @consumed_user_agent
+         OUTPUT
+             inserted.id,
+             inserted.ticket_id,
+             inserted.token,
+             inserted.role,
+             inserted.expires_at,
+             inserted.created_at,
+             inserted.consumed_at
+         WHERE token = @token
+           AND consumed_at IS NULL
+           AND expires_at > SYSUTCDATETIME()',
+        [
+            'token' => $token,
+            'consumed_ip' => guest_access_client_ip(),
+            'consumed_user_agent' => substr(trim((string)($_SERVER['HTTP_USER_AGENT'] ?? '')), 0, 512),
+        ]
+    );
+
+    return $rows[0] ?? null;
 }
 
 function guest_access_fetch_ticket(string $ticketId): ?array {
@@ -151,6 +211,7 @@ try {
     if (!sqlserver_is_configured()) {
         throw new Exception('SQL Server is not configured');
     }
+    guest_access_ensure_schema();
 
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw ?? '', true);
@@ -210,6 +271,15 @@ try {
     if (!$guestRow) guest_access_json(404, false, 'Guest access not found');
     guest_access_assert_valid($guestRow);
 
+    $guestRow = guest_access_consume_record($token);
+    if (!$guestRow) {
+        $latest = guest_access_load_record($token);
+        if ($latest) {
+            guest_access_assert_valid($latest);
+        }
+        guest_access_json(410, false, 'Guest access link has already been used');
+    }
+
     $ticketId = trim((string)($guestRow['ticket_id'] ?? ''));
     if ($ticketId === '') throw new Exception('Guest token has no ticket_id');
 
@@ -222,6 +292,7 @@ try {
                 'role' => $guestRow['role'] ?? 'viewer',
                 'expires_at' => $guestRow['expires_at'] ?? null,
                 'created_at' => $guestRow['created_at'] ?? null,
+                'consumed_at' => $guestRow['consumed_at'] ?? null,
             ],
             'ticket' => guest_access_sanitize_ticket($ticket),
         ],

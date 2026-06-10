@@ -42,6 +42,7 @@ export default function StatusFlowBar({
   statusChangedAt = null,
   onStatusUpdate,
   disabled = false,
+  isUpdating = false,
 }) {
   const { t } = useTranslation();
   const [workflow, setWorkflow] = useState(null);
@@ -155,7 +156,7 @@ export default function StatusFlowBar({
   };
 
   const handleStatusClick = (status, index) => {
-    if (disabled) return;
+    if (disabled || isUpdating) return;
     const state = getStatusState(index);
     if (state === 'current') return;
     if (currentIndex >= 0 && index < currentIndex && !rollbackWindowOpen) {
@@ -170,14 +171,18 @@ export default function StatusFlowBar({
     setShowNoteDialog(true);
   };
 
-  const handleNoteConfirm = ({ statusCode, note }) => {
-    onStatusUpdate?.({
-      workflowType: safeTrim(workflowType) || null,
-      statusCode,
-      note: safeTrim(note),
-    });
+  const handleNoteConfirm = async ({ statusCode, note }) => {
     setShowNoteDialog(false);
     setSelectedStatus(null);
+    try {
+      await onStatusUpdate?.({
+        workflowType: safeTrim(workflowType) || null,
+        statusCode,
+        note: safeTrim(note),
+      });
+    } catch {
+      // The parent shows the error toast; keep this flow from surfacing an unhandled promise.
+    }
   };
 
   const handleNoteClose = () => {
@@ -287,8 +292,26 @@ export default function StatusFlowBar({
       )
     : null;
 
+  const isInteractionDisabled = disabled || isUpdating;
+
   return (
-    <>
+    <div className="relative">
+      {isUpdating && (
+        <div
+          className="absolute inset-0 z-20 flex min-h-[8rem] items-center justify-center rounded-xl bg-card/85 px-4 backdrop-blur-sm"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-background px-4 py-3 shadow-sm">
+            <Icon name="Loader2" size={18} className="text-primary" />
+            <span className="text-sm font-medium text-foreground">
+              {t('caseManagementDetail.statusFlow.updating')}
+            </span>
+          </div>
+        </div>
+      )}
+
+      <div className={isUpdating ? 'pointer-events-none' : ''}>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <div className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1 text-xs text-foreground">
           <Icon name="Timer" size={13} className="text-primary" />
@@ -306,8 +329,8 @@ export default function StatusFlowBar({
         </div>
       </div>
 
-      <div className={`w-full overflow-x-auto mt-5 ${disabled ? 'opacity-60' : ''}`}>
-        {disabled && (
+      <div className={`w-full overflow-x-auto mt-5 ${isInteractionDisabled ? 'opacity-60' : ''}`}>
+        {disabled && !isUpdating && (
           <div className="px-4 pb-2 text-xs text-muted-foreground text-center">
             {t('caseManagementDetail.management.assignBeforeStatusChange')}
           </div>
@@ -337,9 +360,9 @@ export default function StatusFlowBar({
                     <button
                       type="button"
                       onClick={() => handleStatusClick(status, index)}
-                      disabled={disabled || isCurrent || isRollbackLocked}
+                      disabled={isInteractionDisabled || isCurrent || isRollbackLocked}
                       className={
-                        disabled || isRollbackLocked
+                        isInteractionDisabled || isRollbackLocked
                           ? 'relative w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all border-blue-200 bg-background cursor-not-allowed'
                           : [
                               'relative w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all',
@@ -384,10 +407,11 @@ export default function StatusFlowBar({
           </div>
         </div>
       </div>
+      </div>
 
       {tooltipPortal}
 
-      {showNoteDialog && selectedStatus && (
+      {showNoteDialog && selectedStatus && !isUpdating && (
         <StatusFlowNoteDialog
           isOpen={showNoteDialog}
           onClose={handleNoteClose}
@@ -396,6 +420,6 @@ export default function StatusFlowBar({
           onConfirm={handleNoteConfirm}
         />
       )}
-    </>
+    </div>
   );
 }

@@ -9,26 +9,16 @@ import { PERMISSIONS } from '../../../utils/permissions';
 const CaseManagementPanel = ({
   caseData,
   onAssignmentChange,
-  onAssignmentRoleChange,
   onStatusChange,
   onEscalate,
   onStatusEmailNotifyChange,
   handlers,
   isWhistleblower,
+  isStatusUpdating = false,
 }) => {
   const { t } = useTranslation();
   const [savingAssignment, setSavingAssignment] = useState(false);
   const [savingStatusEmail, setSavingStatusEmail] = useState(false);
-
-  const assignmentRoleOptions = useMemo(
-    () => [
-      { value: 'primary', label: t('caseManagementDetail.management.rolePrimary') },
-      { value: 'secondary', label: t('caseManagementDetail.management.roleSecondary') },
-      { value: 'legal', label: t('caseManagementDetail.management.roleLegal') },
-      { value: 'observer', label: t('caseManagementDetail.management.roleObserver') },
-    ],
-    [t]
-  );
 
   const handlerOptions = useMemo(() => {
     const inactiveLabel = t('common.inactive', { defaultValue: 'Inactive' });
@@ -62,12 +52,11 @@ const CaseManagementPanel = ({
         id: handlerId,
         name: assigned?.name || fallback?.name || `#${String(handlerId).slice(0, 8)}`,
         email: assigned?.email || fallback?.email || '',
-        role: assigned?.role || (index === 0 ? 'primary' : 'secondary'),
       };
     });
   }, [assignedToIds, caseData?.assignedHandlers, handlers]);
 
-  const isBusy = savingAssignment || savingStatusEmail;
+  const isBusy = savingAssignment || savingStatusEmail || isStatusUpdating;
   const hasAssignedHandlers = assignedToIds.length > 0;
   const statusChangeDisabled = isBusy || !hasAssignedHandlers;
   const statusEmailChecked = caseData?.statusEmailNotify !== false;
@@ -107,19 +96,6 @@ const CaseManagementPanel = ({
     [onStatusEmailNotifyChange]
   );
 
-  const handleRoleSelect = useCallback(
-    async (handlerId, role) => {
-      if (!handlerId || !role) return;
-      try {
-        setSavingAssignment(true);
-        await onAssignmentRoleChange?.(handlerId, role);
-      } finally {
-        setSavingAssignment(false);
-      }
-    },
-    [onAssignmentRoleChange]
-  );
-
   const handleRemoveAssignedHandler = useCallback(
     async (handlerId) => {
       if (!handlerId) return;
@@ -149,15 +125,18 @@ const CaseManagementPanel = ({
                   iconPosition="left"
                   onClick={onStatusChange}
                   disabled={statusChangeDisabled}
+                  loading={isStatusUpdating}
                   title={
                     !hasAssignedHandlers
                       ? t('caseManagementDetail.management.assignBeforeStatusChange')
                       : undefined
                   }
                 >
-                  {t('caseManagementDetail.management.changeStatusCta', {
-                    status: caseData?.status || t('caseManagementDetail.common.unknown'),
-                  })}
+                  {isStatusUpdating
+                    ? t('caseManagementDetail.management.updatingStatus')
+                    : t('caseManagementDetail.management.changeStatusCta', {
+                        status: caseData?.status || t('caseManagementDetail.common.unknown'),
+                      })}
                 </Button>
                 {!hasAssignedHandlers && (
                   <p className="text-xs text-muted-foreground">
@@ -179,7 +158,7 @@ const CaseManagementPanel = ({
                 placeholder={t('caseManagement.notAssigned')}
                 searchable
                 multiple
-                disabled={savingAssignment}
+                disabled={savingAssignment || isStatusUpdating}
               />
             </div>
           </PermissionGuard>
@@ -189,44 +168,39 @@ const CaseManagementPanel = ({
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-medium text-foreground">
-                    {t('caseManagementDetail.management.assignedHandlersRoles')}
+                    {t('caseManagementDetail.management.assignedHandlers')}
                   </p>
                   <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                     {t('caseManagementDetail.management.assignedCount', { count: assignedHandlers.length })}
                   </span>
                 </div>
-                <div className="divide-y divide-border rounded-md border border-border overflow-hidden">
-                {assignedHandlers.map((handler) => (
-                  <div key={handler.id} className="grid grid-cols-[minmax(0,1fr)_9rem_2rem] items-center gap-2 bg-background px-3 py-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{handler.name}</p>
-                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                        {handler.email && (
-                          <p className="text-xs text-muted-foreground truncate">{handler.email}</p>
-                        )}
+                <div className="relative z-[70] divide-y divide-border rounded-md border border-border overflow-hidden">
+                  {assignedHandlers.map((handler) => (
+                    <div
+                      key={handler.id}
+                      className="grid grid-cols-[minmax(0,1fr)_2rem] items-center gap-2 bg-background px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{handler.name}</p>
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                          {handler.email && (
+                            <p className="text-xs text-muted-foreground truncate">{handler.email}</p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <Select
-                      className="relative z-[90]"
-                      options={assignmentRoleOptions}
-                      value={handler.role}
-                      onChange={(value) => handleRoleSelect(handler.id, value)}
-                      disabled={savingAssignment}
-                      aria-label={t('caseManagementDetail.management.assignmentRoleLabel')}
-                    />
                       <Button
                         size="xs"
                         variant="ghost"
                         iconName="Trash2"
                         className="h-8 w-8 px-0 text-muted-foreground hover:text-destructive"
                         onClick={() => handleRemoveAssignedHandler(handler.id)}
-                        disabled={savingAssignment}
+                        disabled={savingAssignment || isStatusUpdating}
                         title={t('caseManagementDetail.management.removeAssignedHandler')}
                         aria-label={t('caseManagementDetail.management.removeAssignedHandler')}
                       >
                       </Button>
-                  </div>
-                ))}
+                    </div>
+                  ))}
                 </div>
               </div>
             </PermissionGuard>
@@ -239,7 +213,7 @@ const CaseManagementPanel = ({
                 description={t('caseManagementDetail.management.statusEmailsDescription')}
                 checked={statusEmailChecked}
                 onChange={(e) => handleStatusEmailToggle(e?.target?.checked)}
-                disabled={savingStatusEmail}
+                disabled={savingStatusEmail || isStatusUpdating}
               />
             </div>
           </PermissionGuard>
@@ -248,7 +222,11 @@ const CaseManagementPanel = ({
         {isBusy && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-accent" />
-            <span>{t('caseManagementDetail.management.savingChange')}</span>
+            <span>
+              {isStatusUpdating
+                ? t('caseManagementDetail.management.updatingStatus')
+                : t('caseManagementDetail.management.savingChange')}
+            </span>
           </div>
         )}
 

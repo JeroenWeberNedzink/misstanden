@@ -235,6 +235,76 @@ function ev_claim_email_verified(array $claims): bool {
     return !empty($claims['email_verified']);
 }
 
+function ev_external_identity_message(string $provider = ''): string {
+    $label = ev_identity_provider_label($provider);
+    $suffix = $label !== '' ? ' (' . $label . ')' : ' (SSO/Entra)';
+    return 'Verificatie wordt beheerd door uw organisatie' . $suffix . '. Er is geen actie nodig in dit portaal.';
+}
+
+function ev_identity_provider_label(string $provider): string {
+    $provider = strtolower(trim($provider));
+    if ($provider === '') return '';
+
+    $labels = [
+        'waad' => 'Entra ID',
+        'azuread' => 'Entra ID',
+        'adfs' => 'ADFS',
+        'samlp' => 'SAML SSO',
+        'google-oauth2' => 'Google OAuth',
+        'windowslive' => 'Microsoft',
+    ];
+
+    return $labels[$provider] ?? $provider;
+}
+
+function ev_identity_provider_from_subject(string $sub): string {
+    $sub = trim($sub);
+    if ($sub === '' || !str_contains($sub, '|')) {
+        return '';
+    }
+
+    return strtolower(trim(explode('|', $sub, 2)[0]));
+}
+
+function ev_identity_provider_from_claims(array $claims): string {
+    return ev_identity_provider_from_subject((string)($claims['sub'] ?? ''));
+}
+
+function ev_identity_provider_from_auth0_user(array $auth0User): string {
+    $identities = $auth0User['identities'] ?? null;
+    if (is_array($identities)) {
+        foreach ($identities as $identity) {
+            if (!is_array($identity)) continue;
+            $provider = strtolower(trim((string)($identity['provider'] ?? '')));
+            if ($provider !== '') {
+                return $provider;
+            }
+        }
+    }
+
+    return ev_identity_provider_from_subject((string)($auth0User['user_id'] ?? ''));
+}
+
+function ev_is_externally_managed_provider(string $provider): bool {
+    $provider = strtolower(trim($provider));
+    return $provider !== '' && $provider !== 'auth0' && $provider !== 'email';
+}
+
+function ev_external_verification_payload(string $email, string $provider, ?string $updatedAt = null): array {
+    return [
+        'email' => $email,
+        'email_verified' => true,
+        'updated_at' => $updatedAt,
+        'verification_available' => false,
+        'send_available' => false,
+        'verification_required' => false,
+        'externally_verified' => true,
+        'identity_provider' => strtolower(trim($provider)),
+        'identity_provider_label' => ev_identity_provider_label($provider),
+        'warning' => ev_external_identity_message($provider),
+    ];
+}
+
 function ev_enforce_rate_limit(string $action, array $claims): void {
     $sub = trim((string)($claims['sub'] ?? 'unknown'));
     $actorKey = api_rate_limit_hash('email_verification_actor:' . $sub);
@@ -323,7 +393,11 @@ try {
     $domain = ev_auth0_domain();
     $audience = auth0_expected_api_audience();
     $clientId = ev_auth0_client_id();
-    $claims = auth0_verify_access_token($token, $domain, $audience, $clientId);
+    try {
+        $claims = auth0_verify_access_token($token, $domain, $audience, $clientId);
+    } catch (Throwable $authError) {
+        ev_json(401, false, 'Invalid or expired authorization token');
+    }
     $sub = trim((string)($claims['sub'] ?? ''));
     if ($sub === '') {
         throw new Exception('Authenticated user is missing subject');
@@ -332,35 +406,103 @@ try {
     ev_enforce_rate_limit($action, $claims);
 
     if ($action === 'status') {
+        $claimsProvider = ev_identity_provider_from_claims($claims);
+        if (ev_is_externally_managed_provider($claimsProvider)) {
+            ev_json(
+                200,
+                true,
+                'Verification status loaded',
+                ev_external_verification_payload(ev_claim_email($claims), $claimsProvider)
+            );
+        }
+
         try {
             $mgmtToken = ev_auth0_management_token($domain);
             $statusDecoded = ev_user_from_management($domain, $mgmtToken, $sub);
+            $provider = ev_identity_provider_from_auth0_user($statusDecoded);
+            if (ev_is_externally_managed_provider($provider)) {
+                ev_json(
+                    200,
+                    true,
+                    'Verification status loaded',
+                    ev_external_verification_payload(
+                        (string)($statusDecoded['email'] ?? ev_claim_email($claims)),
+                        $provider,
+                        isset($statusDecoded['updated_at']) ? (string)$statusDecoded['updated_at'] : null
+                    )
+                );
+            }
+
             $sendSupported = ev_is_send_supported($statusDecoded);
+            $emailVerified = !empty($statusDecoded['email_verified']);
 
             ev_json(200, true, 'Verification status loaded', [
                 'email' => $statusDecoded['email'] ?? ev_claim_email($claims),
-                'email_verified' => !empty($statusDecoded['email_verified']),
+                'email_verified' => $emailVerified,
                 'updated_at' => $statusDecoded['updated_at'] ?? null,
                 'verification_available' => true,
                 'send_available' => $sendSupported,
+                'verification_required' => !$emailVerified,
+                'externally_verified' => false,
+                'identity_provider' => $provider,
+                'identity_provider_label' => ev_identity_provider_label($provider),
                 'warning' => $sendSupported ? '' : 'Voor dit type account ondersteunt Auth0 geen verificatie-email.',
             ]);
         } catch (Throwable $statusError) {
             api_log_exception('email-verification.api.status', $statusError, ['mode' => 'fallback']);
+            $fallbackProvider = ev_identity_provider_from_claims($claims);
+            if (ev_is_externally_managed_provider($fallbackProvider)) {
+                ev_json(
+                    200,
+                    true,
+                    'Verification status loaded (fallback)',
+                    ev_external_verification_payload(ev_claim_email($claims), $fallbackProvider)
+                );
+            }
+
+            $fallbackVerified = ev_claim_email_verified($claims);
             ev_json(200, true, 'Verification status loaded (fallback)', [
                 'email' => ev_claim_email($claims),
-                'email_verified' => ev_claim_email_verified($claims),
+                'email_verified' => $fallbackVerified,
                 'updated_at' => null,
                 'verification_available' => false,
                 'send_available' => false,
+                'verification_required' => !$fallbackVerified,
+                'externally_verified' => false,
+                'identity_provider' => $fallbackProvider,
+                'identity_provider_label' => ev_identity_provider_label($fallbackProvider),
                 'warning' => ev_safe_client_message($statusError),
             ]);
         }
     }
 
     if ($action === 'send') {
+        $claimsProvider = ev_identity_provider_from_claims($claims);
+        if (ev_is_externally_managed_provider($claimsProvider)) {
+            ev_json(
+                200,
+                true,
+                'E-mailverificatie wordt beheerd door uw organisatie',
+                ev_external_verification_payload(ev_claim_email($claims), $claimsProvider)
+            );
+        }
+
         $mgmtToken = ev_auth0_management_token($domain);
         $statusDecoded = ev_user_from_management($domain, $mgmtToken, $sub);
+        $provider = ev_identity_provider_from_auth0_user($statusDecoded);
+        if (ev_is_externally_managed_provider($provider)) {
+            ev_json(
+                200,
+                true,
+                'E-mailverificatie wordt beheerd door uw organisatie',
+                ev_external_verification_payload(
+                    (string)($statusDecoded['email'] ?? ev_claim_email($claims)),
+                    $provider,
+                    isset($statusDecoded['updated_at']) ? (string)$statusDecoded['updated_at'] : null
+                )
+            );
+        }
+
         if (!ev_is_send_supported($statusDecoded)) {
             ev_json(409, false, 'Voor dit type account kan Auth0 geen verificatie-email versturen.');
         }
@@ -369,6 +511,10 @@ try {
             ev_json(200, true, 'E-mailadres is al geverifieerd', [
                 'email' => $statusDecoded['email'] ?? '',
                 'email_verified' => true,
+                'verification_required' => false,
+                'externally_verified' => false,
+                'identity_provider' => $provider,
+                'identity_provider_label' => ev_identity_provider_label($provider),
             ]);
         }
 
@@ -387,6 +533,10 @@ try {
             'email' => $statusDecoded['email'] ?? '',
             'email_verified' => false,
             'requested_at' => gmdate('c'),
+            'verification_required' => true,
+            'externally_verified' => false,
+            'identity_provider' => $provider,
+            'identity_provider_label' => ev_identity_provider_label($provider),
         ]);
     }
 

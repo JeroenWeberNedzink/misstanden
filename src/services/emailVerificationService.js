@@ -22,22 +22,34 @@ const postEmailVerification = async (action, accessToken) => {
 export const emailVerificationService = {
   async getStatus(accessToken) {
     const data = await postEmailVerification('status', accessToken);
+    const externallyVerified = Boolean(data?.externally_verified);
+    const emailVerified = Boolean(data?.email_verified) || externallyVerified;
     return {
       email: data?.email || '',
-      emailVerified: Boolean(data?.email_verified),
+      emailVerified,
       updatedAt: data?.updated_at || null,
       verificationAvailable: data?.verification_available !== false,
       sendAvailable: data?.send_available !== false,
+      verificationRequired: data?.verification_required !== false && !emailVerified,
+      externallyVerified,
+      identityProvider: data?.identity_provider || '',
+      identityProviderLabel: data?.identity_provider_label || '',
       warning: data?.warning || '',
     };
   },
 
   async sendVerificationEmail(accessToken) {
     const data = await postEmailVerification('send', accessToken);
+    const externallyVerified = Boolean(data?.externally_verified);
+    const emailVerified = Boolean(data?.email_verified) || externallyVerified;
     return {
       email: data?.email || '',
-      emailVerified: Boolean(data?.email_verified),
+      emailVerified,
       requestedAt: data?.requested_at || null,
+      verificationRequired: data?.verification_required !== false && !emailVerified,
+      externallyVerified,
+      identityProvider: data?.identity_provider || '',
+      identityProviderLabel: data?.identity_provider_label || '',
     };
   },
 };

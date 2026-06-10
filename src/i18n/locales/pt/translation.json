@@ -1080,7 +1080,24 @@
             "update": "Atualizar"
         },
         "header": {
-            "share": "Compartilhar"
+            "share": "Compartilhar",
+            "guestLinkCreated": "Link de uso unico criado",
+            "guestLinkFailed": "Nao foi possivel criar o link compartilhado",
+            "guestLinkAction": "Link de acesso de convidado de uso unico criado"
+        },
+        "shareModal": {
+            "title": "Compartilhar acesso unico",
+            "subtitle": "Ticket {{ticketNumber}}",
+            "oneTimeTitle": "Link de uso unico",
+            "oneTimeDescription": "Depois da primeira abertura bem-sucedida, este link fica invalido. Crie um novo link depois disso.",
+            "creating": "Criando link...",
+            "linkLabel": "Link de acesso",
+            "copy": "Copiar",
+            "copied": "Copiado",
+            "expires": "Expira em {{hours}} horas se o link nao for aberto antes.",
+            "close": "Fechar",
+            "create": "Criar link",
+            "createNew": "Criar novo link"
         },
         "details": {
             "createdClient": "Criado (cliente)",
@@ -1152,7 +1169,8 @@
         "management": {
             "assignDescription": "Atribuir este caso a um tratador",
             "assignedCount": "{{count}} atribuido(s)",
-            "assignedHandlersRoles": "Tratadores atribuidos e funcoes",
+            "assignedHandlers": "Tratadores atribuidos",
+            "assignedHandlersRoles": "Tratadores atribuidos",
             "assignmentRoleLabel": "Funcao",
             "changeStatusCta": "Alterar status (atual: {{status}})",
             "assignBeforeStatusChange": "Atribua pelo menos um responsavel antes de alterar o status.",
@@ -1170,6 +1188,7 @@
             "rolePrimary": "Primario",
             "roleSecondary": "Secundario",
             "savingChange": "Salvando alteracoes...",
+            "updatingStatus": "Atualizando status...",
             "statusEmailsDescription": "O denunciante recebe um e-mail quando o status muda",
             "statusEmailsLabel": "E-mails de mudanca de status"
         },
@@ -1218,6 +1237,7 @@
             "notePlaceholder": "Explique por que voce esta alterando este status",
             "noteRequired": "Uma nota e obrigatoria.",
             "pendingHint": "Pendente",
+            "updating": "Atualizando status...",
             "workflowLoadError": "Nao foi possivel carregar os status do workflow."
         },
         "statusModal": {
@@ -1238,6 +1258,8 @@
             "selected": "Selecionado",
             "selectStep": "Selecionar uma etapa",
             "title": "Atualizar status do caso",
+            "updating": "Atualizando status...",
+            "updatingDescription": "Aguarde enquanto o backend processa esta alteracao de workflow.",
             "whatNext": "O que acontece a seguir?",
             "workflowFallback": "Workflow"
         },

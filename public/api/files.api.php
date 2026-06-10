@@ -59,6 +59,75 @@ function files_download_url(string $relativePath): string {
     return '/api/files.api.php?action=download&path=' . rawurlencode($relativePath);
 }
 
+function files_detect_mime_type(string $path, string $fallback = 'application/octet-stream'): string {
+    if (function_exists('mime_content_type')) {
+        $detected = @mime_content_type($path);
+        if (is_string($detected) && trim($detected) !== '') {
+            return $detected;
+        }
+    }
+
+    if (function_exists('finfo_open')) {
+        $finfo = @finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo) {
+            $detected = @finfo_file($finfo, $path);
+            @finfo_close($finfo);
+            if (is_string($detected) && trim($detected) !== '') {
+                return $detected;
+            }
+        }
+    }
+
+    $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    $map = [
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'gif' => 'image/gif',
+        'webp' => 'image/webp',
+        'svg' => 'image/svg+xml',
+        'pdf' => 'application/pdf',
+        'txt' => 'text/plain',
+        'csv' => 'text/csv',
+        'doc' => 'application/msword',
+        'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls' => 'application/vnd.ms-excel',
+        'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ];
+    return $map[$ext] ?? $fallback;
+}
+
+function files_candidate_paths(string $relativePath): array {
+    $relativePath = files_safe_relative_path($relativePath);
+    if ($relativePath === '') {
+        return [];
+    }
+
+    $candidates = [$relativePath];
+    if (strpos($relativePath, '/') !== false && !str_starts_with($relativePath, 'attachments/')) {
+        $candidates[] = 'attachments/' . $relativePath;
+    }
+    if (str_starts_with($relativePath, 'attachments/')) {
+        $withoutBucket = files_safe_relative_path(substr($relativePath, strlen('attachments/')));
+        if ($withoutBucket !== '') {
+            $candidates[] = $withoutBucket;
+        }
+    }
+
+    return array_values(array_unique(array_filter($candidates)));
+}
+
+function files_existing_path(string $relativePath): ?string {
+    $root = files_storage_root();
+    foreach (files_candidate_paths($relativePath) as $candidate) {
+        $fullPath = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $candidate);
+        if (is_file($fullPath)) {
+            return $fullPath;
+        }
+    }
+    return null;
+}
+
 try {
     $action = strtolower(trim((string)($_GET['action'] ?? $_POST['action'] ?? 'upload')));
 
@@ -68,12 +137,12 @@ try {
             files_json(400, false, 'path is required');
         }
 
-        $fullPath = files_storage_root() . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativePath);
-        if (!is_file($fullPath)) {
+        $fullPath = files_existing_path($relativePath);
+        if ($fullPath === null) {
             files_json(404, false, 'File not found');
         }
 
-        $mimeType = mime_content_type($fullPath) ?: 'application/octet-stream';
+        $mimeType = files_detect_mime_type($fullPath);
         $fileName = basename($fullPath);
         header('Content-Type: ' . $mimeType);
         header('Content-Length: ' . (string)filesize($fullPath));
@@ -90,8 +159,8 @@ try {
             files_json(400, false, 'path is required');
         }
 
-        $fullPath = files_storage_root() . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativePath);
-        if (is_file($fullPath)) {
+        $fullPath = files_existing_path($relativePath);
+        if ($fullPath !== null) {
             @unlink($fullPath);
         }
 
@@ -125,7 +194,7 @@ try {
         'path' => $relativePath,
         'url' => files_download_url($relativePath),
         'file_name' => $file['name'] ?? basename($targetPath),
-        'mime_type' => $file['type'] ?? (mime_content_type($targetPath) ?: 'application/octet-stream'),
+        'mime_type' => $file['type'] ?? files_detect_mime_type($targetPath),
         'size_bytes' => (int)($file['size'] ?? filesize($targetPath)),
     ]]);
 } catch (Throwable $e) {

@@ -649,7 +649,12 @@ function api_authz_require_admin(callable $deny, array $requiredScopes = []): ar
     $auth0Domain = api_authz_env_required('VITE_AUTH0_DOMAIN');
     $auth0Audience = auth0_expected_api_audience();
     $auth0ClientId = api_authz_env_required('VITE_AUTH0_CLIENT_ID');
-    $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
+    try {
+        $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
+    } catch (Throwable $authError) {
+        $deny(401, 'Invalid or expired authorization token');
+        throw $authError;
+    }
     $claims = api_authz_enrich_identity_claims($claims, $token);
 
     $handler = api_authz_fetch_handler('', '', $claims);
@@ -678,7 +683,12 @@ function api_authz_require_active_handler(callable $deny): array {
     $auth0Domain = api_authz_env_required('VITE_AUTH0_DOMAIN');
     $auth0Audience = auth0_expected_api_audience();
     $auth0ClientId = api_authz_env_required('VITE_AUTH0_CLIENT_ID');
-    $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
+    try {
+        $claims = auth0_verify_access_token($token, $auth0Domain, $auth0Audience, $auth0ClientId);
+    } catch (Throwable $authError) {
+        $deny(401, 'Invalid or expired authorization token');
+        throw $authError;
+    }
     $claims = api_authz_enrich_identity_claims($claims, $token);
 
     $handler = api_authz_fetch_handler('', '', $claims);
