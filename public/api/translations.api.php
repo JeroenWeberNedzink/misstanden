@@ -22,6 +22,12 @@ require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
 require_once __DIR__ . '/_rate_limit.php';
 
+// In source, the API lives in public/api; in IIS builds it lives directly in
+// <site>/api alongside <site>/api/locales.
+define('TRANSLATIONS_APP_ROOT', is_dir(__DIR__ . '/locales') ? dirname(__DIR__) : dirname(__DIR__, 2));
+define('BACKUP_DIR', TRANSLATIONS_APP_ROOT . '/backups/translations');
+define('TRANSLATION_AUDIT_LOG', TRANSLATIONS_APP_ROOT . '/logs/translation-audit.log');
+
 api_apply_security_headers([
     'allow_methods' => 'GET, POST, PUT, DELETE, OPTIONS',
     'allow_headers' => 'Content-Type, Authorization',
@@ -35,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // Error handling
 ini_set('log_errors', '1');
-ini_set('error_log', __DIR__ . '/../../php-errors.log');
+ini_set('error_log', TRANSLATIONS_APP_ROOT . '/php-errors.log');
 ini_set('display_errors', '0');
 error_reporting(E_ALL);
 
@@ -55,9 +61,6 @@ const TRANSLATIONS_SCOPES_WRITE = [
     'admin:all',
     'admin',
 ];
-
-// Constants
-define('BACKUP_DIR', __DIR__ . '/../../backups/translations');
 
 $translationActorId = null;
 
@@ -131,11 +134,6 @@ function getSupportedLanguages(): array {
     }
 
     return $languages;
-}
-
-// Ensure backup directory exists
-if (!is_dir(BACKUP_DIR)) {
-    mkdir(BACKUP_DIR, 0755, true);
 }
 
 /**
@@ -229,10 +227,16 @@ function writeTranslationFile(string $lang, array $data): void {
         }
     }
 
+    if (!is_dir(BACKUP_DIR) && !mkdir(BACKUP_DIR, 0755, true) && !is_dir(BACKUP_DIR)) {
+        throw new Exception('Failed to create translation backup directory');
+    }
+
     // Create backup before writing (if file exists)
     if (file_exists($filePath)) {
         $backupPath = BACKUP_DIR . "/$lang-" . date('Y-m-d-His') . '.json';
-        copy($filePath, $backupPath);
+        if (!copy($filePath, $backupPath)) {
+            throw new Exception("Failed to back up translation file: $filePath");
+        }
 
         // Keep only last 10 backups per language
         cleanupBackups($lang);
@@ -256,7 +260,7 @@ function writeTranslationFile(string $lang, array $data): void {
         throw new Exception("Failed to encode JSON for $lang");
     }
 
-    $written = file_put_contents($filePath, $json);
+    $written = file_put_contents($filePath, $json, LOCK_EX);
 
     if ($written === false) {
         throw new Exception("Failed to write translation file: $filePath");
@@ -300,7 +304,7 @@ function logAuditChange(string $keyPath, string $lang, string $action, ?string $
         'ip_hash' => $ipHash,
     ];
 
-    $logFile = __DIR__ . '/../../logs/translation-audit.log';
+    $logFile = TRANSLATION_AUDIT_LOG;
     $logDir = dirname($logFile);
     if (!is_dir($logDir)) {
         mkdir($logDir, 0755, true);

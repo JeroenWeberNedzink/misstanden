@@ -137,6 +137,21 @@ function Invoke-RobocopyChecked($source, $destination, $files = @('*'), $extraAr
     }
 }
 
+function Grant-IisModifyAccess($path) {
+    if (-not (Test-Path -LiteralPath $path)) {
+        Info "Creating IIS writable directory: $path"
+        New-Item -ItemType Directory -Path $path -Force | Out-Null
+    }
+
+    # IIS_IUSRS (S-1-5-32-568) contains IIS application-pool identities.
+    # Use the well-known SID so this also works when executed from another host.
+    Info "Granting IIS modify access to $path"
+    & icacls.exe $path '/grant' '*S-1-5-32-568:(OI)(CI)M' '/T' '/C' '/Q' | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        Die "Could not grant IIS modify access to '$path' (icacls exit code $LASTEXITCODE)"
+    }
+}
+
 function Invoke-CheckedCommand($label, $filePath, $argumentList, $workingDirectory) {
     Info $label
     Push-Location $workingDirectory
@@ -441,6 +456,10 @@ function Invoke-LocalDeploy($rootDir) {
 
     if (Test-Path $distApiDir) {
         Invoke-RobocopyChecked $distApiDir $targetApiDir @('*') @('/MIR', '/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
+
+        Grant-IisModifyAccess (Join-Path $targetApiDir 'locales')
+        Grant-IisModifyAccess (Join-Path $deployTarget 'backups\translations')
+        Grant-IisModifyAccess (Join-Path $deployTarget 'logs')
     } else {
         Warn "Build output has no api directory: $distApiDir"
     }
