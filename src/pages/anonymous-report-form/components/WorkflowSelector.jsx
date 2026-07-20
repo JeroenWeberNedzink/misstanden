@@ -125,7 +125,7 @@ const WorkflowSelector = ({ value, onChange, workflows, error }) => {
         });
         return {
           name: translatedName,
-          description: adminDescription || translatedDescription || t('reportForm.noDescription'),
+          description: translatedDescription || adminDescription || t('reportForm.noDescription'),
         };
       }
     }

@@ -198,6 +198,13 @@ function readTranslationFile(string $lang): array {
         throw new Exception("Failed to read translation file: $filePath");
     }
 
+    // A UTF-8 BOM is valid for text files, but PHP's JSON decoder rejects it.
+    // Strip it defensively so an editor cannot make an otherwise valid locale
+    // unavailable in Translation Management.
+    if (strncmp($contents, "\xEF\xBB\xBF", 3) === 0) {
+        $contents = substr($contents, 3);
+    }
+
     $data = json_decode($contents, true);
     if (json_last_error() !== JSON_ERROR_NONE) {
         throw new Exception("Invalid JSON in file: $filePath - " . json_last_error_msg());

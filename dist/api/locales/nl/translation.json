@@ -447,7 +447,7 @@
         "multipleFilesAllowed": "Meerdere bestanden toegestaan",
         "filesStoredSecurely": "Bestanden worden veilig opgeslagen",
         "filesReady": "bestand(en) klaar",
-        "filesWillBeUploaded": "Uw bestanden worden geÃ¯Â¿Â½pload met uw melding",
+        "filesWillBeUploaded": "Uw bestanden worden geüpload met uw melding",
         "incidentType": "Type misstand",
         "anonymousReport": "Anonieme Melding",
         "anonymousDescription": "Deze melding wordt anoniem ingediend. Uw e-mailadres wordt versleuteld opgeslagen voor veilige communicatie en blijft verborgen voor handlers.",
@@ -599,7 +599,7 @@
         "to": "naar",
         "reporter": "Melder",
         "handler": "Handler",
-        "uploadedBy": "GeÃ¼pload door",
+        "uploadedBy": "Geüpload door",
         "low": "Laag",
         "medium": "Gemiddeld",
         "high": "Hoog",
@@ -785,12 +785,12 @@
             "setupInstructions": "Scan de QR-code hieronder met uw authenticator app",
             "scanQR": "Scan QR Code",
             "enterCode": "Voer de 6-cijferige code in van uw authenticator app",
-            "verifyCode": "Code VerifiÃ¯Â¿Â½ren",
-            "verifying": "VerifiÃ¯Â¿Â½ren...",
+            "verifyCode": "Code verifiëren",
+            "verifying": "Verifiëren...",
             "backupCodes": "Backup Codes",
             "backupCodesDescription": "Bewaar deze backup codes op een veilige plaats. Elk kan eenmaal gebruikt worden als u de toegang tot uw authenticator verliest.",
             "downloadCodes": "Codes Downloaden",
-            "copyCodes": "Codes KopiÃ¯Â¿Â½ren",
+            "copyCodes": "Codes kopiëren",
             "codesCopied": "Codes gekopieerd naar klembord",
             "regenerateCodes": "Backup Codes Opnieuw Genereren",
             "appRecommendations": "Aanbevolen apps: Google Authenticator, Microsoft Authenticator, Authy",
@@ -894,7 +894,7 @@
     },
     "adminDashboard": {
         "title": "Admin Center",
-        "subtitle": "EÃ¯Â¿Â½n plek voor beheer van accounts, toegang en workflows",
+        "subtitle": "Eén plek voor beheer van accounts, toegang en workflows",
         "backToModules": "Terug naar Modules",
         "modules": {
             "users": {
@@ -937,13 +937,13 @@
                 "languageCodePlaceholder": "bijv. es, it, pt",
                 "languageCodeHelp": "2-letterige ISO code (bijv. es voor Spaans)",
                 "languageName": "Taalnaam",
-                "languageNamePlaceholder": "bijv. EspaÃ¯Â¿Â½ol, Italiano",
+                "languageNamePlaceholder": "bijv. Español, Italiano",
                 "cancel": "Annuleren",
                 "add": "Taal Toevoegen"
             },
             "messages": {
                 "saved": "Vertalingen succesvol opgeslagen",
-                "exported": "Vertalingen succesvol geÃ¯Â¿Â½xporteerd",
+                "exported": "Vertalingen succesvol geëxporteerd",
                 "imported": "Bestand geladen. Klik op Opslaan om wijzigingen toe te passen.",
                 "invalidFile": "Ongeldig JSON bestand",
                 "languageExists": "Taal bestaat al",
@@ -954,12 +954,12 @@
     },
     "legalGuidance": {
         "title": "Juridische Begeleiding voor Klokkenluiders",
-        "subtitle": "Uitgebreide landspecifieke juridische kaders en procedures voor Nederland, BelgiÃ«, Duitsland en Frankrijk",
+        "subtitle": "Uitgebreide landspecifieke juridische kaders en procedures voor Nederland, België, Duitsland en Frankrijk",
         "footer": "Veilig & Vertrouwelijk Melden",
         "searchPlaceholder": "Zoek juridische onderwerpen, procedures of contacten...",
         "countries": {
             "netherlands": "Nederland",
-            "belgium": "BelgiÃ«",
+            "belgium": "België",
             "germany": "Duitsland",
             "france": "Frankrijk"
         },
@@ -1009,7 +1009,7 @@
                     "Vertrouwelijkheid gewaarborgd"
                 ],
                 "features": [
-                    "Bundesamt fÃ¼r Justiz als extern kanaal",
+                    "Bundesamt für Justiz als extern kanaal",
                     "Anonieme meldingen toegestaan",
                     "Online formulier beschikbaar",
                     "Geen verplicht anoniem systeem"
@@ -1158,10 +1158,10 @@
                     },
                     {
                         "title": "Externe Melding",
-                        "description": "Melding bij Bundesamt fÃ¼r Justiz of andere bevoegde autoriteit",
+                        "description": "Melding bij Bundesamt für Justiz of andere bevoegde autoriteit",
                         "timeline": "Na interne procedure of direct",
                         "steps": [
-                            "Online formulier bij Bundesamt fÃ¼r Justiz",
+                            "Online formulier bij Bundesamt für Justiz",
                             "Anonieme melding mogelijk",
                             "Strikte gegevensopslag regels"
                         ]
@@ -1196,7 +1196,7 @@
                         "timeline": "Binnen redelijke termijn",
                         "steps": [
                             "Onderzoek gestart door bevoegde afdeling",
-                            "Melder wordt geÃ¯nformeerd over voortgang",
+                            "Melder wordt geïnformeerd over voortgang",
                             "Vertrouwelijkheid gewaarborgd"
                         ]
                     },
@@ -1286,7 +1286,7 @@
             ],
             "germany": [
                 {
-                    "name": "Bundesamt fÃ¼r Justiz",
+                    "name": "Bundesamt für Justiz",
                     "role": "Federale Meldstelle voor Klokkenluiders",
                     "type": "authority",
                     "website": "https://www.bundesjustizamt.de",
@@ -1295,7 +1295,7 @@
             ],
             "france": [
                 {
-                    "name": "Agence FranÃ§aise Anticorruption (AFA)",
+                    "name": "Agence Française Anticorruption (AFA)",
                     "role": "Franse Anti-Corruptie Agentschap",
                     "type": "authority",
                     "website": "https://www.agence-francaise-anticorruption.gouv.fr",
@@ -1303,7 +1303,7 @@
                 },
                 {
                     "name": "ANSSI",
-                    "role": "Agence Nationale de la SÃ©curitÃ© des SystÃ¨mes d'Information",
+                    "role": "Agence Nationale de la Sécurité des Systèmes d'Information",
                     "type": "authority",
                     "email": "lanceurdalerte@ssi.gouv.fr",
                     "phone": "+33 171758468",
@@ -1311,12 +1311,12 @@
                 },
                 {
                     "name": "ANSES",
-                    "role": "Agence Nationale de SÃ©curitÃ© Sanitaire",
+                    "role": "Agence Nationale de Sécurité Sanitaire",
                     "type": "authority",
                     "email": "lanceurdalerte@anses.fr"
                 },
                 {
-                    "name": "AutoritÃ© de la Concurrence",
+                    "name": "Autorité de la Concurrence",
                     "role": "Franse Mededingingsautoriteit",
                     "type": "authority",
                     "phone": "+33 155040005",
@@ -1325,7 +1325,7 @@
                 },
                 {
                     "name": "IGEDD",
-                    "role": "Inspection GÃ©nÃ©rale de l'Environnement et du DÃ©veloppement Durable",
+                    "role": "Inspection Générale de l'Environnement et du Développement Durable",
                     "type": "authority",
                     "website": "https://www.igedd.developpement-durable.gouv.fr/lanceur-d-alerte-signaler-une-atteinte-a-l-a3965.html"
                 }

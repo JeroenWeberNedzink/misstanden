@@ -11,6 +11,7 @@
     "test:api": "node scripts/api-backend-test.mjs --start-server",
     "test:api:full": "node scripts/api-backend-test.mjs --start-server --mutate --performance",
     "test:performance": "node scripts/api-backend-test.mjs --start-server --performance",
+    "check:locales": "node scripts/check-locales.mjs",
     "check:no-rocket": "node scripts/check-no-rocket.mjs"
   },
   "dependencies": {
