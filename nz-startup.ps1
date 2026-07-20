@@ -143,12 +143,18 @@ function Grant-IisModifyAccess($path) {
         New-Item -ItemType Directory -Path $path -Force | Out-Null
     }
 
-    # IIS_IUSRS (S-1-5-32-568) contains IIS application-pool identities.
-    # Use the well-known SID so this also works when executed from another host.
+    # IIS_IUSRS contains application-pool identities. PHP FastCGI can also run
+    # with impersonation enabled, in which case writes use the IUSR identity.
+    # Use well-known SIDs so this also works when executed from another host.
     Info "Granting IIS modify access to $path"
     & icacls.exe $path '/grant' '*S-1-5-32-568:(OI)(CI)M' '/T' '/C' '/Q' | Out-Host
     if ($LASTEXITCODE -ne 0) {
-        Die "Could not grant IIS modify access to '$path' (icacls exit code $LASTEXITCODE)"
+        Die "Could not grant IIS_IUSRS modify access to '$path' (icacls exit code $LASTEXITCODE)"
+    }
+
+    & icacls.exe $path '/grant' '*S-1-5-17:(OI)(CI)M' '/T' '/C' '/Q' | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        Die "Could not grant IUSR modify access to '$path' (icacls exit code $LASTEXITCODE)"
     }
 }
 
