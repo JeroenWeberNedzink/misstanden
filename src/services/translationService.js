@@ -33,6 +33,25 @@ const fetchWithAuth = async (url, options = {}) => {
   });
 };
 
+const readApiResponse = async (response, fallbackMessage) => {
+  const text = await response.text();
+  let data = null;
+
+  if (text.trim()) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(`${fallbackMessage} (server returned HTTP ${response.status} instead of JSON)`);
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.message || `${fallbackMessage} (HTTP ${response.status})`);
+  }
+
+  return data;
+};
+
 export const translationService = {
   setTokenProvider,
 
@@ -97,21 +116,17 @@ export const translationService = {
    */
   async updateValue(keyPath, lang, value) {
     const res = await fetchWithAuth(API_BASE, {
-      method: 'PUT',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        action: 'update',
         keyPath,
         lang,
         value
       })
     });
 
-    if (!res.ok) {
-      const error = await res.json();
-      throw new Error(error.message || 'Failed to update translation');
-    }
-
-    return res.json();
+    return readApiResponse(res, 'Failed to update translation');
   },
 
   /**
@@ -121,17 +136,12 @@ export const translationService = {
    */
   async deleteKey(keyPath) {
     const res = await fetchWithAuth(API_BASE, {
-      method: 'DELETE',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keyPath })
+      body: JSON.stringify({ action: 'delete', keyPath })
     });
 
-    if (!res.ok) {
-      const error = await res.json();
-      throw new Error(error.message || 'Failed to delete translation key');
-    }
-
-    return res.json();
+    return readApiResponse(res, 'Failed to delete translation key');
   },
 
   /**

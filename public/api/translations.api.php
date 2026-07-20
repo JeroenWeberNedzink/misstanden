@@ -322,6 +322,60 @@ function apiResponse(int $code, bool $success, string $message, $data = null): v
     exit;
 }
 
+function updateTranslationValue(array $data): void {
+    $keyPath = $data['keyPath'] ?? null;
+    $lang = $data['lang'] ?? null;
+    $value = $data['value'] ?? null;
+
+    if (!$keyPath || !$lang) {
+        apiResponse(400, false, 'keyPath and lang are required');
+    }
+
+    $lang = validateLanguageCode((string)$lang);
+    $langData = readTranslationFile($lang);
+    $flatData = flattenArray($langData);
+
+    $oldValue = $flatData[$keyPath] ?? null;
+    $isNew = !isset($flatData[$keyPath]);
+    $flatData[$keyPath] = $value;
+
+    writeTranslationFile($lang, $flatData);
+    logAuditChange($keyPath, $lang, $isNew ? 'CREATE' : 'UPDATE', $oldValue, $value);
+
+    apiResponse(200, true, $isNew ? 'Translation created successfully' : 'Translation updated successfully', [
+        'keyPath' => $keyPath,
+        'language' => $lang,
+        'oldValue' => $oldValue,
+        'newValue' => $value,
+        'wasCreated' => $isNew
+    ]);
+}
+
+function deleteTranslationKey(array $data): void {
+    $keyPath = $data['keyPath'] ?? null;
+    if (!$keyPath) {
+        apiResponse(400, false, 'keyPath is required');
+    }
+
+    foreach (getSupportedLanguages() as $lang) {
+        try {
+            $langData = readTranslationFile($lang);
+            $flatData = flattenArray($langData);
+
+            if (isset($flatData[$keyPath])) {
+                $oldValue = $flatData[$keyPath];
+                unset($flatData[$keyPath]);
+                writeTranslationFile($lang, $flatData);
+                logAuditChange($keyPath, $lang, 'DELETE', $oldValue, null);
+            }
+        } catch (Exception $e) {
+            error_log("Failed to delete translation for $lang: " . api_redact_sensitive($e->getMessage()));
+        }
+    }
+
+    apiResponse(200, true, 'Translation key deleted successfully', ['keyPath' => $keyPath]);
+}
+
 // Main request handling
 try {
     load_runtime_env(__DIR__);
@@ -502,6 +556,12 @@ try {
 
             apiResponse(201, true, 'Translation key created successfully', ['keyPath' => $keyPath]);
 
+        } elseif ($postAction === 'update') {
+            updateTranslationValue($data);
+
+        } elseif ($postAction === 'delete') {
+            deleteTranslationKey($data);
+
         } elseif ($postAction === 'import') {
             // Import JSON file
             $lang = $data['lang'] ?? null;
@@ -561,73 +621,10 @@ try {
         }
 
     } elseif ($method === 'PUT') {
-        // Update existing translation value (or create if missing - upsert)
-        $keyPath = $data['keyPath'] ?? null;
-        $lang = $data['lang'] ?? null;
-        $value = $data['value'] ?? null;
-
-        if (!$keyPath || !$lang) {
-            apiResponse(400, false, 'keyPath and lang are required');
-        }
-
-        // Validate language code format
-        if (!preg_match('/^[a-z]{2,5}(-[a-zA-Z]{2,5})?$/', $lang)) {
-            apiResponse(400, false, 'Invalid language code format');
-        }
-
-        $langData = readTranslationFile($lang);
-        $flatData = flattenArray($langData);
-
-        $oldValue = $flatData[$keyPath] ?? null;
-        $isNew = !isset($flatData[$keyPath]);
-
-        $flatData[$keyPath] = $value;
-
-        writeTranslationFile($lang, $flatData);
-
-        if ($isNew) {
-            logAuditChange($keyPath, $lang, 'CREATE', null, $value);
-        } else {
-            logAuditChange($keyPath, $lang, 'UPDATE', $oldValue, $value);
-        }
-
-        apiResponse(200, true, $isNew ? 'Translation created successfully' : 'Translation updated successfully', [
-            'keyPath' => $keyPath,
-            'language' => $lang,
-            'oldValue' => $oldValue,
-            'newValue' => $value,
-            'wasCreated' => $isNew
-        ]);
+        updateTranslationValue($data);
 
     } elseif ($method === 'DELETE') {
-        // Delete translation key from all languages
-        $keyPath = $data['keyPath'] ?? null;
-
-        if (!$keyPath) {
-            apiResponse(400, false, 'keyPath is required');
-        }
-
-        // Remove from all languages
-        $supportedLanguages = getSupportedLanguages();
-        foreach ($supportedLanguages as $lang) {
-            try {
-                $langData = readTranslationFile($lang);
-                $flatData = flattenArray($langData);
-
-                if (isset($flatData[$keyPath])) {
-                    $oldValue = $flatData[$keyPath];
-                    unset($flatData[$keyPath]);
-
-                    writeTranslationFile($lang, $flatData);
-                    logAuditChange($keyPath, $lang, 'DELETE', $oldValue, null);
-                }
-            } catch (Exception $e) {
-                // Skip languages that can't be read/written
-                error_log("Failed to delete translation for $lang: " . api_redact_sensitive($e->getMessage()));
-            }
-        }
-
-        apiResponse(200, true, 'Translation key deleted successfully', ['keyPath' => $keyPath]);
+        deleteTranslationKey($data);
 
     } else {
         apiResponse(405, false, 'Method not allowed');
