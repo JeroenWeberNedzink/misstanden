@@ -17,6 +17,7 @@ const initialsFromName = (name) => {
 const InvestigationNotesPanel = ({
   notes,
   onAddNote,
+  onEditNote,
   isLoading = false,
   attachmentsPolicy = null,
   onAttachmentValidationError = null,
@@ -25,6 +26,9 @@ const InvestigationNotesPanel = ({
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [newNote, setNewNote] = useState('');
   const [selectedFiles, setSelectedFiles] = useState([]);
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [editNote, setEditNote] = useState('');
+  const [savingNoteId, setSavingNoteId] = useState(null);
   const fileInputRef = useRef(null);
 
   const safeNotes = useMemo(() => (Array.isArray(notes) ? notes : []), [notes]);
@@ -74,6 +78,30 @@ const InvestigationNotesPanel = ({
 
   const handleRemoveFile = (index) => {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleStartEdit = (note) => {
+    setEditingNoteId(note?.id);
+    setEditNote(String(note?.content || ''));
+  };
+
+  const handleCancelEdit = () => {
+    setEditingNoteId(null);
+    setEditNote('');
+  };
+
+  const handleSaveEdit = async () => {
+    const value = editNote.trim();
+    if (!editingNoteId || !value || typeof onEditNote !== 'function') return;
+    try {
+      setSavingNoteId(editingNoteId);
+      await onEditNote(editingNoteId, value);
+      handleCancelEdit();
+    } catch {
+      // The parent keeps the editor open and shows the API error to the user.
+    } finally {
+      setSavingNoteId(null);
+    }
   };
 
   const formatFileSize = (bytes) => {
@@ -252,10 +280,61 @@ const InvestigationNotesPanel = ({
                           </span>
                         )}
 
-                        <span className="ml-auto text-[11px] text-muted-foreground shrink-0">{note?.timestamp}</span>
+                        <span className="ml-auto text-[11px] text-muted-foreground shrink-0">
+                          {note?.timestamp}
+                          {note?.edited ? ` · ${t('caseManagementDetail.notes.edited')}` : ''}
+                        </span>
+                        {note?.id && typeof onEditNote === 'function' && editingNoteId !== note.id && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0"
+                            onClick={() => handleStartEdit(note)}
+                            disabled={Boolean(savingNoteId)}
+                            title={t('common.edit')}
+                          >
+                            <Icon name="Pencil" size={14} />
+                          </Button>
+                        )}
                       </div>
 
-                      <div className="mt-1.5 text-sm text-foreground leading-snug whitespace-pre-wrap break-words">{note?.content}</div>
+                      {editingNoteId === note.id ? (
+                        <div className="mt-2 space-y-2">
+                          <textarea
+                            value={editNote}
+                            onChange={(event) => setEditNote(event.target.value)}
+                            rows={4}
+                            maxLength={4000}
+                            autoFocus
+                            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            aria-label={t('caseManagementDetail.notes.editLabel')}
+                          />
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="default"
+                              size="sm"
+                              iconName="Save"
+                              iconPosition="left"
+                              onClick={handleSaveEdit}
+                              disabled={!editNote.trim() || savingNoteId === note.id}
+                            >
+                              {savingNoteId === note.id
+                                ? t('caseManagementDetail.notes.saving')
+                                : t('common.save')}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleCancelEdit}
+                              disabled={savingNoteId === note.id}
+                            >
+                              {t('common.cancel')}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-1.5 text-sm text-foreground leading-snug whitespace-pre-wrap break-words">{note?.content}</div>
+                      )}
 
                       {Array.isArray(note?.attachments) && note.attachments.length > 0 && (
                         <div className="mt-2 rounded-md border border-border bg-background/70 overflow-hidden">

@@ -1323,9 +1323,13 @@
             "internalAttachments": "Internal attachments",
             "internalOnly": "Internal only",
             "internalOnlyDescription": "Visible to handlers only",
+            "editAction": "Investigation note edited",
+            "editLabel": "Edit investigation note",
+            "edited": "edited",
             "newNoteLabel": "New note",
             "newNotePlaceholder": "Add an internal investigation note",
-            "none": "No investigation notes yet."
+            "none": "No investigation notes yet.",
+            "saving": "Saving..."
         },
         "communication": {
             "anonymousNoDirect": "Reporter is anonymous. Direct messaging is unavailable.",
@@ -1465,6 +1469,8 @@
             "handlerAssigned": "Handler assigned",
             "messageSentAction": "Message sent",
             "noteAndAttachmentsSaved": "Note and attachments saved",
+            "noteUpdated": "Investigation note updated",
+            "noteUpdateFailed": "Investigation note could not be updated",
             "statusChangedTo": "Status changed to {{status}}",
             "statusEmailPreferenceUpdated": "Status email preference updated",
             "statusEmailPreferenceUpdateError": "Could not update status email preference",

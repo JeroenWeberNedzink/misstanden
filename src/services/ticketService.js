@@ -1912,6 +1912,24 @@ async deleteHandler(handlerId, options = {}) {
     return result;
   },
 
+  async updateComment(ticketId, commentId, comment) {
+    if (!ticketId) throw new Error('ticketId is required');
+    if (!commentId) throw new Error('commentId is required');
+    if (!comment || !String(comment).trim()) throw new Error('comment is required');
+
+    const apiData = await ticketApiPost(
+      {
+        action: 'handler_update_comment',
+        ticket_id: ticketId,
+        comment_id: commentId,
+        comment: String(comment).trim(),
+      },
+      { requireAuth: true }
+    );
+
+    return toCamelCase(apiData?.comment || apiData);
+  },
+
   async addMessage(ticketId, sender, body, isInternal = false, options = {}) {
     if (!ticketId) throw new Error('ticketId is required');
     if (!sender) throw new Error('sender is required');

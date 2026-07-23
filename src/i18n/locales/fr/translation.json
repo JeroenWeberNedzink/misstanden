@@ -1184,9 +1184,13 @@
             "internalAttachments": "Pieces jointes internes",
             "internalOnly": "Interne uniquement",
             "internalOnlyDescription": "Visible uniquement par les gestionnaires",
+            "editAction": "Note d investigation modifiee",
+            "editLabel": "Modifier la note d investigation",
+            "edited": "modifiee",
             "newNoteLabel": "Nouvelle note",
             "newNotePlaceholder": "Ajouter une note interne d investigation",
-            "none": "Aucune note d investigation pour le moment."
+            "none": "Aucune note d investigation pour le moment.",
+            "saving": "Enregistrement..."
         },
         "communication": {
             "anonymousNoDirect": "Le declarant est anonyme. La messagerie directe est indisponible.",
@@ -1326,6 +1330,8 @@
             "handlerAssigned": "Gestionnaire assigne",
             "messageSentAction": "Message envoye",
             "noteAndAttachmentsSaved": "Note et pieces jointes enregistrees",
+            "noteUpdated": "Note d investigation mise a jour",
+            "noteUpdateFailed": "La note d investigation n a pas pu etre mise a jour",
             "statusChangedTo": "Statut change vers {{status}}",
             "statusEmailPreferenceUpdated": "Preference d e-mails de statut mise a jour",
             "statusEmailPreferenceUpdateError": "Impossible de mettre a jour la preference d e-mails de statut",

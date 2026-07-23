@@ -47,6 +47,7 @@ const ActionHistoryPanel = ({ history = [], actions = [], isLoading = false }) =
     if (v === 'status_update' || v === 'status_change') return 'status_change';
     if (v === 'stage_change' || v === 'current_stage') return 'stage_change';
     if (v === 'note_added' || v === 'comment' || v === 'ticket_comment') return 'note_added';
+    if (v === 'note_edited' || v === 'comment_edited') return 'note_edited';
     if (v === 'assignment' || v === 'assigned' || v === 'handler_assigned') return 'assignment';
     if (v === 'message_sent' || v === 'message' || v === 'communication') return 'message_sent';
     if (v === 'attachment_added' || v === 'attachment' || v === 'upload') return 'attachment_added';
@@ -61,6 +62,7 @@ const ActionHistoryPanel = ({ history = [], actions = [], isLoading = false }) =
       status_change: 'RefreshCw',
       stage_change: 'GitBranch',
       note_added: 'FileEdit',
+      note_edited: 'Pencil',
       assignment: 'UserPlus',
       message_sent: 'Send',
       attachment_added: 'Paperclip',
@@ -76,6 +78,7 @@ const ActionHistoryPanel = ({ history = [], actions = [], isLoading = false }) =
       status_change: { text: 'text-accent' },
       stage_change: { text: 'text-primary' },
       note_added: { text: 'text-secondary' },
+      note_edited: { text: 'text-secondary' },
       assignment: { text: 'text-primary' },
       message_sent: { text: 'text-accent' },
       attachment_added: { text: 'text-warning' },

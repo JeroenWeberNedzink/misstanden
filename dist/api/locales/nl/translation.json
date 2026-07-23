@@ -1399,9 +1399,13 @@
             "internalAttachments": "Interne bijlagen",
             "internalOnly": "Alleen intern",
             "internalOnlyDescription": "Alleen zichtbaar voor behandelaars",
+            "editAction": "Onderzoeksnotitie bewerkt",
+            "editLabel": "Onderzoeksnotitie bewerken",
+            "edited": "bewerkt",
             "newNoteLabel": "Nieuwe notitie",
             "newNotePlaceholder": "Voeg een interne onderzoeksnotitie toe",
-            "none": "Nog geen onderzoeksnotities."
+            "none": "Nog geen onderzoeksnotities.",
+            "saving": "Opslaan..."
         },
         "communication": {
             "anonymousNoDirect": "Melder is anoniem. Directe berichten zijn niet beschikbaar.",
@@ -1541,6 +1545,8 @@
             "handlerAssigned": "Behandelaar toegewezen",
             "messageSentAction": "Bericht verzonden",
             "noteAndAttachmentsSaved": "Notitie en bijlagen opgeslagen",
+            "noteUpdated": "Onderzoeksnotitie bijgewerkt",
+            "noteUpdateFailed": "Onderzoeksnotitie kon niet worden bijgewerkt",
             "statusChangedTo": "Status gewijzigd naar {{status}}",
             "statusEmailPreferenceUpdated": "Voorkeur voor status e-mails bijgewerkt",
             "statusEmailPreferenceUpdateError": "Kon voorkeur voor status e-mails niet bijwerken",

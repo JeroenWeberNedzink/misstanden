@@ -678,6 +678,8 @@ export default function CaseManagementDetail() {
               role: t('caseManagement.handler'),
               timestamp: comment?.createdAt ? fmtDateTime(comment.createdAt, i18n?.resolvedLanguage || i18n?.language) : '-',
               content: comment?.comment,
+              edited: Boolean(comment?.updatedAt && comment?.createdAt && comment.updatedAt !== comment.createdAt),
+              editedAt: comment?.updatedAt ? fmtDateTime(comment.updatedAt, i18n?.resolvedLanguage || i18n?.language) : null,
               attachments: attachmentsByNoteId[comment?.id] || [],
             }))
           );
@@ -875,6 +877,38 @@ export default function CaseManagementDetail() {
     } catch (err) {
       console.error('Error adding note:', err);
       showToast(t('caseManagement.noteAddFailed'));
+    }
+  };
+
+  const handleEditNote = async (noteId, noteContent) => {
+    const ticketId = getStoredTicketId();
+    if (!ticketId) return navigate('/handler-dashboard');
+
+    try {
+      const updated = await ticketService.updateComment(ticketId, noteId, noteContent);
+      const editedAt = updated?.updatedAt || new Date().toISOString();
+      setInvestigationNotes((prev) => (prev || []).map((note) => (
+        note?.id === noteId
+          ? {
+              ...note,
+              content: updated?.comment || String(noteContent).trim(),
+              edited: true,
+              editedAt: fmtDateTime(editedAt, i18n?.resolvedLanguage || i18n?.language),
+            }
+          : note
+      )));
+      pushAction({
+        actionType: 'note_edited',
+        action: t('caseManagementDetail.notes.editAction'),
+        description: String(noteContent).trim().slice(0, 160),
+        performedBy: user?.name || user?.email || t('caseManagement.handler'),
+      });
+      showToast(t('caseManagementDetail.toasts.noteUpdated'));
+      return updated;
+    } catch (err) {
+      console.error('Error updating note:', err);
+      showToast(err?.message || t('caseManagementDetail.toasts.noteUpdateFailed'));
+      throw err;
     }
   };
 
@@ -1272,6 +1306,7 @@ export default function CaseManagementDetail() {
               <InvestigationNotesPanel
                 notes={investigationNotes}
                 onAddNote={handleAddNote}
+                onEditNote={handleEditNote}
                 isLoading={isRelationsLoading}
                 attachmentsPolicy={attachmentPolicy}
                 onAttachmentValidationError={(message) => showToast(message)}

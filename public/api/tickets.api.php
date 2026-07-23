@@ -755,6 +755,8 @@ function ticket_server_base_url(): string {
     if ($configured !== '') return rtrim($configured, '/');
     $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
     if ($host === '') return '';
+    $hostname = strtolower((string)(parse_url('http://' . $host, PHP_URL_HOST) ?: ''));
+    if (in_array($hostname, ['localhost', '127.0.0.1', '::1'], true)) return '';
     $isHttps =
         (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
         || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
@@ -1108,6 +1110,17 @@ function ticket_notify_handlers_new_report_safe(array $ticket): array {
     }
 }
 
+function ticket_is_local_api_smoke_test(array $data): bool {
+    $remoteAddress = strtolower(trim((string)($_SERVER['REMOTE_ADDR'] ?? '')));
+    if (!in_array($remoteAddress, ['127.0.0.1', '::1'], true)) return false;
+
+    $metadata = is_array($data['metadata'] ?? null) ? $data['metadata'] : [];
+    return ($metadata['source'] ?? null) === 'api-backend-test'
+        && ($metadata['disposable'] ?? null) === true
+        && strtolower(trim((string)($data['location'] ?? ''))) === 'api smoke test'
+        && str_ends_with(strtolower(trim((string)($data['reporter_email'] ?? ''))), '@example.test');
+}
+
 function ticket_try_auto_assign_handler(string $ticketId, string $workflowType): ?array {
     $rows = sqlserver_query(
         "DECLARE @handler_id UNIQUEIDENTIFIER;
@@ -1230,7 +1243,9 @@ function handle_create(array $data): void {
         if (ticket_setting_bool_for_workflow($settings, $workflowType, ['tickets.auto_assign_enabled', 'workflow.auto_assign'], true)) {
             $assigned = ticket_try_auto_assign_handler((string)$payload['id'], $workflowType); if ($assigned) $row['handler_id'] = $assigned['id'] ?? null;
         }
-        ticket_notify_handlers_new_report_safe($row);
+        if (!ticket_is_local_api_smoke_test($data)) {
+            ticket_notify_handlers_new_report_safe($row);
+        }
         $row['reply_token'] = $replyToken; $row['reply_url_path'] = '/reply/' . rawurlencode($replyToken); $row['reply_expires_at'] = gmdate('Y-m-d\TH:i:s\Z', $replyExpiresAtTs);
         api_json(200, true, 'Ticket created', $row);
     } catch (Throwable $e) {
@@ -1435,6 +1450,82 @@ function handle_handler_add_comment(array $data): void {
         $actionLogErrorId = api_log_exception('tickets.api.add_comment.action_log', $e, ['action' => 'handler_add_comment', 'ticket_id' => $ticketId]);
     }
     api_json(200, true, 'Comment added', ['comment' => $commentRow, 'performed_by' => $performedBy, 'ticket' => $ticket, 'ticket_load_error_id' => $ticketLoadErrorId, 'action_log_error_id' => $actionLogErrorId]);
+}
+
+function handle_handler_update_comment(array $data): void {
+    $stage = 'start';
+    $ctx = ticket_require_active_handler_context(); $handler = $ctx['handler'];
+    $ticketId = trim((string)($data['ticket_id'] ?? ''));
+    $commentId = trim((string)($data['comment_id'] ?? ''));
+    $comment = trim((string)($data['comment'] ?? ''));
+    if (!ticket_is_uuid($ticketId)) api_json(400, false, 'ticket_id must be a valid UUID');
+    if (!ticket_is_uuid($commentId)) api_json(400, false, 'comment_id must be a valid UUID');
+    if ($comment === '') api_json(400, false, 'comment is required');
+    if (ticket_strlen($comment) > 4000) api_json(400, false, 'comment exceeds 4000 characters');
+    ticket_enforce_handler_mutation_rate_limit('update_comment', $handler, $ticketId);
+    $performedBy = trim((string)($handler['name'] ?? '')) ?: 'System';
+
+    try {
+        $stage = 'find_comment';
+        $existingRows = sqlserver_query(
+            'SELECT TOP 1 id FROM dbo.ticket_comments WHERE id = @comment_id AND ticket_id = @ticket_id',
+            ['comment_id' => $commentId, 'ticket_id' => $ticketId]
+        );
+        if (!$existingRows) api_json(404, false, 'Comment not found');
+
+        $stage = 'encrypt_comment';
+        $encryptedComment = ticket_crypto_encrypt_nullable($comment, null, false);
+        $stage = 'write_comment';
+        $results = sqlserver_run_commands([
+            sqlserver_command(
+                'nonquery',
+                'UPDATE dbo.ticket_comments
+                 SET [comment] = @comment, comment_encrypted = @comment_encrypted, updated_at = SYSUTCDATETIME()
+                 WHERE id = @comment_id AND ticket_id = @ticket_id',
+                [
+                    'comment_id' => $commentId,
+                    'ticket_id' => $ticketId,
+                    'comment' => TICKET_ENCRYPTED_PLACEHOLDER,
+                    'comment_encrypted' => $encryptedComment,
+                ]
+            ),
+            sqlserver_command(
+                'nonquery',
+                'UPDATE dbo.tickets SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id',
+                ['id' => $ticketId]
+            ),
+            sqlserver_command(
+                'query',
+                'SELECT TOP 1 * FROM dbo.ticket_comments WHERE id = @comment_id AND ticket_id = @ticket_id',
+                ['comment_id' => $commentId, 'ticket_id' => $ticketId]
+            ),
+        ], true);
+    } catch (Throwable $e) {
+        $errorId = api_log_exception('tickets.api.update_comment', $e, ['action' => 'handler_update_comment', 'ticket_id' => $ticketId, 'comment_id' => $commentId, 'stage' => $stage]);
+        api_json(500, false, 'Internal server error', ['error_id' => $errorId, 'action' => 'handler_update_comment', 'stage' => $stage]);
+    }
+
+    $commentRow = sqlserver_result_rows($results, 2)[0] ?? null;
+    if (is_array($commentRow)) $commentRow = ticket_crypto_decrypt_comment_row($commentRow);
+
+    $actionLogErrorId = null;
+    try {
+        $settings = ticket_load_system_settings();
+        ticket_insert_action([
+            'ticket_id' => $ticketId,
+            'action_type' => 'note_edited',
+            'action' => 'Note Edited',
+            'description' => 'Edited investigation note: ' . ticket_substr($comment, 0, 100) . '...',
+            'handler_id' => trim((string)($handler['id'] ?? '')) ?: null,
+            'handler_name' => $performedBy,
+            'handler_email' => trim((string)($handler['email'] ?? '')) ?: null,
+            'performed_by' => $performedBy,
+        ], $settings);
+    } catch (Throwable $e) {
+        $actionLogErrorId = api_log_exception('tickets.api.update_comment.action_log', $e, ['action' => 'handler_update_comment', 'ticket_id' => $ticketId, 'comment_id' => $commentId]);
+    }
+
+    api_json(200, true, 'Comment updated', ['comment' => $commentRow, 'performed_by' => $performedBy, 'action_log_error_id' => $actionLogErrorId]);
 }
 
 function handle_handler_add_message(array $data): void {
@@ -1696,6 +1787,7 @@ try {
         case 'message': handle_reporter_message($data); break;
         case 'handler_update_ticket': handle_handler_update_ticket($data); break;
         case 'handler_add_comment': handle_handler_add_comment($data); break;
+        case 'handler_update_comment': handle_handler_update_comment($data); break;
         case 'handler_add_message': handle_handler_add_message($data); break;
         case 'reporter_add_attachment': handle_reporter_add_attachment($data); break;
         case 'handler_add_attachment': handle_handler_add_attachment($data); break;

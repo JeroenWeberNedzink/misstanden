@@ -1184,9 +1184,13 @@
             "internalAttachments": "Interne Anhaenge",
             "internalOnly": "Nur intern",
             "internalOnlyDescription": "Nur fuer Bearbeiter sichtbar",
+            "editAction": "Untersuchungsnotiz bearbeitet",
+            "editLabel": "Untersuchungsnotiz bearbeiten",
+            "edited": "bearbeitet",
             "newNoteLabel": "Neue Notiz",
             "newNotePlaceholder": "Interne Untersuchungsnotiz hinzufuegen",
-            "none": "Noch keine Untersuchungsnotizen."
+            "none": "Noch keine Untersuchungsnotizen.",
+            "saving": "Speichern..."
         },
         "communication": {
             "anonymousNoDirect": "Hinweisgeber ist anonym. Direkte Nachrichten sind nicht verfuegbar.",
@@ -1326,6 +1330,8 @@
             "handlerAssigned": "Bearbeiter zugewiesen",
             "messageSentAction": "Nachricht gesendet",
             "noteAndAttachmentsSaved": "Notiz und Anhaenge gespeichert",
+            "noteUpdated": "Untersuchungsnotiz aktualisiert",
+            "noteUpdateFailed": "Untersuchungsnotiz konnte nicht aktualisiert werden",
             "statusChangedTo": "Status geaendert zu {{status}}",
             "statusEmailPreferenceUpdated": "E-Mail-Praferenz fuer Status wurde aktualisiert",
             "statusEmailPreferenceUpdateError": "E-Mail-Praferenz fuer Status konnte nicht aktualisiert werden",

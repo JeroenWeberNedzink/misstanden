@@ -1131,9 +1131,13 @@
             "internalAttachments": "Anexos internos",
             "internalOnly": "Somente interno",
             "internalOnlyDescription": "Visivel apenas para tratadores",
+            "editAction": "Nota de investigacao editada",
+            "editLabel": "Editar nota de investigacao",
+            "edited": "editada",
             "newNoteLabel": "Nova nota",
             "newNotePlaceholder": "Adicionar uma nota interna de investigacao",
-            "none": "Nenhuma nota de investigacao ainda."
+            "none": "Nenhuma nota de investigacao ainda.",
+            "saving": "Salvando..."
         },
         "communication": {
             "anonymousNoDirect": "O denunciante e anonimo. Mensagens diretas indisponiveis.",
@@ -1273,6 +1277,8 @@
             "handlerAssigned": "Tratador atribuido",
             "messageSentAction": "Mensagem enviada",
             "noteAndAttachmentsSaved": "Nota e anexos salvos",
+            "noteUpdated": "Nota de investigacao atualizada",
+            "noteUpdateFailed": "Nao foi possivel atualizar a nota de investigacao",
             "statusChangedTo": "Status alterado para {{status}}",
             "statusEmailPreferenceUpdated": "Preferencia de e-mails de status atualizada",
             "statusEmailPreferenceUpdateError": "Nao foi possivel atualizar a preferencia de e-mails de status",

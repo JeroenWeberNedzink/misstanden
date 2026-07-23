@@ -92,6 +92,8 @@ function ar_server_base_url(): string {
     if ($configured !== '') return rtrim($configured, '/');
     $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
     if ($host === '') return '';
+    $hostname = strtolower((string)(parse_url('http://' . $host, PHP_URL_HOST) ?: ''));
+    if (in_array($hostname, ['localhost', '127.0.0.1', '::1'], true)) return '';
     $isHttps = ((!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off') || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443) || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https');
     return ($isHttps ? 'https' : 'http') . '://' . $host;
 }
