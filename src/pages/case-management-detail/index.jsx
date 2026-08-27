@@ -405,7 +405,6 @@ export default function CaseManagementDetail() {
     return {
       id: fullTicket?.id,
       ticketNumber: fullTicket?.ticketNumber,
-      accessCode: fullTicket?.accessCode,
       status: statusLabel,          // display label
       statusLabel,
       statusCode: statusCodeValue,  // workflow status code

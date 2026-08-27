@@ -1091,6 +1091,9 @@
             "update": "Atualizar"
         },
         "header": {
+            "accessCodeHiddenFromHandlers": "oculto dos responsaveis",
+            "accessCodeProtected": "Codigo de acesso protegido",
+            "accessCodeProtectedExplanation": "O codigo de acesso pertence ao denunciante. Os responsaveis nao podem visualiza-lo por motivos de seguranca e privacidade.",
             "share": "Compartilhar",
             "guestLinkCreated": "Link de uso unico criado",
             "guestLinkFailed": "Nao foi possivel criar o link compartilhado",

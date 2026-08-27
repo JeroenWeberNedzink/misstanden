@@ -1144,6 +1144,9 @@
             "update": "Mettre a jour"
         },
         "header": {
+            "accessCodeHiddenFromHandlers": "masque aux gestionnaires",
+            "accessCodeProtected": "Code d acces protege",
+            "accessCodeProtectedExplanation": "Le code d acces appartient au declarant. Les gestionnaires ne peuvent pas le consulter pour des raisons de securite et de confidentialite.",
             "share": "Partager",
             "guestLinkCreated": "Lien a usage unique cree",
             "guestLinkFailed": "Impossible de creer le lien partage",

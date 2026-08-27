@@ -219,6 +219,10 @@ function runFeatureContractChecks() {
         && read('nz-startup.ps1').includes('Grant-IisModifyAccess $targetAttachmentDir $true')
         && read('nz-startup.ps1').includes('NZ_LOCAL_ENABLE_MUTATING_TESTS')
         && !read('nz-startup.ps1').includes('Grant-IisModifyAccess $targetUploadDir')],
+    ['case management explains protected reporter access codes',
+      read('src/pages/case-management-detail/components/CaseHeader.jsx').includes('caseManagementDetail.header.accessCodeProtected')
+        && read('src/pages/case-management-detail/components/CaseHeader.jsx').includes('caseManagementDetail.header.accessCodeHiddenFromHandlers')
+        && !read('src/pages/case-management-detail/components/CaseHeader.jsx').includes('caseData?.accessCode')],
   ];
 
   for (const [name, ok] of checks) {

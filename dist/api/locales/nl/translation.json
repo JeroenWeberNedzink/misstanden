@@ -1359,6 +1359,9 @@
             "update": "Bijwerken"
         },
         "header": {
+            "accessCodeHiddenFromHandlers": "niet zichtbaar voor behandelaars",
+            "accessCodeProtected": "Toegangscode afgeschermd",
+            "accessCodeProtectedExplanation": "De toegangscode is alleen voor de melder. Behandelaars kunnen deze om veiligheids- en privacyredenen niet bekijken.",
             "share": "Delen",
             "guestLinkCreated": "Eenmalige link aangemaakt",
             "guestLinkFailed": "Kon gedeelde link niet maken",

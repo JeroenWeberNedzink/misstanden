@@ -1283,6 +1283,9 @@
             "update": "Update"
         },
         "header": {
+            "accessCodeHiddenFromHandlers": "hidden from handlers",
+            "accessCodeProtected": "Access code protected",
+            "accessCodeProtectedExplanation": "The access code belongs to the reporter. Handlers cannot view it for security and privacy reasons.",
             "share": "Share",
             "guestLinkCreated": "One-time link created",
             "guestLinkFailed": "Failed to create shared link",

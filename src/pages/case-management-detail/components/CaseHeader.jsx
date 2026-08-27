@@ -67,8 +67,18 @@ const CaseHeader = ({
               </div>
 
               <div className="flex items-center gap-2">
-                <Icon name="Key" size={15} />
-                <span className="font-mono">{caseData?.accessCode}</span>
+                <Icon name="ShieldCheck" size={15} className="text-success" />
+                <div
+                  className="flex flex-wrap items-center gap-x-1.5"
+                  title={t('caseManagementDetail.header.accessCodeProtectedExplanation')}
+                >
+                  <span className="font-medium text-foreground">
+                    {t('caseManagementDetail.header.accessCodeProtected')}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    — {t('caseManagementDetail.header.accessCodeHiddenFromHandlers')}
+                  </span>
+                </div>
               </div>
             </div>
           </div>

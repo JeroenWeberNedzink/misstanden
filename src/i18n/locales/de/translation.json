@@ -1144,6 +1144,9 @@
             "update": "Aktualisieren"
         },
         "header": {
+            "accessCodeHiddenFromHandlers": "fuer Bearbeiter verborgen",
+            "accessCodeProtected": "Zugangscode geschuetzt",
+            "accessCodeProtectedExplanation": "Der Zugangscode gehoert dem Hinweisgeber. Bearbeiter koennen ihn aus Sicherheits- und Datenschutzgruenden nicht einsehen.",
             "share": "Teilen",
             "guestLinkCreated": "Einmaliger Link erstellt",
             "guestLinkFailed": "Freigabelink konnte nicht erstellt werden",
