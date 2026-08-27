@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import AnonymousNavHeader from '../components/navigation/AnonymousNavHeader';
 import Button from '../components/ui/Button';
+import { RichTextMessage } from '../utils/richTextMessage';
 import Icon from '../components/AppIcon';
 import { reporterReplyService } from '../services/reporterReplyService';
 import { toDateSafe } from '../utils/slaUtils';
@@ -184,7 +185,7 @@ export default function ReporterReplyPage() {
                             {formatDate(msg?.created_at, locale)}
                           </span>
                         </div>
-                        <p className="whitespace-pre-wrap text-foreground">{msg?.body || '-'}</p>
+                        <RichTextMessage value={msg?.body || '-'} className="text-foreground" />
                       </div>
                     );
                   })}

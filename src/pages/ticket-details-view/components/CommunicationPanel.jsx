@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
 import { toDateSafe } from '../../../utils/slaUtils';
+import { RichTextMessage } from '../../../utils/richTextMessage';
 
 const CommunicationPanel = ({ initialMessages = [], onSendMessage }) => {
   const { t, i18n } = useTranslation();
@@ -141,9 +142,10 @@ const CommunicationPanel = ({ initialMessages = [], onSendMessage }) => {
                           : 'bg-muted/50 border border-border rounded-tl-sm'
                       }`}
                     >
-                      <p className={`text-sm leading-relaxed whitespace-pre-wrap ${isReporter ? 'text-primary-foreground' : 'text-foreground'}`}>
-                        {msg.message}
-                      </p>
+                      <RichTextMessage
+                        value={msg.message}
+                        className={`text-sm leading-relaxed ${isReporter ? 'text-primary-foreground' : 'text-foreground'}`}
+                      />
 
                       {msg.sending && (
                         <div className="flex items-center gap-2 mt-2 pt-2 border-t border-primary-foreground/20">

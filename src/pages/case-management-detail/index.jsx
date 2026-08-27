@@ -23,6 +23,7 @@ import { addHours, getFirstResponseAt, getFirstResponseHoursForTicket, toDateSaf
 import { useSettings } from '../../contexts/SettingsContext';
 import { buildAttachmentPolicy, validateAttachmentSelection } from '../../utils/attachmentPolicy';
 import { normalizeHandlerRecord } from '../../services/utils/handlerNormalization';
+import { richTextMessageToPlainText } from '../../utils/richTextMessage';
 
 const fmtDateTime = (value, locale) => {
   if (!value) return '-';
@@ -964,7 +965,7 @@ export default function CaseManagementDetail() {
       pushAction({
         actionType: 'message_sent',
         action: t('caseManagementDetail.toasts.messageSentAction'),
-        description: String(messageContent).slice(0, 160),
+        description: richTextMessageToPlainText(messageContent).slice(0, 160),
         performedBy: user?.name || user?.email || t('caseManagement.handler'),
       });
 

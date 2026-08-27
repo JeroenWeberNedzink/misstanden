@@ -425,6 +425,47 @@ function ticket_reply_token_expiry_iso(): string { return gmdate('Y-m-d\TH:i:s\Z
 function ticket_reply_token_expiry_sql(): string { return ticket_sql_utc_datetime(ticket_reply_token_expiry_timestamp()); }
 function ticket_handler_message_visible_at(bool $isInternal, string $sender): string { return ticket_sql_utc_datetime(($isInternal || $sender !== 'handler') ? time() : time() + random_int(HANDLER_REPLY_DELAY_MIN_SECONDS, HANDLER_REPLY_DELAY_MAX_SECONDS)); }
 
+function ticket_normalize_handler_message_body(string $body): array {
+    $prefix = 'NZRT1:';
+    $trimmed = trim($body);
+    if (strpos($trimmed, $prefix) !== 0) return ['body' => $trimmed, 'plain' => $trimmed];
+
+    $blocks = json_decode(substr($trimmed, strlen($prefix)), true);
+    if (!is_array($blocks) || !array_is_list($blocks) || count($blocks) > 100) api_json(400, false, 'Invalid rich-text message');
+
+    $plainBlocks = [];
+    foreach ($blocks as $block) {
+        if (!is_array($block) || !array_is_list($block) || count($block) !== 2 || !isset($block[0]) || !is_string($block[0]) || !is_array($block[1])) {
+            api_json(400, false, 'Invalid rich-text message');
+        }
+        $type = $block[0];
+        if (!in_array($type, ['p', 'ul', 'ol'], true)) api_json(400, false, 'Invalid rich-text message');
+        $items = $type === 'p' ? [$block[1]] : $block[1];
+        if (!array_is_list($items) || count($items) > 100) api_json(400, false, 'Invalid rich-text message');
+
+        $plainItems = [];
+        foreach ($items as $runs) {
+            if (!is_array($runs) || !array_is_list($runs) || count($runs) > 500) api_json(400, false, 'Invalid rich-text message');
+            $plainItem = '';
+            foreach ($runs as $run) {
+                if (!is_array($run) || !array_is_list($run) || count($run) !== 2 || !array_key_exists(0, $run) || !is_string($run[0]) || !array_key_exists(1, $run) || !is_int($run[1]) || $run[1] < 0 || $run[1] > 7) {
+                    api_json(400, false, 'Invalid rich-text message');
+                }
+                $plainItem .= $run[0];
+            }
+            $plainItems[] = $plainItem;
+        }
+        $plainBlocks[] = implode("\n", $plainItems);
+    }
+
+    $plain = trim(implode("\n", $plainBlocks));
+    $canonical = $prefix . json_encode($blocks, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($plain === '') api_json(400, false, 'body is required');
+    if (ticket_strlen($plain) > 4000) api_json(400, false, 'body exceeds 4000 characters');
+    if (ticket_strlen($canonical) > 65536) api_json(400, false, 'Rich-text message is too complex');
+    return ['body' => $canonical, 'plain' => $plain];
+}
+
 function ticket_download_url(?string $raw): ?string {
     $value = trim((string)$raw);
     if ($value === '' || preg_match('#^https?://#i', $value) === 1) return $value !== '' ? $value : null;
@@ -1621,7 +1662,9 @@ function handle_handler_add_message(array $data): void {
     $ticketId = trim((string)($data['ticket_id'] ?? '')); if (!ticket_is_uuid($ticketId)) api_json(400, false, 'ticket_id must be a valid UUID');
     ticket_enforce_handler_mutation_rate_limit('add_message', $handler, $ticketId);
     $sender = strtolower(trim((string)($data['sender'] ?? 'handler'))); $body = trim((string)($data['body'] ?? ''));
-    if ($sender === '') api_json(400, false, 'sender is required'); if ($body === '') api_json(400, false, 'body is required'); if (ticket_strlen($body) > 4000) api_json(400, false, 'body exceeds 4000 characters');
+    if ($sender === '') api_json(400, false, 'sender is required');
+    $normalizedBody = ticket_normalize_handler_message_body($body); $body = $normalizedBody['body']; $plainBody = $normalizedBody['plain'];
+    if ($body === '') api_json(400, false, 'body is required'); if (ticket_strlen($plainBody) > 4000) api_json(400, false, 'body exceeds 4000 characters');
     $isInternal = !empty($data['is_internal']); $publicName = ($sender === 'handler' && !empty($data['disclose_handler_identity'])) ? (trim((string)($handler['name'] ?? '')) ?: 'System') : null;
     $performedBy = trim((string)($handler['name'] ?? '')) ?: 'System';
     $messageId = ticket_uuid4();
@@ -1652,7 +1695,7 @@ function handle_handler_add_message(array $data): void {
         'ticket_id' => $ticketId,
         'action_type' => 'message_sent',
         'action' => 'Message Sent',
-        'description' => 'Sent message: ' . ticket_substr($body, 0, 100) . '...',
+        'description' => 'Sent message: ' . ticket_substr($plainBody, 0, 100) . '...',
         'handler_id' => trim((string)($handler['id'] ?? '')) ?: null,
         'handler_name' => $performedBy,
         'handler_email' => trim((string)($handler['email'] ?? '')) ?: null,

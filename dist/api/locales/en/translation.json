@@ -1358,6 +1358,13 @@
             "nameVisibleToReporter": "Name visible",
             "messageLabel": "Message",
             "messagePlaceholder": "Type your message",
+            "richText": {
+                "bold": "Bold",
+                "italic": "Italic",
+                "underline": "Underline",
+                "bulletList": "Bulleted list",
+                "numberedList": "Numbered list"
+            },
             "noContact": "No contact information",
             "read": "Read",
             "replyPrompt": "Reply to keep the reporter informed.",

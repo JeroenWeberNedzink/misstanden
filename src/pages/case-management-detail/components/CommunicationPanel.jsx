@@ -2,7 +2,8 @@ import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
-import Input from '../../../components/ui/Input';
+import RichTextEditor from '../../../components/ui/RichTextEditor';
+import { RichTextMessage, richTextMessageToPlainText } from '../../../utils/richTextMessage';
 import TimelinePendingItem from './TimelinePendingItem';
 
 const CommunicationPanel = ({ messages, canContact, onSendMessage, isLoading = false }) => {
@@ -23,7 +24,7 @@ const CommunicationPanel = ({ messages, canContact, onSendMessage, isLoading = f
   }, [safeMessages.length, isComposing]);
 
   const handleSendMessage = async () => {
-    if (messageText?.trim() && !submitInFlightRef.current) {
+    if (richTextMessageToPlainText(messageText).trim() && !submitInFlightRef.current) {
       try {
         submitInFlightRef.current = true;
         setIsSubmitting(true);
@@ -180,7 +181,7 @@ const CommunicationPanel = ({ messages, canContact, onSendMessage, isLoading = f
                               : 'bg-background/70 text-foreground border-border rounded-tl-md',
                           ].join(' ')}
                         >
-                          <p className="text-sm leading-snug whitespace-pre-wrap break-words">{message?.content}</p>
+                          <RichTextMessage value={message?.content} className="text-sm leading-snug" />
 
                           {isHandler && message?.read && (
                             <div className="mt-1.5 flex items-center justify-end gap-1 text-[10px] opacity-90">
@@ -199,13 +200,12 @@ const CommunicationPanel = ({ messages, canContact, onSendMessage, isLoading = f
             <div className="border-t border-border bg-background/50 px-3 py-3">
               {isComposing ? (
                 <div className="space-y-2">
-                  <Input
+                  <RichTextEditor
                     label={t('caseManagementDetail.communication.messageLabel')}
-                    type="text"
                     placeholder={t('caseManagementDetail.communication.messagePlaceholder')}
                     value={messageText}
-                    onChange={(e) => setMessageText(e?.target?.value)}
-                    description=""
+                    onChange={setMessageText}
+                    disabled={isSubmitting}
                   />
                   <label
                     className={[
@@ -245,7 +245,7 @@ const CommunicationPanel = ({ messages, canContact, onSendMessage, isLoading = f
                       iconName={isSubmitting ? 'Loader' : 'Send'}
                       iconPosition="left"
                       onClick={handleSendMessage}
-                      disabled={isSubmitting || !messageText?.trim()}
+                      disabled={isSubmitting || !richTextMessageToPlainText(messageText).trim()}
                     >
                       {isSubmitting ? t('caseManagementDetail.communication.sending') : t('caseManagementDetail.common.send')}
                     </Button>

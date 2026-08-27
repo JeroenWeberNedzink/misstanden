@@ -1166,6 +1166,13 @@
             "nameVisibleToReporter": "Nome visivel",
             "messageLabel": "Mensagem",
             "messagePlaceholder": "Digite sua mensagem",
+            "richText": {
+                "bold": "Negrito",
+                "italic": "Italico",
+                "underline": "Sublinhado",
+                "bulletList": "Lista com marcadores",
+                "numberedList": "Lista numerada"
+            },
             "noContact": "Sem informacoes de contato",
             "read": "Lida",
             "replyPrompt": "Responda para manter o denunciante informado.",

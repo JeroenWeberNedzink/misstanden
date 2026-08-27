@@ -4,6 +4,7 @@ import AnonymousNavHeader from '../components/navigation/AnonymousNavHeader';
 import Icon from '../components/AppIcon';
 import { guestAccessService } from '../services/guestAccessService';
 import { toDateSafe } from '../utils/slaUtils';
+import { RichTextMessage } from '../utils/richTextMessage';
 
 const fmt = (value) => {
   if (!value) return '-';
@@ -116,7 +117,7 @@ export default function GuestTicketViewPage() {
                         <span className="font-medium">{msg?.sender || 'unknown'}</span>
                         <span className="text-xs text-muted-foreground">{fmt(msg?.created_at)}</span>
                       </div>
-                      <div className="whitespace-pre-wrap">{msg?.body || '-'}</div>
+                      <RichTextMessage value={msg?.body || '-'} />
                     </div>
                   ))}
                 </div>

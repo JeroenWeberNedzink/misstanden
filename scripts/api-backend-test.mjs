@@ -174,7 +174,11 @@ function runFeatureContractChecks() {
         && read('src/pages/case-management-detail/index.jsx').includes("createPendingId('pending-message')")],
     ['duplicate note and message submission prevented',
       read('src/pages/case-management-detail/components/InvestigationNotesPanel.jsx').includes('isSubmitting || !newNote?.trim()')
-        && read('src/pages/case-management-detail/components/CommunicationPanel.jsx').includes('isSubmitting || !messageText?.trim()')],
+        && read('src/pages/case-management-detail/components/CommunicationPanel.jsx').includes('isSubmitting || !richTextMessageToPlainText(messageText).trim()')],
+    ['rich-text messages use a validated structure instead of raw HTML',
+      read('public/api/tickets.api.php').includes('ticket_normalize_handler_message_body($body)')
+        && read('src/utils/richTextMessage.jsx').includes("RICH_TEXT_MESSAGE_PREFIX = 'NZRT1:'")
+        && !read('src/utils/richTextMessage.jsx').includes('dangerouslySetInnerHTML')],
     ['pending state removed on mutation failure',
       read('src/pages/case-management-detail/index.jsx').includes('filter((note) => note?.id !== pendingId)')
         && read('src/pages/case-management-detail/index.jsx').includes('filter((message) => message?.id !== pendingId)')],

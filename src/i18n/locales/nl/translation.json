@@ -1434,6 +1434,13 @@
             "nameVisibleToReporter": "Naam zichtbaar",
             "messageLabel": "Bericht",
             "messagePlaceholder": "Typ je bericht",
+            "richText": {
+                "bold": "Vet",
+                "italic": "Cursief",
+                "underline": "Onderstrepen",
+                "bulletList": "Opsomming",
+                "numberedList": "Genummerde lijst"
+            },
             "noContact": "Geen contactinformatie",
             "read": "Gelezen",
             "replyPrompt": "Reageer om de melder op de hoogte te houden.",

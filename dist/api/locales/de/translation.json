@@ -1219,6 +1219,13 @@
             "nameVisibleToReporter": "Name sichtbar",
             "messageLabel": "Nachricht",
             "messagePlaceholder": "Nachricht eingeben",
+            "richText": {
+                "bold": "Fett",
+                "italic": "Kursiv",
+                "underline": "Unterstrichen",
+                "bulletList": "Aufzaehlung",
+                "numberedList": "Nummerierte Liste"
+            },
             "noContact": "Keine Kontaktinformationen",
             "read": "Gelesen",
             "replyPrompt": "Antworten Sie, damit der Hinweisgeber informiert bleibt.",

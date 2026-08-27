@@ -1219,6 +1219,13 @@
             "nameVisibleToReporter": "Nom visible",
             "messageLabel": "Message",
             "messagePlaceholder": "Saisissez votre message",
+            "richText": {
+                "bold": "Gras",
+                "italic": "Italique",
+                "underline": "Souligne",
+                "bulletList": "Liste a puces",
+                "numberedList": "Liste numerotee"
+            },
             "noContact": "Aucune information de contact",
             "read": "Lu",
             "replyPrompt": "Repondez pour tenir le declarant informe.",

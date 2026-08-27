@@ -6,6 +6,7 @@ import { permissionService } from './permissionService';
 import { isReceiptConfirmationStatus, toDateSafe } from '../utils/slaUtils';
 import { normalizeHandlerRecord, normalizeHandlerRecords, normalizePermissions } from './utils/handlerNormalization';
 import { getSharedTokenProvider } from '../lib/serviceTokenProvider';
+import { richTextMessageToPlainText } from '../utils/richTextMessage';
 
 // -----------------------------
 // Case conversion helpers
@@ -1972,7 +1973,7 @@ async deleteHandler(handlerId, options = {}) {
       notificationService.notifyMessage(
         ticket,
         sender,
-        trimmedBody,
+        richTextMessageToPlainText(trimmedBody),
         isInternal,
         {
           discloseHandlerIdentity,
