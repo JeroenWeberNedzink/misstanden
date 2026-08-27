@@ -440,7 +440,9 @@ function Invoke-LocalDeploy($rootDir) {
         Invoke-RobocopyChecked $distDir $deployTarget $existingRootFiles @('/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
     }
 
-    $runtimeRootFiles = @('.env', '.env.local', 'cacert.pem')
+    # Production environment files are server-owned secrets and must never be
+    # overwritten by a deployment from a developer workstation.
+    $runtimeRootFiles = @('cacert.pem')
     $existingRuntimeFiles = @()
     foreach ($file in $runtimeRootFiles) {
         if (Test-Path (Join-Path $rootDir $file)) {
@@ -448,10 +450,10 @@ function Invoke-LocalDeploy($rootDir) {
         }
     }
     if ($existingRuntimeFiles.Count -gt 0) {
-        Info "Deploying runtime environment files"
+        Info "Deploying non-secret runtime support files"
         Invoke-RobocopyChecked $rootDir $deployTarget $existingRuntimeFiles @('/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
     } else {
-        Warn "No runtime runtime/support files found to deploy (.env / .env.local / cacert.pem)"
+        Warn "No non-secret runtime support files found to deploy (cacert.pem)"
     }
 
     if (Test-Path $distAssetsDir) {

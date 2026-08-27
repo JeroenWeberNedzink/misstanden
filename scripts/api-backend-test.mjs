@@ -212,6 +212,7 @@ function runFeatureContractChecks() {
     ['IIS deploy preserves server-owned keys and uploads',
       read('nz-startup.ps1').includes("Invoke-RobocopyChecked $privateDir $targetPrivateDir @('web.config')")
         && !read('nz-startup.ps1').includes("Invoke-RobocopyChecked $privateDir $targetPrivateDir @('*') @('/MIR'")
+        && !read('nz-startup.ps1').includes("@('.env', '.env.local', 'cacert.pem')")
         && read('nz-startup.ps1').includes('Grant-IisModifyAccess $targetUploadDir')],
   ];
 
