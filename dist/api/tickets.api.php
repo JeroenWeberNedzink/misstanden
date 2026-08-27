@@ -1717,6 +1717,56 @@ function handle_handler_add_message(array $data): void {
     api_json(200, true, 'Message added', ['message' => $messageRow, 'performed_by' => $performedBy, 'public_handler_name' => $publicName, 'ticket' => $ticket]);
 }
 
+function handle_handler_reset_access_code(array $data): void {
+    api_apply_no_store_headers();
+    $ctx = ticket_require_active_handler_context(); $handler = $ctx['handler'];
+    $ticketId = trim((string)($data['ticket_id'] ?? ''));
+    $reason = trim((string)($data['reason'] ?? ''));
+    if (!ticket_is_uuid($ticketId)) api_json(400, false, 'ticket_id must be a valid UUID');
+    if (ticket_strlen($reason) < 10 || ticket_strlen($reason) > 500) api_json(400, false, 'reason must be between 10 and 500 characters');
+    ticket_enforce_handler_mutation_rate_limit('reset_access_code', $handler, $ticketId);
+    $ticket = ticket_require_handler_ticket_access($handler, $ticketId);
+
+    $currentRows = sqlserver_query('SELECT TOP 1 access_code, access_code_hash FROM dbo.tickets WHERE id = @ticket_id', ['ticket_id' => $ticketId]);
+    $currentAccessCode = trim((string)($currentRows[0]['access_code'] ?? ''));
+    $currentAccessCodeHash = trim((string)($currentRows[0]['access_code_hash'] ?? ''));
+    do {
+        $accessCode = ticket_generate_access_code();
+        $accessCodeHash = portal_token_hash('ticket-access-code', $accessCode);
+    } while ($accessCode === $currentAccessCode || ($currentAccessCodeHash !== '' && hash_equals($currentAccessCodeHash, $accessCodeHash)));
+    $performedBy = trim((string)($handler['name'] ?? '')) ?: 'System';
+    $settings = ticket_load_system_settings();
+    $settings['compliance.audit_log_enabled'] = true;
+    $actionCommand = ticket_action_command([
+        'ticket_id' => $ticketId,
+        'action_type' => 'access_code_reset',
+        'action' => 'Reporter Access Code Reset',
+        'description' => 'A replacement reporter access code was generated. Reason: ' . $reason,
+        'handler_id' => trim((string)($handler['id'] ?? '')) ?: null,
+        'handler_name' => $performedBy,
+        'handler_email' => trim((string)($handler['email'] ?? '')) ?: null,
+        'performed_by' => $performedBy,
+    ], $settings);
+    if (!$actionCommand) throw new RuntimeException('Mandatory access-code audit action could not be created');
+
+    sqlserver_run_commands([
+        sqlserver_command(
+            'nonquery',
+            'UPDATE dbo.tickets
+             SET access_code = NULL, access_code_hash = @access_code_hash, updated_at = SYSUTCDATETIME(), last_update_at = SYSUTCDATETIME()
+             WHERE id = @ticket_id',
+            ['ticket_id' => $ticketId, 'access_code_hash' => $accessCodeHash]
+        ),
+        $actionCommand,
+    ], true);
+
+    api_json(200, true, 'Replacement access code generated', [
+        'access_code' => $accessCode,
+        'ticket_number' => $ticket['ticket_number'] ?? null,
+        'old_code_invalidated' => true,
+    ]);
+}
+
 function handle_reporter_add_attachment(array $data): void {
     api_apply_no_store_headers(); $settings = ticket_load_system_settings();
     $ticketInput = (string)($data['ticket_input'] ?? $data['ticket_number'] ?? $data['ticket_id'] ?? ''); $accessCode = normalize_access_code($data['access_code'] ?? '');
@@ -1937,6 +1987,7 @@ try {
         case 'handler_add_comment': handle_handler_add_comment($data); break;
         case 'handler_update_comment': handle_handler_update_comment($data); break;
         case 'handler_add_message': handle_handler_add_message($data); break;
+        case 'handler_reset_access_code': handle_handler_reset_access_code($data); break;
         case 'reporter_add_attachment': handle_reporter_add_attachment($data); break;
         case 'handler_add_attachment': handle_handler_add_attachment($data); break;
         case 'handler_log_action': handle_handler_log_action($data); break;

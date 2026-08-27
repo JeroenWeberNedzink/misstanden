@@ -1160,6 +1160,27 @@ export default function CaseManagementDetail() {
     }
   };
 
+  const handleRecoverAccessCode = async (reason) => {
+    const ticketId = getStoredTicketId();
+    if (!ticketId) return navigate('/handler-dashboard');
+
+    try {
+      const result = await ticketService.resetReporterAccessCode(ticketId, reason);
+      pushAction({
+        actionType: 'access_code_reset',
+        action: t('caseManagementDetail.accessCodeRecovery.actionTitle'),
+        description: t('caseManagementDetail.accessCodeRecovery.actionDescription', { reason }),
+        performedBy: user?.name || user?.email || t('caseManagement.handler'),
+      });
+      showToast(t('caseManagementDetail.accessCodeRecovery.generatedToast'));
+      return result;
+    } catch (err) {
+      console.error('Error generating replacement access code:', err);
+      showToast(err?.message || t('caseManagementDetail.accessCodeRecovery.failed'));
+      throw err;
+    }
+  };
+
   const handlePriorityChange = async (newPriority) => {
     const newSeverityCode = String(newPriority || '').toLowerCase();
     if (!newSeverityCode) return;
@@ -1308,6 +1329,7 @@ export default function CaseManagementDetail() {
             generatingReport={generatingReport}
             onShare={handleCreateGuestAccess}
             sharing={creatingGuestAccess}
+            onRecoverAccessCode={handleRecoverAccessCode}
           />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4 lg:gap-5 mt-3 md:mt-4 lg:mt-5">

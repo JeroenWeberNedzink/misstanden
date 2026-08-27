@@ -227,6 +227,12 @@ function runFeatureContractChecks() {
       read('src/pages/case-management-detail/components/CaseHeader.jsx').includes('caseManagementDetail.header.accessCodeProtected')
         && read('src/pages/case-management-detail/components/CaseHeader.jsx').includes('caseManagementDetail.header.accessCodeHiddenFromHandlers')
         && !read('src/pages/case-management-detail/components/CaseHeader.jsx').includes('caseData?.accessCode')],
+    ['lost reporter access codes are rotated once and mandatorily audited',
+      read('public/api/tickets.api.php').includes('handle_handler_reset_access_code')
+        && read('public/api/tickets.api.php').includes("'action_type' => 'access_code_reset'")
+        && read('public/api/tickets.api.php').includes("$settings['compliance.audit_log_enabled'] = true")
+        && read('public/api/tickets.api.php').includes('SET access_code = NULL, access_code_hash = @access_code_hash')
+        && read('src/pages/case-management-detail/components/AccessCodeRecoveryModal.jsx').includes('oneTimeNotice')],
   ];
 
   for (const [name, ok] of checks) {
@@ -507,6 +513,12 @@ async function runProtectedContractSmoke() {
     });
     await request('POST unauthorized attachment delete rejected', 'files.api.php', {
       method: 'POST', body: { action: 'delete', attachment_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, expectedStatuses: [401], expectSuccess: false,
+    });
+    await request('POST unauthorized access-code reset rejected', 'tickets.api.php', {
+      method: 'POST',
+      body: { action: 'handler_reset_access_code', ticket_id: '11111111-1111-4111-8111-111111111111', reason: 'Unauthorized recovery attempt' },
+      expectedStatuses: [401],
+      expectSuccess: false,
     });
   }
 }

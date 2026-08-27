@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import StatusFlowBar from './StatusFlowBar';
+import AccessCodeRecoveryModal from './AccessCodeRecoveryModal';
 
 const CaseHeader = ({
   caseData,
@@ -14,8 +15,10 @@ const CaseHeader = ({
   generatingReport = false,
   onShare,
   sharing = false,
+  onRecoverAccessCode,
 }) => {
   const { t } = useTranslation();
+  const [showAccessCodeRecovery, setShowAccessCodeRecovery] = useState(false);
 
   const getPriorityStyles = (priorityCode) => {
     const map = {
@@ -69,7 +72,7 @@ const CaseHeader = ({
               <div className="flex items-center gap-2">
                 <Icon name="ShieldCheck" size={15} className="text-success" />
                 <div
-                  className="flex flex-wrap items-center gap-x-1.5"
+                  className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5"
                   title={t('caseManagementDetail.header.accessCodeProtectedExplanation')}
                 >
                   <span className="font-medium text-foreground">
@@ -78,6 +81,15 @@ const CaseHeader = ({
                   <span className="text-xs text-muted-foreground">
                     — {t('caseManagementDetail.header.accessCodeHiddenFromHandlers')}
                   </span>
+                  {onRecoverAccessCode && (
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-accent underline underline-offset-2 hover:text-accent/80"
+                      onClick={() => setShowAccessCodeRecovery(true)}
+                    >
+                      {t('caseManagementDetail.header.recoverAccessCode')}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -121,6 +133,12 @@ const CaseHeader = ({
           isUpdating={isStatusUpdating}
         />
       </div>
+
+      <AccessCodeRecoveryModal
+        isOpen={showAccessCodeRecovery}
+        onClose={() => setShowAccessCodeRecovery(false)}
+        onGenerate={onRecoverAccessCode}
+      />
     </div>
   );
 };

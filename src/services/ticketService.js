@@ -1985,6 +1985,27 @@ async deleteHandler(handlerId, options = {}) {
     return result;
   },
 
+  async resetReporterAccessCode(ticketId, reason) {
+    if (!ticketId) throw new Error('ticketId is required');
+    const trimmedReason = String(reason || '').trim();
+    if (trimmedReason.length < 10) throw new Error('A recovery reason of at least 10 characters is required');
+
+    const apiData = await ticketApiPost(
+      {
+        action: 'handler_reset_access_code',
+        ticket_id: ticketId,
+        reason: trimmedReason,
+      },
+      { requireAuth: true }
+    );
+
+    return {
+      accessCode: String(apiData?.access_code || ''),
+      ticketNumber: apiData?.ticket_number || null,
+      oldCodeInvalidated: apiData?.old_code_invalidated === true,
+    };
+  },
+
   // ----- Lookups -----
   async getAllHandlers(options = {}) {
     const includeInactive = options.includeInactive !== undefined
