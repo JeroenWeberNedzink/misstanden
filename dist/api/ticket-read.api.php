@@ -54,8 +54,15 @@ function ticket_read_ticket(array $row): array {
     $ticket['email_notify'] = isset($row['email_notify']) ? (bool)$row['email_notify'] : false;
     $ticket['status_email_notify'] = isset($row['status_email_notify']) ? (bool)$row['status_email_notify'] : true;
     $ticket['is_anonymous'] = isset($row['is_anonymous']) ? (bool)$row['is_anonymous'] : false;
+    if ($ticket['is_anonymous']) {
+        $ticket['reporter_name'] = null;
+        $ticket['reporter_phone'] = null;
+        $ticket['reporter_email'] = null;
+        if (is_array($ticket['metadata'] ?? null)) unset($ticket['metadata']['reporter_meta_client'], $ticket['metadata']['reporterMetaClient']);
+    }
     $ticket['handlers'] = ticket_read_handler($row);
     unset(
+        $ticket['access_code'],
         $ticket['handler_name'],
         $ticket['handler_email'],
         $ticket['handler_roles'],

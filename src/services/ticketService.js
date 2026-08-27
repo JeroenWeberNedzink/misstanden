@@ -1896,10 +1896,8 @@ async deleteHandler(handlerId, options = {}) {
 
     const result = toCamelCase(apiData?.comment || apiData);
     const performedBy = String(apiData?.performed_by || authorName || 'System');
-    let ticket = toCamelCase(apiData?.ticket || null);
+    const ticket = toCamelCase(apiData?.ticket || null);
     if (ticket) {
-      const runtimeSettings = await getTicketRuntimeSettings(ticket?.workflowType || ticket?.workflow_type);
-      ticket = applyTicketRuntimePolicies(ticket, runtimeSettings);
       const isInternal = true;
       notificationService.notifyComment(
         ticket,
@@ -1957,10 +1955,8 @@ async deleteHandler(handlerId, options = {}) {
       (isHandlerSender && discloseHandlerIdentity
         ? (apiData?.public_handler_name || null)
         : null);
-    let ticket = toCamelCase(apiData?.ticket || null);
+    const ticket = toCamelCase(apiData?.ticket || null);
     if (ticket) {
-      const runtimeSettings = await getTicketRuntimeSettings(ticket?.workflowType || ticket?.workflow_type);
-      ticket = applyTicketRuntimePolicies(ticket, runtimeSettings);
       notificationService.notifyMessage(
         ticket,
         sender,

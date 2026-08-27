@@ -21,6 +21,7 @@ function newRow(workflowId) {
     isFirstResponse: false,
     nextCodes: [],
     expectedDurationDays: null,
+    automaticReply: '',
     _isNew: true,
     _isDeleted: false,
   };
@@ -57,6 +58,7 @@ function normalizeStatusRow(row = {}) {
     isFirstResponse: !!row?.isFirstResponse,
     nextCodes: Array.isArray(row?.nextCodes) ? row.nextCodes.map((code) => String(code ?? '')) : [],
     expectedDurationDays: Number.isFinite(expectedDurationDays) ? expectedDurationDays : null,
+    automaticReply: String(row?.automaticReply ?? ''),
     _isNew: !!row?._isNew,
     _isDeleted: !!row?._isDeleted,
   };
@@ -150,6 +152,7 @@ function mapStatusRowFromApi(status = {}) {
       (status.expected_duration_days ?? status.expectedDurationDays) === ''
         ? null
         : Number(status.expected_duration_days ?? status.expectedDurationDays),
+    automaticReply: status.automatic_reply ?? status.automaticReply ?? '',
     _isNew: false,
     _isDeleted: false,
   });
@@ -522,8 +525,9 @@ export default function EditWorkflowStatusesModal({
         sort_order: Number(r.sortOrder ?? 0),
         is_terminal: !!r.isTerminal,
         is_first_response: !!r.isFirstResponse,
-        next_codes: index < activeRows.length - 1 ? [safeTrim(activeRows[index + 1]?.code)].filter(Boolean) : [],
+        next_codes: Array.isArray(r.nextCodes) ? r.nextCodes.map(safeTrim).filter(Boolean) : [],
         expected_duration_days: r.expectedDurationDays ? Number(r.expectedDurationDays) : null,
+        automatic_reply: safeTrim(r.automaticReply) || null,
         contact_person_name: null,
         contact_person_email: null,
         contact_person_phone: null,
@@ -873,6 +877,52 @@ export default function EditWorkflowStatusesModal({
                                 onChange={(e) => patchRow(selected.id, { description: e.target.value })}
                                 disabled={saving}
                               />
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-sm font-medium text-foreground">
+                                Automatische reactie aan de melder
+                              </label>
+                              <textarea
+                                rows={5}
+                                value={selected.automaticReply}
+                                onChange={(e) => patchRow(selected.id, { automaticReply: e.target.value })}
+                                disabled={saving}
+                                className="mt-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                                placeholder="Geen automatische reactie voor deze stap"
+                              />
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Wordt eenmaal als zichtbaar dossierbericht geplaatst wanneer de melding naar deze stap gaat.
+                              </p>
+                            </div>
+                            <div className="md:col-span-2 rounded-xl border border-border bg-muted/10 p-3">
+                              <div className="text-sm font-medium text-foreground">Mogelijke volgende stappen</div>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Selecteer meerdere opties als de workflow hier vertakt.
+                              </p>
+                              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {activeRows
+                                  .filter((candidate) => candidate.id !== selected.id)
+                                  .map((candidate) => {
+                                    const checked = selected.nextCodes.includes(candidate.code);
+                                    return (
+                                      <label key={candidate.id} className="flex items-center gap-2 text-sm text-foreground">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={(e) => {
+                                            const nextCodes = e.target.checked
+                                              ? [...selected.nextCodes, candidate.code]
+                                              : selected.nextCodes.filter((code) => code !== candidate.code);
+                                            patchRow(selected.id, { nextCodes });
+                                          }}
+                                          disabled={saving}
+                                        />
+                                        <span>{candidate.label}</span>
+                                        <span className="font-mono text-xs text-muted-foreground">{candidate.code}</span>
+                                      </label>
+                                    );
+                                  })}
+                              </div>
                             </div>
                           </div>
                         )}

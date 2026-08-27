@@ -4,6 +4,7 @@ import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
 import { validateAttachmentSelection } from '../../../utils/attachmentPolicy';
+import TimelinePendingItem from './TimelinePendingItem';
 
 const initialsFromName = (name) => {
   const safe = String(name || '').trim();
@@ -29,14 +30,25 @@ const InvestigationNotesPanel = ({
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editNote, setEditNote] = useState('');
   const [savingNoteId, setSavingNoteId] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef(null);
+  const submitInFlightRef = useRef(false);
 
   const safeNotes = useMemo(() => (Array.isArray(notes) ? notes : []), [notes]);
   const notesCount = safeNotes.length;
 
-  const handleSaveNote = () => {
-    if (newNote?.trim()) {
-      onAddNote(newNote, null, selectedFiles);
+  const handleSaveNote = async () => {
+    if (newNote?.trim() && !submitInFlightRef.current) {
+      try {
+        submitInFlightRef.current = true;
+        setIsSubmitting(true);
+        await onAddNote(newNote, null, selectedFiles);
+      } catch {
+        return;
+      } finally {
+        submitInFlightRef.current = false;
+        setIsSubmitting(false);
+      }
       setNewNote('');
       setSelectedFiles([]);
       setIsAddingNote(false);
@@ -178,7 +190,7 @@ const InvestigationNotesPanel = ({
                   iconName="Paperclip"
                   iconPosition="left"
                   onClick={handleAddFiles}
-                  disabled={attachmentsPolicy?.attachmentsEnabled === false}
+                  disabled={isSubmitting || attachmentsPolicy?.attachmentsEnabled === false}
                 >
                   {t('caseManagementDetail.notes.attachment')}
                 </Button>
@@ -186,15 +198,15 @@ const InvestigationNotesPanel = ({
                 <Button
                   variant="default"
                   size="sm"
-                  iconName="Save"
+                  iconName={isSubmitting ? 'Loader' : 'Save'}
                   iconPosition="left"
                   onClick={handleSaveNote}
-                  disabled={!newNote?.trim()}
+                  disabled={isSubmitting || !newNote?.trim()}
                 >
-                  {t('common.save')}
+                  {isSubmitting ? t('caseManagementDetail.notes.saving') : t('common.save')}
                 </Button>
 
-                <Button variant="outline" size="sm" onClick={handleCancel}>
+                <Button variant="outline" size="sm" onClick={handleCancel} disabled={isSubmitting}>
                   {t('common.cancel')}
                 </Button>
 
@@ -260,6 +272,7 @@ const InvestigationNotesPanel = ({
                   note?.createdAt || note?.created_at || note?.timestamp || '',
                   index,
                 ].join('_');
+                if (note?.pending) return <TimelinePendingItem key={noteKey} variant="note" />;
                 return (
                 <div key={noteKey} className="px-3 py-2.5 hover:bg-muted/30 transition">
                   <div className="flex items-start gap-3">

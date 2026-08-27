@@ -452,8 +452,15 @@ function ticket_normalize_ticket_with_handler_row(array $row): array {
     $ticket['email_notify'] = isset($row['email_notify']) ? (bool)$row['email_notify'] : false;
     $ticket['status_email_notify'] = isset($row['status_email_notify']) ? (bool)$row['status_email_notify'] : true;
     $ticket['is_anonymous'] = isset($row['is_anonymous']) ? (bool)$row['is_anonymous'] : false;
+    if ($ticket['is_anonymous']) {
+        $ticket['reporter_name'] = null;
+        $ticket['reporter_phone'] = null;
+        $ticket['reporter_email'] = null;
+        if (is_array($ticket['metadata'] ?? null)) unset($ticket['metadata']['reporter_meta_client']);
+    }
     $ticket['handlers'] = ticket_handler_summary($row);
     unset(
+        $ticket['access_code'],
         $ticket['handler_name'],
         $ticket['handler_email'],
         $ticket['handler_roles'],
@@ -702,6 +709,29 @@ function ticket_sanitize_reporter_ticket(array $ticket, array $settings): array 
 function ticket_require_active_handler_context(): array {
     $ctx = api_authz_require_active_handler(static function (int $status, string $message): void { api_json($status, false, $message); });
     return ['claims' => (array)($ctx['claims'] ?? []), 'handler' => (array)($ctx['handler'] ?? [])];
+}
+
+function ticket_require_handler_ticket_access(array $handler, string $ticketId): array {
+    $handlerId = trim((string)($handler['id'] ?? ''));
+    if (!ticket_is_uuid($handlerId)) api_json(403, false, 'Handler account not active or not found');
+    $rows = sqlserver_query(
+        'SELECT TOP 1 t.id, t.ticket_number, t.workflow_type, t.status_code,
+            CASE WHEN t.handler_id = @handler_id
+                OR EXISTS (SELECT 1 FROM dbo.ticket_handlers th WHERE th.ticket_id = t.id AND th.handler_id = @handler_id)
+                OR EXISTS (
+                    SELECT 1 FROM dbo.workflows w
+                    INNER JOIN dbo.handler_workflows hw ON hw.workflow_id = w.id
+                    WHERE hw.handler_id = @handler_id AND w.code = t.workflow_type
+                ) THEN 1 ELSE 0 END AS has_ticket_access
+         FROM dbo.tickets t WHERE t.id = @ticket_id',
+        ['ticket_id' => $ticketId, 'handler_id' => $handlerId]
+    );
+    $ticket = $rows[0] ?? null;
+    if (!$ticket) api_json(404, false, 'Ticket not found');
+    if (empty($ticket['has_ticket_access']) && !api_authz_is_admin($handler)) {
+        api_json(403, false, 'You are not authorized to manage attachments for this ticket');
+    }
+    return $ticket;
 }
 
 function ticket_action_command(array $payload, array $settings): ?array {
@@ -1018,8 +1048,9 @@ function ticket_created_handler_email_html(array $ticket, array $handler): strin
     $severityCode = strtolower(trim((string)($ticket['severity_code'] ?? 'medium')));
     $portalBase = ticket_server_base_url();
     $dashboardUrl = $portalBase !== '' ? $portalBase . '/handler-dashboard' : '';
-    $reporterName = trim((string)($ticket['reporter_name'] ?? '')) ?: 'Anoniem';
-    $reporterEmail = trim((string)($ticket['reporter_email'] ?? '')) ?: 'Niet opgegeven';
+    $isAnonymous = !empty($ticket['is_anonymous']);
+    $reporterName = $isAnonymous ? 'Anoniem' : (trim((string)($ticket['reporter_name'] ?? '')) ?: 'Niet opgegeven');
+    $reporterEmail = $isAnonymous ? 'Verborgen bij anonieme melding' : (trim((string)($ticket['reporter_email'] ?? '')) ?: 'Niet opgegeven');
     $submittedAt = trim((string)($ticket['submitted_at'] ?? $ticket['created_at'] ?? ''));
 
     $html = '<h2>Nieuwe melding beschikbaar</h2>'
@@ -1179,9 +1210,12 @@ function handle_create(array $data): void {
         $stage = 'validate_payload';
         $email = trim((string)($data['reporter_email'] ?? '')); $isAnonymous = !empty($data['is_anonymous']);
         if (ticket_setting_bool($settings, ['tickets.require_email_verification'], true) && $email === '') throw new Exception('reporter_email is required by system policy');
+        if ($email !== '' && !ticket_valid_email($email)) api_json(400, false, 'reporter_email must be a valid email address');
         $severityCode = ticket_normalize_severity((string)($data['severity_code'] ?? ''), ticket_normalize_severity(ticket_setting_string($settings, ['tickets.default_priority', 'workflow.default_priority', 'portal.default_priority'], 'low'), 'low'));
         $stage = 'encrypt_payload';
         $cryptoKey = get_email_crypto_key();
+        $metadata = is_array($data['metadata'] ?? null) ? $data['metadata'] : [];
+        if ($isAnonymous) unset($metadata['reporter_meta_client'], $metadata['reporterMetaClient']);
         $payload = [
             'id' => ticket_uuid4(),
             'ticket_number' => trim((string)($data['ticket_number'] ?? '')) ?: ticket_generate_ticket_number(ticket_sanitize_prefix(ticket_setting_string($settings, ['tickets.ticket_number_prefix'], 'NZ'), 'NZ')),
@@ -1193,14 +1227,14 @@ function handle_create(array $data): void {
             'workflow_type' => $workflowType,
             'severity_code' => $severityCode,
             'reporter_name' => null,
-            'reporter_name_encrypted' => ticket_crypto_encrypt_nullable($data['reporter_name'] ?? null, $cryptoKey),
+            'reporter_name_encrypted' => ticket_crypto_encrypt_nullable($isAnonymous ? null : ($data['reporter_name'] ?? null), $cryptoKey),
             'reporter_phone' => null,
-            'reporter_phone_encrypted' => ticket_crypto_encrypt_nullable($data['reporter_phone'] ?? null, $cryptoKey),
+            'reporter_phone_encrypted' => ticket_crypto_encrypt_nullable($isAnonymous ? null : ($data['reporter_phone'] ?? null), $cryptoKey),
             'email_notify' => $email !== '' ? !empty($data['email_notify']) : false,
             'status_email_notify' => array_key_exists('status_email_notify', $data) ? ($email !== '' ? !empty($data['status_email_notify']) : false) : ($email !== ''),
             'status_code' => $data['status_code'] ?? null,
             'current_stage' => $data['current_stage'] ?? null,
-            'metadata' => json_encode(is_array($data['metadata'] ?? null) ? $data['metadata'] : [], JSON_UNESCAPED_UNICODE),
+            'metadata' => json_encode($metadata, JSON_UNESCAPED_UNICODE),
             'reporter_email' => null,
             'reporter_email_encrypted' => $email ? encrypt_email($email, $cryptoKey) : null,
             'reporter_email_hash' => $email ? hash_email($email) : null,
@@ -1342,6 +1376,27 @@ function handle_handler_update_ticket(array $data): void {
     $ticketId = trim((string)($data['ticket_id'] ?? '')); if (!ticket_is_uuid($ticketId)) api_json(400, false, 'ticket_id must be a valid UUID');
     ticket_enforce_handler_mutation_rate_limit('update_ticket', $handler, $ticketId);
     $updates = is_array($data['updates'] ?? null) ? $data['updates'] : [];
+    $currentTicketRows = sqlserver_query(
+        'SELECT TOP 1 workflow_type, status_code FROM dbo.tickets WHERE id = @id',
+        ['id' => $ticketId]
+    );
+    $currentTicket = $currentTicketRows[0] ?? null;
+    if (!$currentTicket) api_json(404, false, 'Ticket not found');
+
+    $automaticReply = '';
+    $requestedStatusCode = trim((string)($updates['status_code'] ?? ''));
+    $currentStatusCode = trim((string)($currentTicket['status_code'] ?? ''));
+    if ($requestedStatusCode !== '' && $requestedStatusCode !== $currentStatusCode) {
+        $targetWorkflowType = trim((string)($updates['workflow_type'] ?? $currentTicket['workflow_type'] ?? ''));
+        $replyRows = sqlserver_query(
+            'SELECT TOP 1 ws.automatic_reply
+             FROM dbo.workflow_statuses ws
+             INNER JOIN dbo.workflows w ON w.id = ws.workflow_id
+             WHERE w.code = @workflow_code AND ws.code = @status_code',
+            ['workflow_code' => $targetWorkflowType, 'status_code' => $requestedStatusCode]
+        );
+        $automaticReply = trim((string)($replyRows[0]['automatic_reply'] ?? ''));
+    }
     $allowed = ['description','location','workflow_type','severity_code','reporter_name','reporter_email','reporter_phone','email_notify','status_email_notify','status_code','current_stage','metadata','handler_id','next_step_due','last_update_at','location_id'];
     $encryptedFieldByPlainField = [
         'description' => 'description_encrypted',
@@ -1378,13 +1433,40 @@ function handle_handler_update_ticket(array $data): void {
         $params[$field] = $field === 'metadata' ? json_encode(is_array($updates[$field]) ? $updates[$field] : [], JSON_UNESCAPED_UNICODE) : $updates[$field];
     }
     if (count($sets) === 1) api_json(400, false, 'No valid ticket fields to update');
-    sqlserver_execute('UPDATE dbo.tickets SET ' . implode(', ', $sets) . ' WHERE id = @id', $params);
+    $commands = [
+        sqlserver_command(
+            'nonquery',
+            'UPDATE dbo.tickets SET ' . implode(', ', $sets) . ' WHERE id = @id',
+            $params
+        ),
+    ];
+    if ($automaticReply !== '') {
+        $commands[] = sqlserver_command(
+            'nonquery',
+            'INSERT INTO dbo.messages (
+                id, ticket_id, sender, body, body_encrypted, is_internal,
+                visible_at, created_at, handler_id, handler_name
+             )
+             VALUES (
+                @message_id, @ticket_id, @sender, @body, @body_encrypted, 0,
+                SYSUTCDATETIME(), SYSUTCDATETIME(), NULL, NULL
+             )',
+            [
+                'message_id' => ticket_uuid4(),
+                'ticket_id' => $ticketId,
+                'sender' => 'handler',
+                'body' => TICKET_ENCRYPTED_PLACEHOLDER,
+                'body_encrypted' => ticket_crypto_encrypt_nullable($automaticReply, null, false),
+            ]
+        );
+    }
+    sqlserver_run_commands($commands, true);
     api_json(200, true, 'Ticket updated', ['ticket' => ticket_load_ticket_row_by_id($ticketId)]);
 }
 
 function handle_handler_add_comment(array $data): void {
     $stage = 'start';
-    $ctx = ticket_require_active_handler_context(); $handler = $ctx['handler'];
+    $ctx = ticket_require_active_handler_context(); $handler = $ctx['handler']; $settings = ticket_load_system_settings();
     $ticketId = trim((string)($data['ticket_id'] ?? '')); $comment = trim((string)($data['comment'] ?? ''));
     if (!ticket_is_uuid($ticketId)) api_json(400, false, 'ticket_id must be a valid UUID');
     if ($comment === '') api_json(400, false, 'comment is required');
@@ -1395,12 +1477,14 @@ function handle_handler_add_comment(array $data): void {
     try {
         $stage = 'encrypt_comment';
         $encryptedComment = ticket_crypto_encrypt_nullable($comment, null, false);
+        $commentId = ticket_uuid4();
         $stage = 'write_comment';
-        $results = sqlserver_run_commands([
+        $commands = [
             sqlserver_command(
                 'nonquery',
-                'INSERT INTO dbo.ticket_comments (ticket_id, [comment], comment_encrypted, author_name, created_at, updated_at) VALUES (@ticket_id, @comment, @comment_encrypted, @author_name, SYSUTCDATETIME(), SYSUTCDATETIME())',
+                'INSERT INTO dbo.ticket_comments (id, ticket_id, [comment], comment_encrypted, author_name, created_at, updated_at) VALUES (@id, @ticket_id, @comment, @comment_encrypted, @author_name, SYSUTCDATETIME(), SYSUTCDATETIME())',
                 [
+                    'id' => $commentId,
                     'ticket_id' => $ticketId,
                     'comment' => TICKET_ENCRYPTED_PLACEHOLDER,
                     'comment_encrypted' => $encryptedComment,
@@ -1412,31 +1496,8 @@ function handle_handler_add_comment(array $data): void {
                 'UPDATE dbo.tickets SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @id',
                 ['id' => $ticketId]
             ),
-            sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.ticket_comments WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]),
-        ], true);
-    } catch (Throwable $e) {
-        $errorId = api_log_exception('tickets.api.add_comment', $e, ['action' => 'handler_add_comment', 'ticket_id' => $ticketId, 'stage' => $stage]);
-        api_json(500, false, 'Internal server error', ['error_id' => $errorId, 'action' => 'handler_add_comment', 'stage' => $stage]);
-    }
-
-    $commentRow = sqlserver_result_rows($results, 2)[0] ?? null;
-    if (is_array($commentRow)) $commentRow = ticket_crypto_decrypt_comment_row($commentRow);
-    $ticket = null;
-    $ticketLoadErrorId = null;
-    try {
-        $ticketResults = sqlserver_run_commands([
-            ticket_ticket_with_handler_command($ticketId),
-            ticket_ticket_handlers_command($ticketId),
-        ], false);
-        $ticket = ticket_with_handlers_from_results($ticketResults, 0, 1);
-    } catch (Throwable $e) {
-        $ticketLoadErrorId = api_log_exception('tickets.api.add_comment.ticket_load', $e, ['action' => 'handler_add_comment', 'ticket_id' => $ticketId]);
-    }
-
-    $actionLogErrorId = null;
-    try {
-        $settings = ticket_load_system_settings();
-        ticket_insert_action([
+        ];
+        $actionCommand = ticket_action_command([
             'ticket_id' => $ticketId,
             'action_type' => 'note_added',
             'action' => 'Note Added',
@@ -1446,10 +1507,23 @@ function handle_handler_add_comment(array $data): void {
             'handler_email' => trim((string)($handler['email'] ?? '')) ?: null,
             'performed_by' => $performedBy,
         ], $settings);
+        if ($actionCommand) $commands[] = $actionCommand;
+        $commentIndex = count($commands);
+        $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.ticket_comments WHERE id = @id', ['id' => $commentId]);
+        $ticketIndex = count($commands);
+        $commands[] = ticket_ticket_with_handler_command($ticketId);
+        $ticketHandlersIndex = count($commands);
+        $commands[] = ticket_ticket_handlers_command($ticketId);
+        $results = sqlserver_run_commands($commands, true);
     } catch (Throwable $e) {
-        $actionLogErrorId = api_log_exception('tickets.api.add_comment.action_log', $e, ['action' => 'handler_add_comment', 'ticket_id' => $ticketId]);
+        $errorId = api_log_exception('tickets.api.add_comment', $e, ['action' => 'handler_add_comment', 'ticket_id' => $ticketId, 'stage' => $stage]);
+        api_json(500, false, 'Internal server error', ['error_id' => $errorId, 'action' => 'handler_add_comment', 'stage' => $stage]);
     }
-    api_json(200, true, 'Comment added', ['comment' => $commentRow, 'performed_by' => $performedBy, 'ticket' => $ticket, 'ticket_load_error_id' => $ticketLoadErrorId, 'action_log_error_id' => $actionLogErrorId]);
+
+    $commentRow = sqlserver_result_rows($results, $commentIndex)[0] ?? null;
+    if (is_array($commentRow)) $commentRow = ticket_crypto_decrypt_comment_row($commentRow);
+    $ticket = ticket_with_handlers_from_results($results, $ticketIndex, $ticketHandlersIndex);
+    api_json(200, true, 'Comment added', ['comment' => $commentRow, 'performed_by' => $performedBy, 'ticket' => $ticket]);
 }
 
 function handle_handler_update_comment(array $data): void {
@@ -1536,12 +1610,14 @@ function handle_handler_add_message(array $data): void {
     if ($sender === '') api_json(400, false, 'sender is required'); if ($body === '') api_json(400, false, 'body is required'); if (ticket_strlen($body) > 4000) api_json(400, false, 'body exceeds 4000 characters');
     $isInternal = !empty($data['is_internal']); $publicName = ($sender === 'handler' && !empty($data['disclose_handler_identity'])) ? (trim((string)($handler['name'] ?? '')) ?: 'System') : null;
     $performedBy = trim((string)($handler['name'] ?? '')) ?: 'System';
+    $messageId = ticket_uuid4();
     $commands = [
         sqlserver_command(
             'nonquery',
-            'INSERT INTO dbo.messages (ticket_id, sender, body, body_encrypted, is_internal, visible_at, created_at, handler_id, handler_name)
-             VALUES (@ticket_id, @sender, @body, @body_encrypted, @is_internal, @visible_at, SYSUTCDATETIME(), @handler_id, @handler_name)',
+            'INSERT INTO dbo.messages (id, ticket_id, sender, body, body_encrypted, is_internal, visible_at, created_at, handler_id, handler_name)
+             VALUES (@id, @ticket_id, @sender, @body, @body_encrypted, @is_internal, @visible_at, SYSUTCDATETIME(), @handler_id, @handler_name)',
             [
+                'id' => $messageId,
                 'ticket_id' => $ticketId,
                 'sender' => $sender,
                 'body' => TICKET_ENCRYPTED_PLACEHOLDER,
@@ -1571,7 +1647,7 @@ function handle_handler_add_message(array $data): void {
     if ($actionCommand) $commands[] = $actionCommand;
 
     $messageIndex = count($commands);
-    $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.messages WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
+    $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.messages WHERE id = @id', ['id' => $messageId]);
     $ticketIndex = count($commands);
     $commands[] = ticket_ticket_with_handler_command($ticketId);
     $ticketHandlersIndex = count($commands);
@@ -1632,15 +1708,22 @@ function handle_handler_add_attachment(array $data): void {
     $ctx = ticket_require_active_handler_context(); $handler = $ctx['handler']; $settings = ticket_load_system_settings();
     $ticketId = trim((string)($data['ticket_id'] ?? '')); if (!ticket_is_uuid($ticketId)) api_json(400, false, 'ticket_id must be a valid UUID');
     ticket_enforce_handler_mutation_rate_limit('add_attachment', $handler, $ticketId);
+    $ticketBeforeUpload = ticket_require_handler_ticket_access($handler, $ticketId);
     $fileName = trim((string)($data['file_name'] ?? '')); $fileUrl = trim((string)($data['file_url'] ?? '')); $mimeType = trim((string)($data['mime_type'] ?? 'application/octet-stream')); $sizeBytes = isset($data['size_bytes']) ? (int)$data['size_bytes'] : null; $isInternal = !empty($data['is_internal']); $noteId = trim((string)($data['note_id'] ?? ''));
     if ($fileName === '' || ticket_strlen($fileName) > 255) api_json(400, false, 'file_name is required and must be <= 255 chars'); if ($fileUrl === '') api_json(400, false, 'file_url is required');
     ticket_validate_attachment_policy($settings, $fileName, $sizeBytes);
+    $normalizedFileUrl = str_replace('\\', '/', ltrim($fileUrl, '/'));
+    $expectedPrefix = 'attachments/' . strtolower($ticketId) . '/';
+    if (str_contains($normalizedFileUrl, '..') || !str_starts_with(strtolower($normalizedFileUrl), $expectedPrefix)) {
+        api_json(400, false, 'file_url must reference an uploaded file for this ticket');
+    }
     $performedBy = trim((string)($handler['name'] ?? '')) ?: 'System';
+    $attachmentId = ticket_uuid4();
     $commands = [
         sqlserver_command(
             'nonquery',
-            'INSERT INTO dbo.attachments (ticket_id, file_name, file_url, mime_type, size_bytes, is_internal, note_id, created_at) VALUES (@ticket_id, @file_name, @file_url, @mime_type, @size_bytes, @is_internal, @note_id, SYSUTCDATETIME())',
-            ['ticket_id' => $ticketId, 'file_name' => $fileName, 'file_url' => $fileUrl, 'mime_type' => $mimeType !== '' ? $mimeType : 'application/octet-stream', 'size_bytes' => $sizeBytes, 'is_internal' => $isInternal, 'note_id' => ticket_is_uuid($noteId) ? $noteId : null]
+            'INSERT INTO dbo.attachments (id, ticket_id, file_name, file_url, mime_type, size_bytes, is_internal, note_id, created_at) VALUES (@id, @ticket_id, @file_name, @file_url, @mime_type, @size_bytes, @is_internal, @note_id, SYSUTCDATETIME())',
+            ['id' => $attachmentId, 'ticket_id' => $ticketId, 'file_name' => $fileName, 'file_url' => $normalizedFileUrl, 'mime_type' => $mimeType !== '' ? $mimeType : 'application/octet-stream', 'size_bytes' => $sizeBytes, 'is_internal' => $isInternal, 'note_id' => ticket_is_uuid($noteId) ? $noteId : null]
         ),
         sqlserver_command(
             'nonquery',
@@ -1661,7 +1744,7 @@ function handle_handler_add_attachment(array $data): void {
     if ($actionCommand) $commands[] = $actionCommand;
 
     $attachmentIndex = count($commands);
-    $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
+    $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.attachments WHERE id = @id', ['id' => $attachmentId]);
     $ticketIndex = count($commands);
     $commands[] = ticket_ticket_with_handler_command($ticketId);
     $ticketHandlersIndex = count($commands);
@@ -1670,6 +1753,9 @@ function handle_handler_add_attachment(array $data): void {
     $results = sqlserver_run_commands($commands, true);
     $attachmentRow = sqlserver_result_rows($results, $attachmentIndex)[0] ?? null;
     $ticket = ticket_with_handlers_from_results($results, $ticketIndex, $ticketHandlersIndex);
+    if ((string)($ticket['status_code'] ?? '') !== (string)($ticketBeforeUpload['status_code'] ?? '')) {
+        throw new Exception('Attachment upload unexpectedly changed ticket status');
+    }
     api_json(200, true, 'Attachment added', ['attachment' => $attachmentRow, 'performed_by' => $performedBy, 'ticket' => $ticket]);
 }
 

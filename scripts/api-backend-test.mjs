@@ -139,6 +139,50 @@ function runPhpLint() {
   }
 }
 
+function runFeatureContractChecks() {
+  const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
+  const checks = [
+    ['anonymous explanation conditional UI',
+      read('src/pages/anonymous-report-form/components/ReporterContactFields.jsx').includes('isAnonymous &&')
+        && read('src/pages/anonymous-report-form/components/AnonymousReportingNotice.jsx').includes('anonymousInfo.technicalData')],
+    ['anonymous identity stripped server-side',
+      read('public/api/tickets.api.php').includes("ticket_crypto_encrypt_nullable($isAnonymous ? null : ($data['reporter_name']")
+        && read('public/api/tickets.api.php').includes("unset($metadata['reporter_meta_client']")],
+    ['reporter reminders assignment and terminal stop conditions',
+      read('public/api/reporter-reminders.api.php').includes('NOT EXISTS (SELECT 1 FROM dbo.ticket_handlers')
+        && read('public/api/reporter-reminders.api.php').includes('COALESCE(ws.is_terminal, 0) = 0')],
+    ['reporter reminders preferences and safe email eligibility',
+      read('public/api/reporter-reminders.api.php').includes('t.email_notify = 1 AND t.status_email_notify = 1')
+        && read('public/api/reporter-reminders.api.php').includes('t.reporter_email_encrypted IS NOT NULL')],
+    ['reporter reminder duplicate prevention',
+      read('scripts/sqlserver/bootstrap-schema.sql').includes('UX_reporter_reminder_ticket_type')
+        && read('public/api/reporter-reminders.api.php').includes("SET status = N'sent'")],
+    ['anonymous reminder model preserved',
+      !read('public/api/reporter-reminders.api.php').includes('t.is_anonymous = 0')],
+    ['completed attachment remains status-neutral and audited',
+      read('public/api/tickets.api.php').includes('ticket_require_handler_ticket_access($handler, $ticketId)')
+        && read('public/api/tickets.api.php').includes("'action_type' => 'attachment_added'")
+        && read('public/api/tickets.api.php').includes('Attachment upload unexpectedly changed ticket status')],
+    ['note and message immediate pending state',
+      read('src/pages/case-management-detail/index.jsx').includes("createPendingId('pending-note')")
+        && read('src/pages/case-management-detail/index.jsx').includes("createPendingId('pending-message')")],
+    ['duplicate note and message submission prevented',
+      read('src/pages/case-management-detail/components/InvestigationNotesPanel.jsx').includes('isSubmitting || !newNote?.trim()')
+        && read('src/pages/case-management-detail/components/CommunicationPanel.jsx').includes('isSubmitting || !messageText?.trim()')],
+    ['pending state removed on mutation failure',
+      read('src/pages/case-management-detail/index.jsx').includes('filter((note) => note?.id !== pendingId)')
+        && read('src/pages/case-management-detail/index.jsx').includes('filter((message) => message?.id !== pendingId)')],
+    ['handler message response preserves reporter visibility timestamp',
+      read('public/api/tickets.api.php').includes("'visible_at' => ticket_handler_message_visible_at($isInternal, $sender)")
+        && read('public/api/tickets.api.php').includes("WHERE id = @id")],
+  ];
+
+  for (const [name, ok] of checks) {
+    if (ok) pass(name);
+    else fail(name, 'feature contract not found in implementation');
+  }
+}
+
 async function maybeStartServer() {
   if (await isServerReachable()) {
     pass('api server reachable', config.baseUrl);
@@ -377,6 +421,15 @@ async function runProtectedContractSmoke() {
     auth: Boolean(config.authToken),
     expectJson: true,
   });
+
+  if (!config.authToken) {
+    await request('POST reporter reminders auth guard', 'reporter-reminders.api.php', {
+      method: 'POST',
+      body: {},
+      expectedStatuses: [401, 403],
+      expectSuccess: false,
+    });
+  }
 }
 
 async function runMutationSmoke() {
@@ -404,12 +457,14 @@ async function runMutationSmoke() {
       reporter_name: 'API Smoke Test',
       reporter_email: `api-smoke-${unique}@example.test`,
       reporter_phone: '+31000000000',
+      is_anonymous: true,
       email_notify: false,
       status_email_notify: false,
       metadata: {
         source: 'api-backend-test',
         disposable: true,
         created_at: new Date().toISOString(),
+        reporter_meta_client: { user_agent: 'must-not-be-stored-for-anonymous-reports' },
       },
     },
     expectedStatuses: [200],
@@ -419,6 +474,8 @@ async function runMutationSmoke() {
       const data = json?.data || {};
       if (!data.id || !data.ticket_number || !data.access_code) return 'ticket id, ticket_number, or access_code missing';
       if (data.description?.includes('API smoke test') !== true) return 'created ticket description was not returned decrypted';
+      if (data.reporter_name || data.reporter_phone) return 'anonymous ticket retained reporter name or phone';
+      if (data.metadata?.reporter_meta_client || data.metadata?.reporterMetaClient) return 'anonymous ticket retained browser/device metadata';
       return true;
     },
   });
@@ -565,6 +622,7 @@ function printSummary() {
 async function main() {
   try {
     runPhpLint();
+    runFeatureContractChecks();
     await maybeStartServer();
     if (results.some((item) => item.name === 'api server reachable' && item.status === 'fail')
       || results.some((item) => item.name === 'api server started' && item.status === 'fail')) {

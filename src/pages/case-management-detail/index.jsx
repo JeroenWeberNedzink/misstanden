@@ -210,6 +210,8 @@ const hasAssignedHandlers = (ticketLike) => {
   return Boolean(ticketLike?.assignedToId || ticketLike?.handlerId || ticketLike?.handler_id);
 };
 
+const createPendingId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
 const HANDLER_OPTIONS_CACHE_KEY = 'case_detail_handler_options_v1';
 const HANDLER_OPTIONS_CACHE_TTL_MS = 5 * 60 * 1000;
 const GUEST_ACCESS_EXPIRES_IN_HOURS = 72;
@@ -813,7 +815,7 @@ export default function CaseManagementDetail() {
   const handleAddNote = async (noteContent, authorName, attachments = []) => {
     const ticketId = getStoredTicketId();
     if (!ticketId) return navigate('/handler-dashboard');
-
+    let pendingId = null;
     try {
       const { validFiles, errors: attachmentErrors } = validateAttachmentSelection(attachments, attachmentPolicy);
       if (attachmentErrors.length > 0) {
@@ -827,6 +829,9 @@ export default function CaseManagementDetail() {
         }
       }
 
+      pendingId = createPendingId('pending-note');
+      setInvestigationNotes((prev) => [{ id: pendingId, pending: true }, ...(prev || [])]);
+
       const result = await ticketService.addInvestigationNote(
         ticketId,
         noteContent,
@@ -838,8 +843,7 @@ export default function CaseManagementDetail() {
       const uploadedAttachments = result?.attachments || [];
 
       // Update notes list locally.
-      setInvestigationNotes((prev) => [
-        {
+      const nextNote = {
           id: created?.id || `${Date.now()}`,
           author: created?.authorName || authorName || t('caseManagement.handler'),
           role: t('caseManagement.handler'),
@@ -857,9 +861,13 @@ export default function CaseManagementDetail() {
               : fmtDateTime(new Date().toISOString(), i18n?.resolvedLanguage || i18n?.language),
             url: att?.fileUrl,
           })),
-        },
-        ...(prev || []),
-      ]);
+        };
+      setInvestigationNotes((prev) => {
+        const current = prev || [];
+        return current.some((note) => note?.id === pendingId)
+          ? current.map((note) => (note?.id === pendingId ? nextNote : note))
+          : [nextNote, ...current];
+      });
 
       // Update action history.
       pushAction({
@@ -874,9 +882,12 @@ export default function CaseManagementDetail() {
       } else {
         showToast(t('caseManagement.noteSent'));
       }
+      return nextNote;
     } catch (err) {
+      if (pendingId) setInvestigationNotes((prev) => (prev || []).filter((note) => note?.id !== pendingId));
       console.error('Error adding note:', err);
-      showToast(t('caseManagement.noteAddFailed'));
+      showToast(err?.message || t('caseManagement.noteAddFailed'));
+      throw err;
     }
   };
 
@@ -915,7 +926,8 @@ export default function CaseManagementDetail() {
   const handleSendMessage = async (messageContent, sendOptions = {}) => {
     const ticketId = getStoredTicketId();
     if (!ticketId) return navigate('/handler-dashboard');
-
+    const pendingId = createPendingId('pending-message');
+    setCommunicationMessages((prev) => [{ id: pendingId, sender: 'handler', pending: true }, ...(prev || [])]);
     try {
       const discloseHandlerIdentity = sendOptions?.discloseHandlerIdentity === true;
       const created = await ticketService.addMessage(ticketId, 'handler', messageContent, false, {
@@ -932,8 +944,7 @@ export default function CaseManagementDetail() {
         ? (createdHandlerName || currentHandlerName || t('caseManagement.handler'))
         : null;
 
-      setCommunicationMessages((prev) => [
-        {
+      const nextMessage = {
           id: created?.id || `${Date.now()}`,
           sender: 'handler',
           senderName: publicSenderName,
@@ -943,9 +954,13 @@ export default function CaseManagementDetail() {
             : fmtDateTime(new Date().toISOString(), i18n?.resolvedLanguage || i18n?.language),
           content: created?.body || messageContent,
           read: false, // New messages are unread until reporter reads them
-        },
-        ...(prev || []),
-      ]);
+        };
+      setCommunicationMessages((prev) => {
+        const current = prev || [];
+        return current.some((message) => message?.id === pendingId)
+          ? current.map((message) => (message?.id === pendingId ? nextMessage : message))
+          : [nextMessage, ...current];
+      });
 
       pushAction({
         actionType: 'message_sent',
@@ -955,9 +970,12 @@ export default function CaseManagementDetail() {
       });
 
       showToast(t('caseManagement.messageSent'));
+      return nextMessage;
     } catch (err) {
+      setCommunicationMessages((prev) => (prev || []).filter((message) => message?.id !== pendingId));
       console.error('Error sending message:', err);
-      showToast(t('caseManagement.messageSendFailed'));
+      showToast(err?.message || t('caseManagement.messageSendFailed'));
+      throw err;
     }
   };
 

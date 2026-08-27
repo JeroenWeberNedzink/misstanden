@@ -1,7 +1,9 @@
 import React from 'react';
 import Icon from '../../../components/AppIcon';
+import { useTranslation } from 'react-i18next';
 
 const NextStepsGuide = () => {
+  const { t } = useTranslation();
   const steps = [
     {
       icon: 'Save',
@@ -24,7 +26,7 @@ const NextStepsGuide = () => {
     {
       icon: 'Shield',
       title: 'Privacy gewaarborgd',
-      description: 'Uw melding wordt volledig anoniem behandeld volgens de Nederlandse wetgeving en GDPR-richtlijnen.',
+      description: t('reportForm.privacyNote'),
       priority: 'low'
     }
   ];

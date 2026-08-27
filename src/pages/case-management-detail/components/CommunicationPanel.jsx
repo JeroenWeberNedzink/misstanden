@@ -3,14 +3,17 @@ import { useTranslation } from 'react-i18next';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
+import TimelinePendingItem from './TimelinePendingItem';
 
 const CommunicationPanel = ({ messages, canContact, onSendMessage, isLoading = false }) => {
   const { t } = useTranslation();
   const [isComposing, setIsComposing] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [discloseHandlerIdentity, setDiscloseHandlerIdentity] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const scrollerRef = useRef(null);
+  const submitInFlightRef = useRef(false);
   const safeMessages = useMemo(() => (Array.isArray(messages) ? messages : []), [messages]);
 
   useEffect(() => {
@@ -19,9 +22,18 @@ const CommunicationPanel = ({ messages, canContact, onSendMessage, isLoading = f
     el.scrollTop = el.scrollHeight;
   }, [safeMessages.length, isComposing]);
 
-  const handleSendMessage = () => {
-    if (messageText?.trim()) {
-      onSendMessage(messageText, { discloseHandlerIdentity });
+  const handleSendMessage = async () => {
+    if (messageText?.trim() && !submitInFlightRef.current) {
+      try {
+        submitInFlightRef.current = true;
+        setIsSubmitting(true);
+        await onSendMessage(messageText, { discloseHandlerIdentity });
+      } catch {
+        return;
+      } finally {
+        submitInFlightRef.current = false;
+        setIsSubmitting(false);
+      }
       setMessageText('');
       setDiscloseHandlerIdentity(false);
       setIsComposing(false);
@@ -117,6 +129,7 @@ const CommunicationPanel = ({ messages, canContact, onSendMessage, isLoading = f
                 </div>
               ) : (
                 safeMessages.map((message) => {
+                  if (message?.pending) return <TimelinePendingItem key={message?.id} variant="message" />;
                   const isHandler = message?.sender === 'handler';
                   const handlerPublicName = String(
                     message?.senderName || message?.handlerName || message?.handler_name || ''
@@ -229,15 +242,15 @@ const CommunicationPanel = ({ messages, canContact, onSendMessage, isLoading = f
                     <Button
                       variant="default"
                       size="sm"
-                      iconName="Send"
+                      iconName={isSubmitting ? 'Loader' : 'Send'}
                       iconPosition="left"
                       onClick={handleSendMessage}
-                      disabled={!messageText?.trim()}
+                      disabled={isSubmitting || !messageText?.trim()}
                     >
-                      {t('caseManagementDetail.common.send')}
+                      {isSubmitting ? t('caseManagementDetail.communication.sending') : t('caseManagementDetail.common.send')}
                     </Button>
 
-                    <Button variant="outline" size="sm" onClick={handleCancel}>
+                    <Button variant="outline" size="sm" onClick={handleCancel} disabled={isSubmitting}>
                       {t('common.cancel')}
                     </Button>
 

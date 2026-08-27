@@ -412,6 +412,7 @@ export const workflowService = {
       contact_person_email: safeTrim(s.contactPersonEmail ?? s.contact_person_email) || null,
       contact_person_phone: safeTrim(s.contactPersonPhone ?? s.contact_person_phone) || null,
       contact_notes: safeTrim(s.contactNotes ?? s.contact_notes) || null,
+      automatic_reply: safeTrim(s.automaticReply ?? s.automatic_reply) || null,
     }));
 
     const data = await apiPost('save_statuses', {
@@ -444,6 +445,7 @@ export const workflowService = {
       contact_person_email: safeTrim(status?.contactPersonEmail ?? status?.contact_person_email) || null,
       contact_person_phone: safeTrim(status?.contactPersonPhone ?? status?.contact_person_phone) || null,
       contact_notes: safeTrim(status?.contactNotes ?? status?.contact_notes) || null,
+      automatic_reply: safeTrim(status?.automaticReply ?? status?.automatic_reply) || null,
     };
 
     const data = await apiPost('create_status', {
@@ -473,6 +475,7 @@ export const workflowService = {
     if (patch.contactPersonEmail !== undefined) payload.contact_person_email = safeTrim(patch.contactPersonEmail) || null;
     if (patch.contactPersonPhone !== undefined) payload.contact_person_phone = safeTrim(patch.contactPersonPhone) || null;
     if (patch.contactNotes !== undefined) payload.contact_notes = safeTrim(patch.contactNotes) || null;
+    if (patch.automaticReply !== undefined) payload.automatic_reply = safeTrim(patch.automaticReply) || null;
     const data = await apiPost('update_status', {
       status_id: sid,
       patch: payload,

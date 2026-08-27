@@ -109,10 +109,18 @@ SELECT
         throw "Connected to $Database on $SqlHost, but this login cannot create tables. Grant CREATE TABLE, db_ddladmin, or db_owner before bootstrapping."
     }
 
-    $command = $connection.CreateCommand()
-    $command.CommandTimeout = 300
-    $command.CommandText = Get-Content -Path $SchemaPath -Raw
-    [void]$command.ExecuteNonQuery()
+    $schemaSql = Get-Content -Path $SchemaPath -Raw
+    $batches = [regex]::Split($schemaSql, '(?im)^\s*GO\s*(?:--.*)?$')
+    foreach ($batch in $batches) {
+        if ([string]::IsNullOrWhiteSpace($batch)) {
+            continue
+        }
+        $command = $connection.CreateCommand()
+        $command.CommandTimeout = 300
+        $command.CommandText = $batch
+        [void]$command.ExecuteNonQuery()
+        $command.Dispose()
+    }
     Write-Host "SQL Server schema bootstrapped into $Database on $SqlHost"
 } catch [System.Data.SqlClient.SqlException] {
     $details = @()

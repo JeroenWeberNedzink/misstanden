@@ -1347,12 +1347,12 @@ try {
                     'INSERT INTO dbo.workflow_statuses (
                         id, workflow_id, code, label, description, color, sort_order, is_terminal, is_first_response,
                         next_codes, expected_duration_days, contact_person_name, contact_person_email, contact_person_phone,
-                        contact_notes, created_at, updated_at
+                        contact_notes, automatic_reply, created_at, updated_at
                     )
                     VALUES (
                         @id, @workflow_id, @code, @label, @description, @color, @sort_order, @is_terminal, @is_first_response,
                         @next_codes, @expected_duration_days, @contact_person_name, @contact_person_email, @contact_person_phone,
-                        @contact_notes, SYSUTCDATETIME(), SYSUTCDATETIME()
+                        @contact_notes, @automatic_reply, SYSUTCDATETIME(), SYSUTCDATETIME()
                     )',
                     [
                         'id' => wf_uuid4(),
@@ -1370,6 +1370,7 @@ try {
                         'contact_person_email' => $statusRow['contact_person_email'] ?? null,
                         'contact_person_phone' => $statusRow['contact_person_phone'] ?? null,
                         'contact_notes' => $statusRow['contact_notes'] ?? null,
+                        'automatic_reply' => $statusRow['automatic_reply'] ?? null,
                     ]
                 );
             }
@@ -2105,6 +2106,7 @@ try {
             'contact_person_email' => $status['contact_person_email'] ?? null,
             'contact_person_phone' => $status['contact_person_phone'] ?? null,
             'contact_notes' => $status['contact_notes'] ?? null,
+            'automatic_reply' => $status['automatic_reply'] ?? null,
         ];
 
         $workflowExists = sqlserver_scalar('SELECT TOP 1 id FROM dbo.workflows WHERE id = @id', ['id' => $workflowId]);
@@ -2126,12 +2128,12 @@ try {
             'INSERT INTO dbo.workflow_statuses (
                 id, workflow_id, code, label, description, color, sort_order, is_terminal, is_first_response,
                 next_codes, expected_duration_days, contact_person_name, contact_person_email, contact_person_phone,
-                contact_notes, created_at, updated_at
+                contact_notes, automatic_reply, created_at, updated_at
             )
             VALUES (
                 @id, @workflow_id, @code, @label, @description, @color, @sort_order, @is_terminal, @is_first_response,
                 @next_codes, @expected_duration_days, @contact_person_name, @contact_person_email, @contact_person_phone,
-                @contact_notes, SYSUTCDATETIME(), SYSUTCDATETIME()
+                @contact_notes, @automatic_reply, SYSUTCDATETIME(), SYSUTCDATETIME()
             )',
             [
                 'id' => $payload['id'],
@@ -2149,6 +2151,7 @@ try {
                 'contact_person_email' => $payload['contact_person_email'],
                 'contact_person_phone' => $payload['contact_person_phone'],
                 'contact_notes' => $payload['contact_notes'],
+                'automatic_reply' => $payload['automatic_reply'],
             ]
         );
         $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.workflow_statuses WHERE id = @id', ['id' => $payload['id']]);
@@ -2163,7 +2166,8 @@ try {
 
         $allowed = [
             'code', 'label', 'description', 'color', 'sort_order', 'is_terminal', 'is_first_response', 'next_codes',
-            'expected_duration_days', 'contact_person_name', 'contact_person_email', 'contact_person_phone', 'contact_notes'
+            'expected_duration_days', 'contact_person_name', 'contact_person_email', 'contact_person_phone', 'contact_notes',
+            'automatic_reply'
         ];
         $payload = [];
         foreach ($allowed as $k) {
@@ -2273,6 +2277,7 @@ try {
                 'contact_person_email' => $s['contact_person_email'] ?? null,
                 'contact_person_phone' => $s['contact_person_phone'] ?? null,
                 'contact_notes' => $s['contact_notes'] ?? null,
+                'automatic_reply' => $s['automatic_reply'] ?? null,
             ];
         }
         foreach ($rows as $r) foreach ($r['next_codes'] as $nc) if (!isset($codeSet[strtolower($nc)])) throw new Exception('Invalid next_codes: "' . $nc . '" does not exist in workflow');
@@ -2297,6 +2302,7 @@ try {
                 'contact_person_email' => $r['contact_person_email'],
                 'contact_person_phone' => $r['contact_person_phone'],
                 'contact_notes' => $r['contact_notes'],
+                'automatic_reply' => $r['automatic_reply'],
             ];
         }
         $workflowExists = sqlserver_scalar('SELECT TOP 1 id FROM dbo.workflows WHERE id = @id', ['id' => $workflowId]);
@@ -2335,6 +2341,7 @@ try {
                 'contact_person_email' => $row['contact_person_email'],
                 'contact_person_phone' => $row['contact_person_phone'],
                 'contact_notes' => $row['contact_notes'],
+                'automatic_reply' => $row['automatic_reply'],
             ];
             $commands[] = sqlserver_command(
                 'nonquery',
@@ -2355,7 +2362,8 @@ try {
                          @contact_person_name AS contact_person_name,
                          @contact_person_email AS contact_person_email,
                          @contact_person_phone AS contact_person_phone,
-                         @contact_notes AS contact_notes
+                         @contact_notes AS contact_notes,
+                         @automatic_reply AS automatic_reply
                  ) AS source
                  ON target.workflow_id = source.workflow_id
                     AND (target.id = source.id OR target.code = source.code)
@@ -2374,18 +2382,20 @@ try {
                          contact_person_email = source.contact_person_email,
                          contact_person_phone = source.contact_person_phone,
                          contact_notes = source.contact_notes,
+                         automatic_reply = source.automatic_reply,
                          updated_at = SYSUTCDATETIME()
                  WHEN NOT MATCHED THEN
                      INSERT (
                          id, workflow_id, code, label, description, color, sort_order, is_terminal, is_first_response,
                          next_codes, expected_duration_days, contact_person_name, contact_person_email, contact_person_phone,
-                         contact_notes, created_at, updated_at
+                         contact_notes, automatic_reply, created_at, updated_at
                      )
                      VALUES (
                          source.id, source.workflow_id, source.code, source.label, source.description, source.color,
                          source.sort_order, source.is_terminal, source.is_first_response, source.next_codes,
                          source.expected_duration_days, source.contact_person_name, source.contact_person_email,
-                         source.contact_person_phone, source.contact_notes, SYSUTCDATETIME(), SYSUTCDATETIME()
+                         source.contact_person_phone, source.contact_notes, source.automatic_reply,
+                         SYSUTCDATETIME(), SYSUTCDATETIME()
                      );',
                 $params
             );

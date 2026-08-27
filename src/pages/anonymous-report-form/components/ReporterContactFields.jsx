@@ -2,6 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import Input from '../../../components/ui/Input';
 import Icon from '../../../components/AppIcon';
+import AnonymousReportingNotice from './AnonymousReportingNotice';
 
 const ReporterContactFields = ({
   name,
@@ -111,10 +112,7 @@ const ReporterContactFields = ({
 
       {/* Show privacy assurance when anonymous */}
       {isAnonymous && (
-        <div className="text-xs text-muted-foreground flex items-center gap-2">
-          <Icon name="ShieldCheck" size={14} className="text-success" />
-          <span>{t('reportForm.privacyAssurance')}</span>
-        </div>
+        <AnonymousReportingNotice emailRequired={emailRequired} />
       )}
     </div>
   );
