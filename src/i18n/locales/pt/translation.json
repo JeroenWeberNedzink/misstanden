@@ -302,7 +302,12 @@
         "noProvideContact": "Name/phone",
         "contactEmail": "Email for updates",
         "contactPhone": "Phone for urgent contact",
-        "emailNotifications": "Receive email updates about this report",
+        "emailNotifications": "Atualizações por e-mail",
+        "emailNotificationsLabel": "Manter-me informado por e-mail",
+        "emailNotificationsDescription": "Receberá uma confirmação e um e-mail quando houver alterações importantes de estado. Numa denúncia anónima, o seu endereço permanece oculto dos responsáveis.",
+        "emailNotificationsWarning": "Introduza primeiro um endereço de e-mail para receber atualizações.",
+        "statusEmailNotificationsLabel": "Alterações de estado por e-mail",
+        "statusEmailNotificationsDescription": "Receba um e-mail quando o estado da sua denúncia mudar.",
   "privacyAssurance": "Anonymous: name and phone are hidden.",
   "anonymousInfo": {
     "title": "Sim, pode denunciar anonimamente aqui",

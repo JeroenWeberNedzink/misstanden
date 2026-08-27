@@ -6,10 +6,7 @@ import Icon from '../../../components/AppIcon';
 const EmailNotificationToggle = ({
   checked,
   onChange,
-  disabled,
-  statusChecked,
-  onStatusChange,
-  statusDisabled
+  disabled
 }) => {
   const { t } = useTranslation();
   const handleChange = (e) => {
@@ -18,12 +15,6 @@ const EmailNotificationToggle = ({
       onChange({ target: { checked: e.target.checked } });
     }
   };
-  const handleStatusChange = (e) => {
-    if (!statusDisabled) {
-      onStatusChange?.({ target: { checked: e.target.checked } });
-    }
-  };
-
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 mb-3">
@@ -38,15 +29,6 @@ const EmailNotificationToggle = ({
           onChange={handleChange}
           disabled={disabled}
         />
-        <div className="mt-3">
-          <Checkbox
-            label={t('reportForm.statusEmailNotificationsLabel')}
-            description={t('reportForm.statusEmailNotificationsDescription')}
-            checked={statusChecked}
-            onChange={handleStatusChange}
-            disabled={statusDisabled}
-          />
-        </div>
         {disabled && (
           <div className="flex items-start gap-2 mt-3 p-3 rounded-lg bg-warning/10">
             <Icon name="AlertTriangle" size={16} color="var(--color-warning)" className="mt-0.5 flex-shrink-0" />

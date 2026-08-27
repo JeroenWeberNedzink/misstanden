@@ -608,8 +608,8 @@ export default function AnonymousReportForm() {
               </div>
 
               <div className="border-t border-border pt-6">
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
+                <div className="grid min-w-0 md:grid-cols-2 gap-6">
+                  <div className="min-w-0 space-y-4">
                     <div className="bg-muted/30 rounded-lg p-4">
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{t('reportForm.incidentType')}</p>
                       <p className="text-lg font-semibold text-foreground">{selectedWorkflowLabel}</p>
@@ -679,8 +679,8 @@ export default function AnonymousReportForm() {
                     </div>
                   </div>
 
-                  <div className="space-y-4">
-                    <div className="rounded-lg border border-primary/20 bg-gradient-to-b from-primary/5 to-transparent p-5">
+                  <div className="min-w-0 space-y-4">
+                    <div className="min-w-0 overflow-hidden rounded-lg border border-primary/20 bg-gradient-to-b from-primary/5 to-transparent p-5">
                       <div className="flex items-center gap-2 mb-3">
                         <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center">
                           <Icon name="FileText" size={16} className="text-primary" />
@@ -690,7 +690,7 @@ export default function AnonymousReportForm() {
                           <p className="text-sm font-semibold text-foreground">{t('reportForm.reviewSubmit')}</p>
                         </div>
                       </div>
-                      <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap rounded-md bg-card/70 border border-border p-3">
+                      <p className="max-w-full break-words [overflow-wrap:anywhere] text-sm text-foreground leading-relaxed whitespace-pre-wrap rounded-md bg-card/70 border border-border p-3">
                         {visibleDescription}
                       </p>
                       {shouldTruncateDescription && (
@@ -722,11 +722,15 @@ export default function AnonymousReportForm() {
                       <div className="bg-muted/30 rounded-lg p-4">
                         <EmailNotificationToggle
                           checked={formData?.emailNotify}
-                          onChange={(e) => setFormData(prev => ({ ...prev, emailNotify: e?.target?.checked }))}
-                          statusChecked={formData?.statusEmailNotify}
-                          onStatusChange={(e) => setFormData(prev => ({ ...prev, statusEmailNotify: e?.target?.checked }))}
+                          onChange={(e) => {
+                            const checked = Boolean(e?.target?.checked);
+                            setFormData(prev => ({
+                              ...prev,
+                              emailNotify: checked,
+                              statusEmailNotify: checked,
+                            }));
+                          }}
                           disabled={!formData?.reporterEmail}
-                          statusDisabled={!formData?.reporterEmail || !formData?.emailNotify}
                         />
                       </div>
                     )}

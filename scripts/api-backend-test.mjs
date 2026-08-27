@@ -151,6 +151,11 @@ function runFeatureContractChecks() {
     ['anonymous explanation conditional UI',
       read('src/pages/anonymous-report-form/components/ReporterContactFields.jsx').includes('isAnonymous &&')
         && read('src/pages/anonymous-report-form/components/AnonymousReportingNotice.jsx').includes('anonymousInfo.technicalData')],
+    ['anonymous report uses one email update choice',
+      (read('src/pages/anonymous-report-form/components/EmailNotificationToggle.jsx').match(/<Checkbox/g) || []).length === 1
+        && read('src/pages/anonymous-report-form/index.jsx').includes('statusEmailNotify: checked')],
+    ['anonymous report review wraps long unbroken text',
+      read('src/pages/anonymous-report-form/index.jsx').includes('[overflow-wrap:anywhere]')],
     ['anonymous identity stripped server-side',
       read('public/api/tickets.api.php').includes("ticket_crypto_encrypt_nullable($isAnonymous ? null : ($data['reporter_name']")
         && read('public/api/tickets.api.php').includes("unset($metadata['reporter_meta_client']")],
