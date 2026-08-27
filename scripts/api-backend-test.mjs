@@ -214,7 +214,9 @@ function runFeatureContractChecks() {
         && !read('nz-startup.ps1').includes("Invoke-RobocopyChecked $privateDir $targetPrivateDir @('*') @('/MIR'")
         && !read('nz-startup.ps1').includes("@('.env', '.env.local', 'cacert.pem')")
         && read('nz-startup.ps1').includes("$targetAttachmentDir = Join-Path $targetPrivateDir 'uploads\\attachments'")
-        && read('nz-startup.ps1').includes('Grant-IisModifyAccess $targetAttachmentDir')
+        && read('nz-startup.ps1').includes("icacls.exe $path '/inheritance:d'")
+        && read('nz-startup.ps1').includes("'*S-1-1-0' '*S-1-5-11' '*S-1-5-32-545' '*S-1-3-0'")
+        && read('nz-startup.ps1').includes('Grant-IisModifyAccess $targetAttachmentDir $true')
         && !read('nz-startup.ps1').includes('Grant-IisModifyAccess $targetUploadDir')],
   ];
 

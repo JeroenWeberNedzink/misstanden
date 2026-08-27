@@ -137,7 +137,7 @@ function Invoke-RobocopyChecked($source, $destination, $files = @('*'), $extraAr
     }
 }
 
-function Grant-IisModifyAccess($path) {
+function Grant-IisModifyAccess($path, [bool]$isolateFromParent = $false) {
     if (-not (Test-Path -LiteralPath $path)) {
         Info "Creating IIS writable directory: $path"
         New-Item -ItemType Directory -Path $path -Force | Out-Null
@@ -147,6 +147,18 @@ function Grant-IisModifyAccess($path) {
     # with impersonation enabled, in which case writes use the IUSR identity.
     # Use well-known SIDs so this also works when executed from another host.
     Info "Granting IIS modify access to $path"
+    if ($isolateFromParent) {
+        & icacls.exe $path '/inheritance:d' '/T' '/C' '/Q' | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            Die "Could not isolate IIS writable directory '$path' (icacls exit code $LASTEXITCODE)"
+        }
+
+        & icacls.exe $path '/remove:g' '*S-1-1-0' '*S-1-5-11' '*S-1-5-32-545' '*S-1-3-0' '/T' '/C' '/Q' | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            Die "Could not remove broad access from '$path' (icacls exit code $LASTEXITCODE)"
+        }
+    }
+
     & icacls.exe $path '/grant' '*S-1-5-32-568:(OI)(CI)M' '/T' '/C' '/Q' | Out-Host
     if ($LASTEXITCODE -ne 0) {
         Die "Could not grant IIS_IUSRS modify access to '$path' (icacls exit code $LASTEXITCODE)"
@@ -490,7 +502,7 @@ function Invoke-LocalDeploy($rootDir) {
         } else {
             Warn "Private IIS access-deny rule not found: $privateWebConfig"
         }
-        Grant-IisModifyAccess $targetAttachmentDir
+        Grant-IisModifyAccess $targetAttachmentDir $true
     } else {
         Warn "private directory not found locally: $privateDir"
     }
