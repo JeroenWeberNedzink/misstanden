@@ -709,24 +709,37 @@ const toStoragePath = (rawUrl, bucket = 'attachments') => {
   }
 };
 
-const createSignedAttachmentUrl = async (rawUrl, bucket = 'attachments', expiresIn = 600) => {
-  void bucket;
-  void expiresIn;
-  const path = toStoragePath(rawUrl, bucket);
-  if (!path) {
-    return isAbsoluteUrl(rawUrl) ? String(rawUrl).trim() : null;
-  }
-  return `${FILES_API_URL}?action=download&path=${encodeURIComponent(path)}`;
-};
-
-const uploadFileToLocalStorage = async (file, folder) => {
-  const formData = new FormData();
-  formData.append('action', 'upload');
-  formData.append('folder', folder);
-  formData.append('file', file, file.name || 'file');
-
+const createSignedAttachmentUrl = async (attachment) => {
+  const attachmentId = String(attachment?.id || '').trim();
+  const existingUrl = String(attachment?.fileUrl || attachment?.file_url || attachment?.url || '').trim();
+  if (!attachmentId) return existingUrl || null;
+  if (existingUrl.includes(`${FILES_API_URL}?action=download&token=`)) return existingUrl;
+  const authHeaders = await getAuthHeadersWithRetry(true);
+  if (!authHeaders.Authorization) return null;
   const response = await fetch(FILES_API_URL, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    body: JSON.stringify({ action: 'sign', attachment_id: attachmentId }),
+  });
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.success) return null;
+  return json?.data?.url || null;
+};
+
+const uploadFileToLocalStorage = async (file, context = {}) => {
+  const formData = new FormData();
+  formData.append('action', 'upload');
+  formData.append('ticket_id', String(context.ticketId || ''));
+  if (context.accessCode) {
+    formData.append('access_mode', 'reporter');
+    formData.append('ticket_input', String(context.ticketInput || context.ticketId || ''));
+    formData.append('access_code', String(context.accessCode));
+  }
+  formData.append('file', file, file.name || 'file');
+  const authHeaders = context.currentHandlerId ? await getAuthHeadersWithRetry(true) : {};
+  const response = await fetch(FILES_API_URL, {
+    method: 'POST',
+    headers: authHeaders,
     body: formData,
   });
   const json = await response.json().catch(() => null);
@@ -736,12 +749,12 @@ const uploadFileToLocalStorage = async (file, folder) => {
   return json?.data || {};
 };
 
-const deleteLocalFile = async (path) => {
-  if (!path) return;
+const cleanupPendingUpload = async (uploadToken) => {
+  if (!uploadToken) return;
   await fetch(FILES_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'delete', path }),
+    body: JSON.stringify({ action: 'cleanup', upload_token: uploadToken }),
   });
 };
 
@@ -765,8 +778,7 @@ const attachSignedUrlsToAttachments = async (attachments, bucket = 'attachments'
 
   const signedAttachments = await Promise.all(
     attachments.map(async (att) => {
-      const rawUrl = att?.fileUrl || att?.file_url || att?.url || '';
-      const signedUrl = await createSignedAttachmentUrl(rawUrl, bucket, 600);
+      const signedUrl = await createSignedAttachmentUrl(att);
       if (!signedUrl) return att;
       return {
         ...att,
@@ -2075,21 +2087,12 @@ async deleteHandler(handlerId, options = {}) {
     }
 
     const originalName = String(file.name || 'file');
-    const safeName = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
-
-    const uid =
-      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : `${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
-
-    const path = `${ticketId}/${uid}_${safeName}`;
-
-    const uploadData = await uploadFileToLocalStorage(file, `${bucket}/${ticketId}`);
-    const fileUrl = uploadData?.path || path;
+    const uploadData = await uploadFileToLocalStorage(file, { ticketId, currentHandlerId, accessCode, ticketInput });
+    const uploadToken = uploadData?.upload_token || null;
 
     const attachmentPayload = {
       name: originalName,
-      url: fileUrl,
+      url: null,
       type: file.type,
       size: file.size,
       isInternal,
@@ -2112,7 +2115,7 @@ async deleteHandler(handlerId, options = {}) {
             action: 'handler_add_attachment',
             ticket_id: ticketId,
             file_name: originalName,
-            file_url: fileUrl,
+            upload_token: uploadToken,
             mime_type: file.type || 'application/octet-stream',
             size_bytes: Number(file.size || 0) || 0,
             is_internal: !!isInternal,
@@ -2138,7 +2141,7 @@ async deleteHandler(handlerId, options = {}) {
             ticket_input: String(ticketInput || ticketId),
             access_code: String(accessCode).trim().padStart(6, '0'),
             file_name: originalName,
-            file_url: fileUrl,
+            upload_token: uploadToken,
             mime_type: file.type || 'application/octet-stream',
             size_bytes: Number(file.size || 0) || 0,
           },
@@ -2156,7 +2159,7 @@ async deleteHandler(handlerId, options = {}) {
       // In reporter flow, direct table insert is usually blocked by RLS.
       // Avoid noisy fallback errors and return the real API failure.
       try {
-        await deleteLocalFile(fileUrl);
+        await cleanupPendingUpload(uploadToken);
       } catch (cleanupError) {
         console.warn('[ticketService] Failed to cleanup uploaded reporter attachment after API failure', cleanupError);
       }
@@ -2167,7 +2170,7 @@ async deleteHandler(handlerId, options = {}) {
 
     if (!attachment && handlerApiAttempted && currentHandlerId) {
       try {
-        await deleteLocalFile(fileUrl);
+        await cleanupPendingUpload(uploadToken);
       } catch (cleanupError) {
         console.warn('[ticketService] Failed to cleanup uploaded handler attachment after API failure', cleanupError);
       }
@@ -2180,7 +2183,7 @@ async deleteHandler(handlerId, options = {}) {
       // Legacy fallback only for internal flows without handler/reporter API context.
       attachment = await this.createAttachmentRecord(ticketId, attachmentPayload);
     }
-    const signedUrl = await createSignedAttachmentUrl(fileUrl, bucket, 600);
+    const signedUrl = await createSignedAttachmentUrl(attachment);
     const attachmentWithUrl = signedUrl
       ? { ...attachment, fileUrl: signedUrl, file_url: signedUrl, url: signedUrl }
       : attachment;

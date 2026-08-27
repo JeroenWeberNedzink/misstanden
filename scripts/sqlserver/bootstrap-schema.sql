@@ -235,6 +235,7 @@ BEGIN
         id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_tickets PRIMARY KEY DEFAULT NEWID(),
         ticket_number NVARCHAR(100) NOT NULL,
         access_code NVARCHAR(20) NULL,
+        access_code_hash NVARCHAR(64) NULL,
         workflow_type NVARCHAR(100) NOT NULL,
         current_stage NVARCHAR(100) NULL,
         status_code NVARCHAR(100) NULL,
@@ -269,6 +270,13 @@ BEGIN
     CREATE INDEX IX_tickets_status_code ON dbo.tickets(status_code);
     CREATE INDEX IX_tickets_workflow_type ON dbo.tickets(workflow_type);
     CREATE INDEX IX_tickets_reporter_email_hash ON dbo.tickets(reporter_email_hash);
+    EXEC(N'CREATE INDEX IX_tickets_access_code_hash ON dbo.tickets(access_code_hash) WHERE access_code_hash IS NOT NULL');
+END;
+
+IF COL_LENGTH(N'dbo.tickets', N'access_code_hash') IS NULL
+BEGIN
+    ALTER TABLE dbo.tickets ADD access_code_hash NVARCHAR(64) NULL;
+    EXEC(N'CREATE INDEX IX_tickets_access_code_hash ON dbo.tickets(access_code_hash) WHERE access_code_hash IS NOT NULL');
 END;
 
 IF COL_LENGTH(N'dbo.tickets', N'description_encrypted') IS NULL
@@ -502,12 +510,30 @@ BEGIN
     CREATE TABLE dbo.ticket_reply_tokens (
         id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_ticket_reply_tokens PRIMARY KEY DEFAULT NEWID(),
         ticket_id UNIQUEIDENTIFIER NOT NULL,
-        token NVARCHAR(255) NOT NULL,
+        token NVARCHAR(255) NULL,
+        token_hash NVARCHAR(64) NULL,
         expires_at DATETIME2(3) NOT NULL,
         created_at DATETIME2(3) NOT NULL CONSTRAINT DF_ticket_reply_tokens_created_at DEFAULT SYSUTCDATETIME(),
         CONSTRAINT FK_ticket_reply_tokens_ticket FOREIGN KEY (ticket_id) REFERENCES dbo.tickets(id) ON DELETE CASCADE
     );
-    CREATE UNIQUE INDEX UX_ticket_reply_tokens_token ON dbo.ticket_reply_tokens(token);
+    CREATE UNIQUE INDEX UX_ticket_reply_tokens_token ON dbo.ticket_reply_tokens(token) WHERE token IS NOT NULL;
+    EXEC(N'CREATE UNIQUE INDEX UX_ticket_reply_tokens_token_hash ON dbo.ticket_reply_tokens(token_hash) WHERE token_hash IS NOT NULL');
+END;
+
+IF OBJECT_ID(N'dbo.ticket_reply_tokens', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'dbo.ticket_reply_tokens', N'token_hash') IS NULL
+        ALTER TABLE dbo.ticket_reply_tokens ADD token_hash NVARCHAR(64) NULL;
+    IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ticket_reply_tokens') AND name = N'token' AND is_nullable = 0)
+    BEGIN
+        IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.ticket_reply_tokens') AND name = N'UX_ticket_reply_tokens_token')
+            DROP INDEX UX_ticket_reply_tokens_token ON dbo.ticket_reply_tokens;
+        ALTER TABLE dbo.ticket_reply_tokens ALTER COLUMN token NVARCHAR(255) NULL;
+    END;
+    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.ticket_reply_tokens') AND name = N'UX_ticket_reply_tokens_token')
+        EXEC(N'CREATE UNIQUE INDEX UX_ticket_reply_tokens_token ON dbo.ticket_reply_tokens(token) WHERE token IS NOT NULL');
+    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.ticket_reply_tokens') AND name = N'UX_ticket_reply_tokens_token_hash')
+        EXEC(N'CREATE UNIQUE INDEX UX_ticket_reply_tokens_token_hash ON dbo.ticket_reply_tokens(token_hash) WHERE token_hash IS NOT NULL');
 END;
 
 IF OBJECT_ID(N'dbo.reporter_reminder_deliveries', N'U') IS NULL

@@ -18,6 +18,10 @@ node_modules
 # Local encryption keys
 private/keys/*.key
 
+# Runtime case attachments are server-owned data, never source files.
+/private/uploads/attachments/*
+!/private/uploads/attachments/.gitkeep
+
 # Runtime directories (local only)
 logs/
 pid/

@@ -7,6 +7,7 @@ require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_rate_limit.php';
 require_once __DIR__ . '/_security_headers.php';
 require_once __DIR__ . '/_sqlserver.php';
+require_once __DIR__ . '/_portal_tokens.php';
 
 api_apply_security_headers([
     'allow_methods' => 'POST, OPTIONS',
@@ -249,17 +250,12 @@ try {
     $retryHours = rr_positive_hours(rr_setting_value($settingRows, 'notifications.reporter_reminder_retry_hours', getenv('REPORTER_REMINDER_RETRY_HOURS') ?: 6), 6, 168);
 
     $candidates = sqlserver_query(
-        "SELECT t.id, t.ticket_number, t.reporter_email_encrypted, t.metadata, reminder.reminder_type, token.token
+        "SELECT t.id, t.ticket_number, t.reporter_email_encrypted, t.metadata, reminder.reminder_type
          FROM dbo.tickets t
          CROSS APPLY (VALUES
              (N'follow_up', DATEADD(HOUR, @follow_up_hours, t.submitted_at)),
              (N'unassigned', DATEADD(HOUR, @unassigned_hours, t.submitted_at))
          ) reminder(reminder_type, due_at)
-         OUTER APPLY (
-             SELECT TOP 1 trt.token FROM dbo.ticket_reply_tokens trt
-             WHERE trt.ticket_id = t.id AND trt.expires_at > SYSUTCDATETIME()
-             ORDER BY trt.created_at DESC
-         ) token
          LEFT JOIN dbo.workflows w ON w.code = t.workflow_type
          LEFT JOIN dbo.workflow_statuses ws ON ws.workflow_id = w.id AND ws.code = t.status_code
          LEFT JOIN dbo.reporter_reminder_deliveries delivery
@@ -267,7 +263,6 @@ try {
          WHERE reminder.due_at <= SYSUTCDATETIME()
            AND t.email_notify = 1 AND t.status_email_notify = 1
            AND t.reporter_email_encrypted IS NOT NULL AND LTRIM(RTRIM(t.reporter_email_encrypted)) <> N''
-           AND token.token IS NOT NULL
            AND t.handler_id IS NULL
            AND NOT EXISTS (SELECT 1 FROM dbo.ticket_handlers th WHERE th.ticket_id = t.id)
            AND COALESCE(ws.is_terminal, 0) = 0
@@ -294,7 +289,12 @@ try {
         $language = rr_language($candidate['metadata'] ?? null);
         $copy = rr_copy($language, $type);
         $ticketNumber = trim((string)($candidate['ticket_number'] ?? ''));
-        $url = rr_base_url() . '/reply/' . rawurlencode((string)$candidate['token']);
+        $replyToken = bin2hex(random_bytes(32));
+        sqlserver_execute(
+            'INSERT INTO dbo.ticket_reply_tokens (ticket_id, token, token_hash, expires_at, created_at) VALUES (@ticket_id, NULL, @token_hash, DATEADD(DAY, @ttl_days, SYSUTCDATETIME()), SYSUTCDATETIME())',
+            ['ticket_id' => $ticketId, 'token_hash' => portal_token_hash('ticket-reply-token', $replyToken), 'ttl_days' => max(1, (int)(getenv('REPORTER_REPLY_TOKEN_TTL_DAYS') ?: 365))]
+        );
+        $url = rr_base_url() . '/reply/' . rawurlencode($replyToken);
         $subject = str_replace('{{ticket}}', $ticketNumber, $copy['subject']);
         $html = '<h2>' . rr_escape($copy['title']) . '</h2><p>' . rr_escape($copy['body']) . '</p>'
             . '<p><strong>' . rr_escape($ticketNumber) . '</strong></p><p><a href="' . rr_escape($url) . '">' . rr_escape($copy['button']) . '</a></p>'

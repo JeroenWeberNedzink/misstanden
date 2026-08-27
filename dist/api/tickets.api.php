@@ -8,6 +8,8 @@ require_once __DIR__ . '/_admin_auth.php';
 require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
 require_once __DIR__ . '/_sqlserver.php';
+require_once __DIR__ . '/_attachment_security.php';
+require_once __DIR__ . '/_portal_tokens.php';
 
 api_apply_security_headers([
     'allow_methods' => 'POST, OPTIONS',
@@ -174,7 +176,7 @@ function ticket_action_logging_enabled(array $settings): bool { return ticket_se
 function ticket_runtime_schema_marker_file(): string {
     $dir = __DIR__ . '/../../run/cache';
     if (!is_dir($dir)) @mkdir($dir, 0775, true);
-    return $dir . '/tickets-runtime-schema-v4.ok';
+    return $dir . '/tickets-runtime-schema-v5.ok';
 }
 
 function ticket_ensure_runtime_schema(): void {
@@ -205,6 +207,16 @@ function ticket_ensure_runtime_schema(): void {
          IF COL_LENGTH(N'dbo.tickets', N'reporter_phone_encrypted') IS NULL
          BEGIN
              ALTER TABLE dbo.tickets ADD reporter_phone_encrypted NVARCHAR(MAX) NULL;
+         END;
+
+         IF COL_LENGTH(N'dbo.tickets', N'access_code_hash') IS NULL
+         BEGIN
+             ALTER TABLE dbo.tickets ADD access_code_hash NVARCHAR(64) NULL;
+         END;
+
+         IF COL_LENGTH(N'dbo.ticket_reply_tokens', N'token_hash') IS NULL
+         BEGIN
+             ALTER TABLE dbo.ticket_reply_tokens ADD token_hash NVARCHAR(64) NULL;
          END;
 
          IF OBJECT_ID(N'dbo.ticket_handlers', N'U') IS NULL
@@ -416,7 +428,7 @@ function ticket_handler_message_visible_at(bool $isInternal, string $sender): st
 function ticket_download_url(?string $raw): ?string {
     $value = trim((string)$raw);
     if ($value === '' || preg_match('#^https?://#i', $value) === 1) return $value !== '' ? $value : null;
-    return '/api/files.api.php?action=download&path=' . rawurlencode(ltrim($value, '/'));
+    return null;
 }
 
 function ticket_load_workflow_status_rows(string $workflowType): array {
@@ -632,8 +644,8 @@ function ticket_lookup_by_credentials(string $ticketInput, string $accessCode): 
     if (!$meta['ok'] || $accessCode === '') return null;
 
     return [
-        'where_sql' => ($meta['is_uuid'] ? 't.id = @ticket_value' : 't.ticket_number = @ticket_value') . ' AND t.access_code = @access_code',
-        'params' => ['ticket_value' => $meta['value'], 'access_code' => $accessCode],
+        'where_sql' => ($meta['is_uuid'] ? 't.id = @ticket_value' : 't.ticket_number = @ticket_value') . ' AND ((t.access_code_hash IS NOT NULL AND t.access_code_hash = @access_code_hash) OR t.access_code = @access_code)',
+        'params' => ['ticket_value' => $meta['value'], 'access_code_hash' => portal_token_hash('ticket-access-code', $accessCode), 'access_code' => $accessCode],
     ];
 }
 
@@ -694,8 +706,7 @@ function ticket_sanitize_reporter_ticket(array $ticket, array $settings): array 
     $nowTs = time();
     $ticket['attachments'] = array_values(array_filter(array_map(static function ($att) {
         if (!is_array($att) || !empty($att['is_internal']) || !empty($att['note_id'])) return null;
-        $att['file_url'] = ticket_download_url($att['file_url'] ?? null);
-        return $att;
+        return attachment_security_public_row($att, 'reporter');
     }, is_array($ticket['attachments'] ?? null) ? $ticket['attachments'] : [])));
     $ticket['messages'] = array_values(array_filter(array_map(static function ($msg) use ($nowTs) {
         if (!is_array($msg) || !empty($msg['is_internal'])) return null;
@@ -1195,7 +1206,7 @@ function ticket_try_auto_assign_handler(string $ticketId, string $workflowType):
 
 function ticket_create_reply_token(string $ticketId): ?string {
     $token = ticket_generate_secure_token(); $expiresAt = ticket_reply_token_expiry_sql();
-    sqlserver_execute('INSERT INTO dbo.ticket_reply_tokens (ticket_id, token, expires_at, created_at) VALUES (@ticket_id, @token, @expires_at, SYSUTCDATETIME())', ['ticket_id' => $ticketId, 'token' => $token, 'expires_at' => $expiresAt]);
+    sqlserver_execute('INSERT INTO dbo.ticket_reply_tokens (ticket_id, token, token_hash, expires_at, created_at) VALUES (@ticket_id, NULL, @token_hash, @expires_at, SYSUTCDATETIME())', ['ticket_id' => $ticketId, 'token_hash' => portal_token_hash('ticket-reply-token', $token), 'expires_at' => $expiresAt]);
     return $token;
 }
 
@@ -1219,7 +1230,7 @@ function handle_create(array $data): void {
         $payload = [
             'id' => ticket_uuid4(),
             'ticket_number' => trim((string)($data['ticket_number'] ?? '')) ?: ticket_generate_ticket_number(ticket_sanitize_prefix(ticket_setting_string($settings, ['tickets.ticket_number_prefix'], 'NZ'), 'NZ')),
-            'access_code' => normalize_access_code($data['access_code'] ?? '') ?: ticket_generate_access_code(),
+            'access_code_raw' => normalize_access_code($data['access_code'] ?? '') ?: ticket_generate_access_code(),
             'description' => null,
             'description_encrypted' => ticket_crypto_encrypt_nullable($data['description'] ?? null, $cryptoKey, false),
             'location' => null,
@@ -1241,6 +1252,8 @@ function handle_create(array $data): void {
             'next_step_due' => ticket_sql_datetime_param($data['next_step_due'] ?? null),
             'is_anonymous' => $isAnonymous,
         ];
+        $payload['access_code'] = null;
+        $payload['access_code_hash'] = portal_token_hash('ticket-access-code', (string)$payload['access_code_raw']);
         $stage = 'insert_ticket';
         $replyToken = ticket_generate_secure_token();
         $replyExpiresAtTs = ticket_reply_token_expiry_timestamp();
@@ -1249,24 +1262,25 @@ function handle_create(array $data): void {
             'SET NOCOUNT ON;
 
              INSERT INTO dbo.tickets (
-                id, ticket_number, access_code, description, description_encrypted, location, location_encrypted,
+                id, ticket_number, access_code, access_code_hash, description, description_encrypted, location, location_encrypted,
                 workflow_type, severity_code, reporter_name, reporter_name_encrypted, reporter_phone, reporter_phone_encrypted,
                 email_notify, status_email_notify, status_code, current_stage, metadata, reporter_email, reporter_email_encrypted,
                 reporter_email_hash, next_step_due, is_anonymous, submitted_at, created_at, updated_at
             )
              VALUES (
-                @id, @ticket_number, @access_code, @description, @description_encrypted, @location, @location_encrypted,
+                @id, @ticket_number, @access_code, @access_code_hash, @description, @description_encrypted, @location, @location_encrypted,
                 @workflow_type, @severity_code, @reporter_name, @reporter_name_encrypted, @reporter_phone, @reporter_phone_encrypted,
                 @email_notify, @status_email_notify, @status_code, @current_stage, @metadata, @reporter_email, @reporter_email_encrypted,
                 @reporter_email_hash, @next_step_due, @is_anonymous, SYSUTCDATETIME(), SYSUTCDATETIME(), SYSUTCDATETIME()
             );
 
-             INSERT INTO dbo.ticket_reply_tokens (ticket_id, token, expires_at, created_at)
-             VALUES (@id, @reply_token, @reply_expires_at, SYSUTCDATETIME());
+             INSERT INTO dbo.ticket_reply_tokens (ticket_id, token, token_hash, expires_at, created_at)
+             VALUES (@id, NULL, @reply_token_hash, @reply_expires_at, SYSUTCDATETIME());
 
              SELECT TOP 1 * FROM dbo.tickets WHERE id = @id;',
             array_merge($payload, [
                 'reply_token' => $replyToken,
+                'reply_token_hash' => portal_token_hash('ticket-reply-token', $replyToken),
                 'reply_expires_at' => $replyExpiresAtSql,
             ])
         );
@@ -1280,7 +1294,7 @@ function handle_create(array $data): void {
         if (!ticket_is_local_api_smoke_test($data)) {
             ticket_notify_handlers_new_report_safe($row);
         }
-        $row['reply_token'] = $replyToken; $row['reply_url_path'] = '/reply/' . rawurlencode($replyToken); $row['reply_expires_at'] = gmdate('Y-m-d\TH:i:s\Z', $replyExpiresAtTs);
+        $row['access_code'] = $payload['access_code_raw']; $row['reply_token'] = $replyToken; $row['reply_url_path'] = '/reply/' . rawurlencode($replyToken); $row['reply_expires_at'] = gmdate('Y-m-d\TH:i:s\Z', $replyExpiresAtTs);
         api_json(200, true, 'Ticket created', $row);
     } catch (Throwable $e) {
         $errorId = api_log_exception('tickets.api.create', $e, ['action' => 'create', 'stage' => $stage, 'workflow_type' => $workflowType]);
@@ -1663,11 +1677,10 @@ function handle_handler_add_message(array $data): void {
 function handle_reporter_add_attachment(array $data): void {
     api_apply_no_store_headers(); $settings = ticket_load_system_settings();
     $ticketInput = (string)($data['ticket_input'] ?? $data['ticket_number'] ?? $data['ticket_id'] ?? ''); $accessCode = normalize_access_code($data['access_code'] ?? '');
-    $fileName = trim((string)($data['file_name'] ?? '')); $fileUrl = trim((string)($data['file_url'] ?? '')); $mimeType = trim((string)($data['mime_type'] ?? 'application/octet-stream')); $sizeBytes = isset($data['size_bytes']) ? (int)$data['size_bytes'] : null;
+    $uploadToken = trim((string)($data['upload_token'] ?? ''));
     if ($ticketInput === '' || $accessCode === '') api_json(400, false, 'ticket_input and a valid 6-digit access_code are required');
-    if ($fileName === '' || ticket_strlen($fileName) > 255) api_json(400, false, 'file_name is required and must be <= 255 chars');
-    if ($fileUrl === '') api_json(400, false, 'file_url is required');
-    ticket_validate_attachment_policy($settings, $fileName, $sizeBytes); ticket_enforce_request_rate_limit('attachment', $ticketInput);
+    if ($uploadToken === '') api_json(400, false, 'upload_token is required');
+    ticket_enforce_request_rate_limit('attachment', $ticketInput);
     $lookup = ticket_lookup_by_credentials($ticketInput, $accessCode);
     $lookupResults = $lookup ? sqlserver_run_commands([ticket_command_by_credentials($lookup)], false) : [];
     $ticketRow = sqlserver_result_rows($lookupResults, 0)[0] ?? null;
@@ -1675,11 +1688,16 @@ function handle_reporter_add_attachment(array $data): void {
     if (!$ticket) { ticket_register_failed_auth_attempt($ticketInput); usleep(random_int(150000, 350000)); api_json(401, false, 'Invalid ticket ID or access code'); }
     ticket_reset_failed_auth_attempts($ticketInput);
     $ticketId = trim((string)($ticket['id'] ?? '')); if (!ticket_is_uuid($ticketId)) throw new Exception('Ticket lookup returned invalid data');
+    $upload = attachment_security_validate_upload_token($uploadToken, $ticketId, ['reporter']);
+    if (!$upload) api_json(401, false, 'Invalid or expired upload authorization');
+    $fileName = trim((string)($upload['n'] ?? '')); $fileUrl = (string)$upload['p']; $mimeType = trim((string)($upload['m'] ?? 'application/octet-stream')); $sizeBytes = (int)($upload['z'] ?? 0);
+    ticket_validate_attachment_policy($settings, $fileName, $sizeBytes);
+    $attachmentId = ticket_uuid4();
     $commands = [
         sqlserver_command(
             'nonquery',
-            'INSERT INTO dbo.attachments (ticket_id, file_name, file_url, mime_type, size_bytes, is_internal, note_id, created_at) VALUES (@ticket_id, @file_name, @file_url, @mime_type, @size_bytes, @is_internal, @note_id, SYSUTCDATETIME())',
-            ['ticket_id' => $ticketId, 'file_name' => $fileName, 'file_url' => $fileUrl, 'mime_type' => $mimeType !== '' ? $mimeType : 'application/octet-stream', 'size_bytes' => $sizeBytes, 'is_internal' => false, 'note_id' => null]
+            'INSERT INTO dbo.attachments (id, ticket_id, file_name, file_url, mime_type, size_bytes, is_internal, note_id, created_at) VALUES (@id, @ticket_id, @file_name, @file_url, @mime_type, @size_bytes, @is_internal, @note_id, SYSUTCDATETIME())',
+            ['id' => $attachmentId, 'ticket_id' => $ticketId, 'file_name' => $fileName, 'file_url' => $fileUrl, 'mime_type' => $mimeType !== '' ? $mimeType : 'application/octet-stream', 'size_bytes' => $sizeBytes, 'is_internal' => false, 'note_id' => null]
         ),
         sqlserver_command(
             'nonquery',
@@ -1697,10 +1715,11 @@ function handle_reporter_add_attachment(array $data): void {
     if ($actionCommand) $commands[] = $actionCommand;
 
     $attachmentIndex = count($commands);
-    $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
+    $commands[] = sqlserver_command('query', 'SELECT TOP 1 * FROM dbo.attachments WHERE id = @id', ['id' => $attachmentId]);
 
     $results = sqlserver_run_commands($commands, true);
     $attachmentRow = sqlserver_result_rows($results, $attachmentIndex)[0] ?? null;
+    if (is_array($attachmentRow)) $attachmentRow = attachment_security_public_row($attachmentRow, 'reporter');
     api_json(200, true, 'Attachment added', ['attachment' => $attachmentRow]);
 }
 
@@ -1709,14 +1728,13 @@ function handle_handler_add_attachment(array $data): void {
     $ticketId = trim((string)($data['ticket_id'] ?? '')); if (!ticket_is_uuid($ticketId)) api_json(400, false, 'ticket_id must be a valid UUID');
     ticket_enforce_handler_mutation_rate_limit('add_attachment', $handler, $ticketId);
     $ticketBeforeUpload = ticket_require_handler_ticket_access($handler, $ticketId);
-    $fileName = trim((string)($data['file_name'] ?? '')); $fileUrl = trim((string)($data['file_url'] ?? '')); $mimeType = trim((string)($data['mime_type'] ?? 'application/octet-stream')); $sizeBytes = isset($data['size_bytes']) ? (int)$data['size_bytes'] : null; $isInternal = !empty($data['is_internal']); $noteId = trim((string)($data['note_id'] ?? ''));
-    if ($fileName === '' || ticket_strlen($fileName) > 255) api_json(400, false, 'file_name is required and must be <= 255 chars'); if ($fileUrl === '') api_json(400, false, 'file_url is required');
+    $uploadToken = trim((string)($data['upload_token'] ?? '')); $isInternal = !empty($data['is_internal']); $noteId = trim((string)($data['note_id'] ?? ''));
+    $upload = attachment_security_validate_upload_token($uploadToken, $ticketId, ['handler']);
+    if (!$upload) api_json(401, false, 'Invalid or expired upload authorization');
+    $fileName = trim((string)($upload['n'] ?? '')); $fileUrl = (string)$upload['p']; $mimeType = trim((string)($upload['m'] ?? 'application/octet-stream')); $sizeBytes = (int)($upload['z'] ?? 0);
+    if ($fileName === '' || ticket_strlen($fileName) > 255) api_json(400, false, 'Invalid uploaded file metadata');
     ticket_validate_attachment_policy($settings, $fileName, $sizeBytes);
-    $normalizedFileUrl = str_replace('\\', '/', ltrim($fileUrl, '/'));
-    $expectedPrefix = 'attachments/' . strtolower($ticketId) . '/';
-    if (str_contains($normalizedFileUrl, '..') || !str_starts_with(strtolower($normalizedFileUrl), $expectedPrefix)) {
-        api_json(400, false, 'file_url must reference an uploaded file for this ticket');
-    }
+    $normalizedFileUrl = $fileUrl;
     $performedBy = trim((string)($handler['name'] ?? '')) ?: 'System';
     $attachmentId = ticket_uuid4();
     $commands = [
@@ -1752,6 +1770,7 @@ function handle_handler_add_attachment(array $data): void {
 
     $results = sqlserver_run_commands($commands, true);
     $attachmentRow = sqlserver_result_rows($results, $attachmentIndex)[0] ?? null;
+    if (is_array($attachmentRow)) $attachmentRow = attachment_security_public_row($attachmentRow, 'handler');
     $ticket = ticket_with_handlers_from_results($results, $ticketIndex, $ticketHandlersIndex);
     if ((string)($ticket['status_code'] ?? '') !== (string)($ticketBeforeUpload['status_code'] ?? '')) {
         throw new Exception('Attachment upload unexpectedly changed ticket status');

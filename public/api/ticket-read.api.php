@@ -7,6 +7,7 @@ require_once __DIR__ . '/_admin_auth.php';
 require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
 require_once __DIR__ . '/_sqlserver.php';
+require_once __DIR__ . '/_attachment_security.php';
 
 api_apply_security_headers([
     'allow_methods' => 'GET, OPTIONS',
@@ -166,9 +167,10 @@ try {
         throw new Exception('SQL Server is not configured');
     }
 
-    api_authz_require_active_handler(static function (int $status, string $message): void {
+    $authContext = api_authz_require_active_handler(static function (int $status, string $message): void {
         ticket_read_json($status, false, $message);
     });
+    $activeHandler = (array)($authContext['handler'] ?? []);
 
     $action = strtolower(trim((string)($_GET['action'] ?? 'list')));
 
@@ -279,6 +281,9 @@ try {
         if ($ticketId === '') {
             ticket_read_json(400, false, 'ticket_id is required');
         }
+        if (!attachment_security_handler_can_access_ticket($activeHandler, $ticketId)) {
+            ticket_read_json(403, false, 'Ticket access denied');
+        }
 
         $commands = [
             sqlserver_command(
@@ -331,10 +336,7 @@ try {
         $data = ['row' => $ticket];
         if ($includeRelations) {
             $data['relations'] = [
-                'attachments' => array_map(static function (array $row): array {
-                    $row['is_internal'] = isset($row['is_internal']) ? (bool)$row['is_internal'] : false;
-                    return $row;
-                }, sqlserver_result_rows($results, 2)),
+                'attachments' => array_map(static fn(array $row): array => attachment_security_public_row($row, 'handler'), sqlserver_result_rows($results, 2)),
                 'messages' => array_map(static function (array $row): array {
                     $row = ticket_crypto_decrypt_message_row($row);
                     $row['is_internal'] = isset($row['is_internal']) ? (bool)$row['is_internal'] : false;
@@ -352,6 +354,9 @@ try {
         if ($ticketId === '') {
             ticket_read_json(400, false, 'ticket_id is required');
         }
+        if (!attachment_security_handler_can_access_ticket($activeHandler, $ticketId)) {
+            ticket_read_json(403, false, 'Ticket access denied');
+        }
 
         $results = sqlserver_run_commands([
             sqlserver_command('query', 'SELECT * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at ASC', ['ticket_id' => $ticketId]),
@@ -361,10 +366,7 @@ try {
         ], false);
 
         ticket_read_json(200, true, 'Ticket relations loaded', ['data' => [
-            'attachments' => array_map(static function (array $row): array {
-                $row['is_internal'] = isset($row['is_internal']) ? (bool)$row['is_internal'] : false;
-                return $row;
-            }, sqlserver_result_rows($results, 0)),
+            'attachments' => array_map(static fn(array $row): array => attachment_security_public_row($row, 'handler'), sqlserver_result_rows($results, 0)),
             'messages' => array_map(static function (array $row): array {
                 $row = ticket_crypto_decrypt_message_row($row);
                 $row['is_internal'] = isset($row['is_internal']) ? (bool)$row['is_internal'] : false;

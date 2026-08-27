@@ -6,6 +6,8 @@ require_once __DIR__ . '/_ticket_crypto.php';
 require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
 require_once __DIR__ . '/_sqlserver.php';
+require_once __DIR__ . '/_attachment_security.php';
+require_once __DIR__ . '/_portal_tokens.php';
 
 api_apply_security_headers([
     'allow_methods' => 'GET, POST, OPTIONS',
@@ -42,21 +44,13 @@ function reporter_reply_parse_json($value, $fallback = []) {
     return json_last_error() === JSON_ERROR_NONE ? $decoded : $fallback;
 }
 
-function reporter_reply_download_url(?string $raw): ?string {
-    $value = trim((string)$raw);
-    if ($value === '' || preg_match('#^https?://#i', $value) === 1) {
-        return $value !== '' ? $value : null;
-    }
-    return '/api/files.api.php?action=download&path=' . rawurlencode($value);
-}
-
 function reporter_reply_load_token_record(string $token): ?array {
     $rows = sqlserver_query(
-        'SELECT TOP 1 id, ticket_id, token, expires_at, created_at
+        'SELECT TOP 1 id, ticket_id, token, token_hash, expires_at, created_at
          FROM dbo.ticket_reply_tokens
-         WHERE token = @token
+         WHERE (token_hash IS NOT NULL AND token_hash = @token_hash) OR token = @token
          ORDER BY created_at DESC',
-        ['token' => $token]
+        ['token_hash' => portal_token_hash('ticket-reply-token', $token), 'token' => $token]
     );
     return $rows[0] ?? null;
 }
@@ -103,7 +97,7 @@ function reporter_reply_sanitize_ticket(array $ticket): array {
             'mime_type' => $att['mime_type'] ?? null,
             'size_bytes' => $att['size_bytes'] ?? null,
             'created_at' => $att['created_at'] ?? null,
-            'file_url' => reporter_reply_download_url($att['file_url'] ?? null),
+            'file_url' => attachment_security_download_url($att, 'reply'),
         ];
     }, $attachments)));
 
@@ -148,23 +142,24 @@ function reporter_reply_insert_message(string $ticketId, string $body): array {
 }
 
 function reporter_reply_insert_attachment(string $ticketId, array $data): array {
-    $fileName = trim((string)($data['file_name'] ?? ''));
-    $fileUrl = trim((string)($data['file_url'] ?? ''));
-    $mimeType = trim((string)($data['mime_type'] ?? 'application/octet-stream'));
-    $sizeBytes = isset($data['size_bytes']) ? (int)$data['size_bytes'] : null;
+    $upload = attachment_security_validate_upload_token(trim((string)($data['upload_token'] ?? '')), $ticketId, ['reply']);
+    if (!$upload) reporter_reply_json(401, false, 'Invalid or expired upload authorization');
+    $fileName = trim((string)($upload['n'] ?? ''));
+    $fileUrl = (string)$upload['p'];
+    $mimeType = trim((string)($upload['m'] ?? 'application/octet-stream'));
+    $sizeBytes = (int)($upload['z'] ?? 0);
 
     if ($fileName === '' || strlen($fileName) > 255) {
         reporter_reply_json(400, false, 'file_name is required and must be <= 255 chars');
     }
-    if ($fileUrl === '') {
-        reporter_reply_json(400, false, 'file_url is required');
-    }
+    $attachmentId = bin2hex(random_bytes(16));
+    $attachmentId = substr($attachmentId,0,8).'-'.substr($attachmentId,8,4).'-4'.substr($attachmentId,13,3).'-a'.substr($attachmentId,17,3).'-'.substr($attachmentId,20,12);
 
     sqlserver_execute(
-        'INSERT INTO dbo.attachments (ticket_id, file_name, file_url, mime_type, size_bytes, is_internal, note_id, created_at)
-         VALUES (@ticket_id, @file_name, @file_url, @mime_type, @size_bytes, @is_internal, @note_id, SYSUTCDATETIME())',
+        'INSERT INTO dbo.attachments (id, ticket_id, file_name, file_url, mime_type, size_bytes, is_internal, note_id, created_at)
+         VALUES (@id, @ticket_id, @file_name, @file_url, @mime_type, @size_bytes, @is_internal, @note_id, SYSUTCDATETIME())',
         [
-            'ticket_id' => $ticketId,
+            'id' => $attachmentId, 'ticket_id' => $ticketId,
             'file_name' => $fileName,
             'file_url' => $fileUrl,
             'mime_type' => $mimeType,
@@ -177,8 +172,8 @@ function reporter_reply_insert_attachment(string $ticketId, array $data): array 
         'UPDATE dbo.tickets SET last_update_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() WHERE id = @ticket_id',
         ['ticket_id' => $ticketId]
     );
-    $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.attachments WHERE ticket_id = @ticket_id ORDER BY created_at DESC', ['ticket_id' => $ticketId]);
-    return $rows[0] ?? [];
+    $rows = sqlserver_query('SELECT TOP 1 * FROM dbo.attachments WHERE id = @id', ['id' => $attachmentId]);
+    return isset($rows[0]) ? attachment_security_public_row($rows[0], 'reply') : [];
 }
 
 try {

@@ -1,8 +1,14 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
+
+// Ephemeral test-only secrets. Production/runtime code still fails closed when
+// the dedicated server-side variables are absent or too short.
+if (!process.env.ATTACHMENT_TOKEN_KEY) process.env.ATTACHMENT_TOKEN_KEY = randomBytes(32).toString('hex');
+if (!process.env.PORTAL_TOKEN_HASH_KEY) process.env.PORTAL_TOKEN_HASH_KEY = randomBytes(32).toString('hex');
 
 const root = process.cwd();
 const defaultBaseUrl = process.env.API_TEST_BASE_URL || 'http://127.0.0.1:8081';
@@ -175,11 +181,55 @@ function runFeatureContractChecks() {
     ['handler message response preserves reporter visibility timestamp',
       read('public/api/tickets.api.php').includes("'visible_at' => ticket_handler_message_visible_at($isInternal, $sender)")
         && read('public/api/tickets.api.php').includes("WHERE id = @id")],
+    ['raw attachment paths cannot authorize file operations',
+      !read('public/api/files.api.php').includes("$_GET['path']")
+        && !read('public/api/files.api.php').includes("$payload['path']")
+        && read('public/api/files.api.php').includes('attachment_security_validate_download')],
+    ['attachment upload is ticket-authorized before storage',
+      read('public/api/files.api.php').includes('files_authorize_upload();')
+        && read('public/api/files.api.php').indexOf('files_authorize_upload();') < read('public/api/files.api.php').indexOf('move_uploaded_file')],
+    ['attachment downloads are opaque scoped and time limited',
+      read('public/api/_attachment_security.php').includes("'k' => 'download'")
+        && read('public/api/_attachment_security.php').includes('aes-256-gcm')
+        && read('public/api/_attachment_security.php').includes("hash_hmac('sha256', $message")
+        && read('public/api/_attachment_security.php').includes('hash_equals($expectedSignature, $providedSignature)')
+        && read('public/api/_attachment_security.php').includes('ATTACHMENT_SECURITY_PUBLIC_SCOPES')],
+    ['new reporter secrets use one-way keyed hashes',
+      read('public/api/tickets.api.php').includes("portal_token_hash('ticket-access-code'")
+        && read('public/api/tickets.api.php').includes("portal_token_hash('ticket-reply-token'")
+        && read('public/api/reporter-reply.api.php').includes('token_hash')],
+    ['attachment and portal token keys are separated from email encryption',
+      read('public/api/_attachment_security.php').includes("getenv('ATTACHMENT_TOKEN_KEY')")
+        && !read('public/api/_attachment_security.php').includes('get_email_crypto_key')
+        && read('public/api/_portal_tokens.php').includes("getenv('PORTAL_TOKEN_HASH_KEY')")
+        && !read('public/api/_portal_tokens.php').includes('get_email_crypto_key')],
+    ['attachment deletion is authorized and audited',
+      read('public/api/files.api.php').includes('files_require_handler_ticket($handler, $ticketId)')
+        && read('public/api/files.api.php').includes("N'attachment_deleted'")],
+    ['IIS blocks direct private storage access',
+      read('public/web.config').includes('<add segment="private" />')
+        && read('private/web.config').includes('<add segment="uploads" />')],
+    ['IIS deploy preserves server-owned keys and uploads',
+      read('nz-startup.ps1').includes("Invoke-RobocopyChecked $privateDir $targetPrivateDir @('web.config')")
+        && !read('nz-startup.ps1').includes("Invoke-RobocopyChecked $privateDir $targetPrivateDir @('*') @('/MIR'")
+        && read('nz-startup.ps1').includes('Grant-IisModifyAccess $targetUploadDir')],
   ];
 
   for (const [name, ok] of checks) {
     if (ok) pass(name);
     else fail(name, 'feature contract not found in implementation');
+  }
+
+  const securityResult = spawnSync('php', ['scripts/attachment-security-test.php'], { cwd: root, encoding: 'utf8', windowsHide: true });
+  try {
+    const report = JSON.parse(String(securityResult.stdout || '').trim());
+    for (const item of report?.results || []) {
+      if (item?.ok) pass(`attachment security: ${item.name}`);
+      else fail(`attachment security: ${item?.name || 'unknown check'}`);
+    }
+    if (securityResult.status !== 0 && report?.success !== false) fail('attachment security test process', `exit ${securityResult.status}`);
+  } catch {
+    fail('attachment security test process', truncate(securityResult.stderr || securityResult.stdout || 'invalid test output'));
   }
 }
 
@@ -429,6 +479,21 @@ async function runProtectedContractSmoke() {
       expectedStatuses: [401, 403],
       expectSuccess: false,
     });
+    await request('GET raw attachment path rejected', 'files.api.php', {
+      query: 'action=download&path=../../.env', expectedStatuses: [401], expectSuccess: false,
+    });
+    await request('GET invalid signed attachment rejected', 'files.api.php', {
+      query: 'action=download&token=v1.invalid', expectedStatuses: [401], expectSuccess: false,
+    });
+    await request('POST unauthorized attachment sign rejected', 'files.api.php', {
+      method: 'POST', body: { action: 'sign', attachment_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, expectedStatuses: [401], expectSuccess: false,
+    });
+    await request('POST unauthorized attachment upload rejected', 'files.api.php', {
+      method: 'POST', body: { action: 'upload', ticket_id: '11111111-1111-4111-8111-111111111111' }, expectedStatuses: [401], expectSuccess: false,
+    });
+    await request('POST unauthorized attachment delete rejected', 'files.api.php', {
+      method: 'POST', body: { action: 'delete', attachment_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, expectedStatuses: [401], expectSuccess: false,
+    });
   }
 }
 
@@ -483,6 +548,20 @@ async function runMutationSmoke() {
   if (!create.ok) return;
   sharedState.createdTicket = create.json.data;
 
+  const storageCheck = spawnSync('php', ['scripts/attachment-security-test.php'], {
+    cwd: root, encoding: 'utf8', windowsHide: true,
+    env: { ...process.env, SECURITY_TEST_TICKET_ID: sharedState.createdTicket.id },
+  });
+  try {
+    const report = JSON.parse(String(storageCheck.stdout || '').trim());
+    for (const item of (report?.results || []).filter((entry) => entry?.name?.startsWith('new '))) {
+      if (item.ok) pass(`attachment security: ${item.name}`);
+      else fail(`attachment security: ${item.name}`);
+    }
+  } catch {
+    fail('new reporter token storage verification', truncate(storageCheck.stderr || storageCheck.stdout));
+  }
+
   await request('POST tickets access disposable', 'tickets.api.php', {
     method: 'POST',
     body: {
@@ -513,6 +592,59 @@ async function runMutationSmoke() {
     expectSuccess: true,
     validate: (json) => json?.data?.message?.body ? true : 'message body missing in response',
   });
+
+  const uploadForm = new FormData();
+  uploadForm.append('action', 'upload');
+  uploadForm.append('access_mode', 'reporter');
+  uploadForm.append('ticket_id', sharedState.createdTicket.id);
+  uploadForm.append('ticket_input', sharedState.createdTicket.ticket_number);
+  uploadForm.append('access_code', sharedState.createdTicket.access_code);
+  uploadForm.append('file', new Blob(['%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n'], { type: 'application/pdf' }), 'security-smoke.pdf');
+  let uploadJson = null;
+  try {
+    const uploadResponse = await fetchWithTimeout(urlFor('files.api.php'), { method: 'POST', body: uploadForm }, config.timeoutMs);
+    uploadJson = await uploadResponse.json().catch(() => null);
+    if (uploadResponse.status === 200 && uploadJson?.success && uploadJson?.data?.upload_token && !uploadJson?.data?.path) {
+      pass('POST reporter authorized attachment upload', '200 with opaque upload token');
+    } else {
+      fail('POST reporter authorized attachment upload', `HTTP ${uploadResponse.status}: ${truncate(JSON.stringify(uploadJson))}`);
+    }
+  } catch (error) {
+    fail('POST reporter authorized attachment upload', error.message);
+  }
+
+  if (uploadJson?.data?.upload_token) {
+    const attached = await request('POST reporter attach authorized upload', 'tickets.api.php', {
+      method: 'POST',
+      body: {
+        action: 'reporter_add_attachment', ticket_input: sharedState.createdTicket.ticket_number,
+        access_code: sharedState.createdTicket.access_code, upload_token: uploadJson.data.upload_token,
+      },
+      expectedStatuses: [200], expectSuccess: true,
+      validate: (json) => {
+        const url = json?.data?.attachment?.file_url || '';
+        if (!url.includes('action=download') || !url.includes('token=v1.')) return 'short-lived download URL missing';
+        if (url.includes('path=')) return 'storage path leaked in download URL';
+        return true;
+      },
+    });
+    const signedUrl = attached.json?.data?.attachment?.file_url;
+    if (signedUrl) {
+      const response = await fetchWithTimeout(`${config.baseUrl}${signedUrl}`, {}, config.timeoutMs);
+      if (response.status === 200 && (await response.text()).startsWith('%PDF-1.4')) pass('GET reporter own signed attachment', '200');
+      else fail('GET reporter own signed attachment', `HTTP ${response.status}`);
+      const modified = `${signedUrl.slice(0, -1)}${signedUrl.endsWith('A') ? 'B' : 'A'}`;
+      const modifiedResponse = await fetchWithTimeout(`${config.baseUrl}${modified}`, {}, config.timeoutMs);
+      if (modifiedResponse.status === 401) pass('GET modified attachment token rejected', '401');
+      else fail('GET modified attachment token rejected', `HTTP ${modifiedResponse.status}`);
+    }
+
+    await request('POST reporter cross-ticket attachment rejected', 'tickets.api.php', {
+      method: 'POST',
+      body: { action: 'reporter_add_attachment', ticket_input: '22222222-2222-4222-8222-222222222222', access_code: sharedState.createdTicket.access_code, upload_token: uploadJson.data.upload_token },
+      expectedStatuses: [401], expectSuccess: false,
+    });
+  }
 
   if (config.authToken) {
     const expectedStatuses = sharedState.authzAvailable ? [200] : [403];

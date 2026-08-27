@@ -409,6 +409,7 @@ function Invoke-LocalDeploy($rootDir) {
     $privateDir = Join-Path $rootDir 'private'
     $targetVendorDir = Join-Path $deployTarget 'vendor'
     $targetPrivateDir = Join-Path $deployTarget 'private'
+    $targetUploadDir = Join-Path $targetPrivateDir 'uploads'
 
     foreach ($cmd in @('php','node','npm','robocopy')) {
         if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
@@ -478,8 +479,16 @@ function Invoke-LocalDeploy($rootDir) {
     }
 
     if (Test-Path $privateDir) {
-        Info "Deploying private runtime directory"
-        Invoke-RobocopyChecked $privateDir $targetPrivateDir @('*') @('/MIR', '/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
+        # Never mirror local keys or uploads into production. Only publish the
+        # IIS deny rule; runtime secrets and attachment data remain server-owned.
+        $privateWebConfig = Join-Path $privateDir 'web.config'
+        if (Test-Path $privateWebConfig) {
+            Info "Deploying private IIS access-deny rule"
+            Invoke-RobocopyChecked $privateDir $targetPrivateDir @('web.config') @('/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
+        } else {
+            Warn "Private IIS access-deny rule not found: $privateWebConfig"
+        }
+        Grant-IisModifyAccess $targetUploadDir
     } else {
         Warn "private directory not found locally: $privateDir"
     }

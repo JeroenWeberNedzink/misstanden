@@ -50,14 +50,11 @@ export const reporterReplyService = {
 
   async addAttachment(token, fileMeta = {}) {
     if (!token) throw new Error('token is required');
-    if (!fileMeta?.name || !fileMeta?.url) throw new Error('fileMeta.name and fileMeta.url are required');
+    if (!fileMeta?.uploadToken) throw new Error('uploadToken is required');
     return apiPost({
       action: 'add_attachment',
       token: String(token).trim(),
-      file_name: fileMeta.name,
-      file_url: fileMeta.url,
-      mime_type: fileMeta.type || 'application/octet-stream',
-      size_bytes: Number(fileMeta.size || 0) || 0,
+      upload_token: fileMeta.uploadToken,
     });
   },
 
@@ -65,12 +62,11 @@ export const reporterReplyService = {
     if (!token) throw new Error('token is required');
     if (!file) throw new Error('file is required');
 
-    const uid = randomId();
-    const folder = `${options?.folder || 'attachments'}/reporter-replies`;
     const formData = new FormData();
     formData.append('action', 'upload');
-    formData.append('folder', folder);
-    formData.append('file', file, `${uid}_${safeFileName(file.name)}`);
+    formData.append('access_mode', 'reply');
+    formData.append('reply_token', String(token).trim());
+    formData.append('file', file, file.name || 'file');
 
     const uploadResponse = await fetch(FILES_API_URL, {
       method: 'POST',
@@ -81,23 +77,20 @@ export const reporterReplyService = {
       throw toError(uploadJson?.message || `Failed to upload attachment (${uploadResponse.status})`, uploadJson);
     }
 
-    const storedPath = uploadJson?.data?.path || null;
+    const uploadToken = uploadJson?.data?.upload_token || null;
 
     try {
       const result = await this.addAttachment(token, {
-        name: file.name,
-        url: storedPath,
-        type: file.type || 'application/octet-stream',
-        size: file.size || 0,
+        uploadToken,
       });
       return result;
     } catch (error) {
       try {
-        if (storedPath) {
+        if (uploadToken) {
           await fetch(FILES_API_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'delete', path: storedPath }),
+            body: JSON.stringify({ action: 'cleanup', upload_token: uploadToken }),
           });
         }
       } catch {

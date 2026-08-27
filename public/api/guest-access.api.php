@@ -7,6 +7,7 @@ require_once __DIR__ . '/_admin_auth.php';
 require_once __DIR__ . '/_errors.php';
 require_once __DIR__ . '/_security_headers.php';
 require_once __DIR__ . '/_sqlserver.php';
+require_once __DIR__ . '/_attachment_security.php';
 
 api_apply_security_headers([
     'allow_methods' => 'GET, POST, OPTIONS',
@@ -41,14 +42,6 @@ function guest_access_normalize_token($raw): string {
     if (preg_match('/^[a-f0-9]{40,256}$/i', $token) === 1) return strtolower($token);
     if (preg_match('/^[A-Za-z0-9\-_]{24,256}$/', $token) === 1) return $token;
     return '';
-}
-
-function guest_access_download_url(?string $raw): ?string {
-    $value = trim((string)$raw);
-    if ($value === '' || preg_match('#^https?://#i', $value) === 1) {
-        return $value !== '' ? $value : null;
-    }
-    return '/api/files.api.php?action=download&path=' . rawurlencode($value);
 }
 
 function guest_access_ensure_schema(): void {
@@ -174,7 +167,7 @@ function guest_access_sanitize_ticket(array $ticket): array {
             'mime_type' => $att['mime_type'] ?? null,
             'size_bytes' => $att['size_bytes'] ?? null,
             'created_at' => $att['created_at'] ?? null,
-            'file_url' => guest_access_download_url($att['file_url'] ?? null),
+            'file_url' => attachment_security_download_url($att, 'guest'),
         ];
     }, $attachments)));
 
