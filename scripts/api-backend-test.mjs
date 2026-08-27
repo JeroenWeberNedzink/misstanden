@@ -213,7 +213,9 @@ function runFeatureContractChecks() {
       read('nz-startup.ps1').includes("Invoke-RobocopyChecked $privateDir $targetPrivateDir @('web.config')")
         && !read('nz-startup.ps1').includes("Invoke-RobocopyChecked $privateDir $targetPrivateDir @('*') @('/MIR'")
         && !read('nz-startup.ps1').includes("@('.env', '.env.local', 'cacert.pem')")
-        && read('nz-startup.ps1').includes('Grant-IisModifyAccess $targetUploadDir')],
+        && read('nz-startup.ps1').includes("$targetAttachmentDir = Join-Path $targetPrivateDir 'uploads\\attachments'")
+        && read('nz-startup.ps1').includes('Grant-IisModifyAccess $targetAttachmentDir')
+        && !read('nz-startup.ps1').includes('Grant-IisModifyAccess $targetUploadDir')],
   ];
 
   for (const [name, ok] of checks) {

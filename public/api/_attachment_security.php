@@ -139,11 +139,19 @@ function attachment_security_normalize_storage_key(string $value): ?string {
     return implode('/', $parts);
 }
 
-function attachment_security_existing_path(string $storageKey): ?string {
+function attachment_security_storage_path(string $storageKey): ?string {
     $key = attachment_security_normalize_storage_key($storageKey);
     if ($key === null) return null;
     $root = attachment_security_storage_root();
-    $candidate = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $key);
+    $parts = explode('/', $key);
+    if (strtolower(basename($root)) === 'attachments') array_shift($parts);
+    return $root . DIRECTORY_SEPARATOR . implode(DIRECTORY_SEPARATOR, $parts);
+}
+
+function attachment_security_existing_path(string $storageKey): ?string {
+    $candidate = attachment_security_storage_path($storageKey);
+    if ($candidate === null) return null;
+    $root = attachment_security_storage_root();
     $resolved = realpath($candidate);
     if ($resolved === false || !is_file($resolved)) return null;
     $prefix = strtolower($root . DIRECTORY_SEPARATOR);

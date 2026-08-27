@@ -409,7 +409,7 @@ function Invoke-LocalDeploy($rootDir) {
     $privateDir = Join-Path $rootDir 'private'
     $targetVendorDir = Join-Path $deployTarget 'vendor'
     $targetPrivateDir = Join-Path $deployTarget 'private'
-    $targetUploadDir = Join-Path $targetPrivateDir 'uploads'
+    $targetAttachmentDir = Join-Path $targetPrivateDir 'uploads\attachments'
 
     foreach ($cmd in @('php','node','npm','robocopy')) {
         if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
@@ -490,7 +490,7 @@ function Invoke-LocalDeploy($rootDir) {
         } else {
             Warn "Private IIS access-deny rule not found: $privateWebConfig"
         }
-        Grant-IisModifyAccess $targetUploadDir
+        Grant-IisModifyAccess $targetAttachmentDir
     } else {
         Warn "private directory not found locally: $privateDir"
     }

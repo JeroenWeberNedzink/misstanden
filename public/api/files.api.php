@@ -287,10 +287,11 @@ try {
     $access = files_authorize_upload();
     $validated = files_validate_upload((array)($_FILES['file'] ?? []));
     $ticketId = (string)$access['ticket_id'];
-    $directory = attachment_security_storage_root() . DIRECTORY_SEPARATOR . 'attachments' . DIRECTORY_SEPARATOR . $ticketId;
-    if (!is_dir($directory) && !@mkdir($directory, 0750, true) && !is_dir($directory)) throw new Exception('Unable to create attachment directory');
     $storageKey = 'attachments/' . $ticketId . '/' . bin2hex(random_bytes(24)) . '.' . $validated['extension'];
-    $target = attachment_security_storage_root() . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $storageKey);
+    $target = attachment_security_storage_path($storageKey);
+    if ($target === null) throw new Exception('Unable to create attachment storage path');
+    $directory = dirname($target);
+    if (!is_dir($directory) && !@mkdir($directory, 0750, true) && !is_dir($directory)) throw new Exception('Unable to create attachment directory');
     if (!move_uploaded_file($validated['tmp'], $target)) throw new Exception('Unable to store attachment');
     @chmod($target, 0640);
     $uploadToken = attachment_security_upload_token(['t' => $ticketId, 's' => $access['scope'], 'p' => $storageKey, 'n' => $validated['name'], 'm' => $validated['mime'], 'z' => $validated['size']]);

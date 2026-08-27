@@ -62,6 +62,17 @@ $badPaths = ['../secret', '../../.env', '..\\..\\private\\keys', 'C:\\Windows\\w
 foreach ($badPaths as $path) security_test('path rejected: ' . $path, attachment_security_normalize_storage_key($path) === null);
 $goodKey = 'attachments/' . $ticketA . '/0123456789abcdef.pdf';
 security_test('generated storage key accepted', attachment_security_normalize_storage_key($goodKey) === $goodKey);
+$originalStorageRoot = getenv('ATTACHMENT_STORAGE_ROOT');
+$exactAttachmentRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'nz-attachment-security-' . bin2hex(random_bytes(8)) . DIRECTORY_SEPARATOR . 'attachments';
+putenv('ATTACHMENT_STORAGE_ROOT=' . $exactAttachmentRoot);
+$exactStoragePath = attachment_security_storage_path($goodKey);
+security_test(
+    'exact attachment storage root does not duplicate attachments segment',
+    $exactStoragePath === realpath($exactAttachmentRoot) . DIRECTORY_SEPARATOR . $ticketA . DIRECTORY_SEPARATOR . '0123456789abcdef.pdf'
+);
+putenv($originalStorageRoot === false ? 'ATTACHMENT_STORAGE_ROOT' : 'ATTACHMENT_STORAGE_ROOT=' . $originalStorageRoot);
+@rmdir($exactAttachmentRoot);
+@rmdir(dirname($exactAttachmentRoot));
 
 if (sqlserver_is_configured()) {
     $columns = (int)sqlserver_scalar("SELECT (CASE WHEN COL_LENGTH(N'dbo.tickets', N'access_code_hash') IS NOT NULL THEN 1 ELSE 0 END) + (CASE WHEN COL_LENGTH(N'dbo.ticket_reply_tokens', N'token_hash') IS NOT NULL THEN 1 ELSE 0 END)");
