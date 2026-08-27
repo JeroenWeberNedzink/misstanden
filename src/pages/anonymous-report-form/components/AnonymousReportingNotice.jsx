@@ -6,9 +6,6 @@ const AnonymousReportingNotice = ({ emailRequired = false }) => {
   const { t } = useTranslation();
   const points = [
     t('reportForm.anonymousInfo.identity'),
-    t(emailRequired
-      ? 'reportForm.anonymousInfo.emailRequired'
-      : 'reportForm.anonymousInfo.emailOptional'),
     t('reportForm.anonymousInfo.technicalData'),
     t('reportForm.anonymousInfo.files'),
     t('reportForm.anonymousInfo.access'),
@@ -27,6 +24,25 @@ const AnonymousReportingNotice = ({ emailRequired = false }) => {
           <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
             {t('reportForm.anonymousInfo.intro')}
           </p>
+
+          <div className="mt-3 rounded-lg border border-primary/20 bg-background/80 p-3">
+            <div className="flex items-start gap-2.5">
+              <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
+                <Icon name="Mail" size={14} className="text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {t('reportForm.anonymousInfo.emailTitle')}
+                </p>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                  {t(emailRequired
+                    ? 'reportForm.anonymousInfo.emailRequired'
+                    : 'reportForm.anonymousInfo.emailOptional')}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <ul className="mt-3 space-y-2">
             {points.map((point) => (
               <li key={point} className="flex items-start gap-2 text-sm leading-relaxed text-muted-foreground">
@@ -35,9 +51,10 @@ const AnonymousReportingNotice = ({ emailRequired = false }) => {
               </li>
             ))}
           </ul>
-          <p className="mt-3 rounded-md bg-warning/10 px-3 py-2 text-xs leading-relaxed text-foreground">
-            {t('reportForm.anonymousInfo.limits')}
-          </p>
+          <div className="mt-3 flex items-start gap-2 rounded-md bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+            <Icon name="Info" size={13} className="mt-0.5 flex-shrink-0 text-primary" />
+            <p>{t('reportForm.anonymousInfo.limits')}</p>
+          </div>
         </div>
       </div>
     </aside>
