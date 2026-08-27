@@ -217,6 +217,7 @@ function runFeatureContractChecks() {
         && read('nz-startup.ps1').includes("icacls.exe $path '/inheritance:d'")
         && read('nz-startup.ps1').includes("'*S-1-1-0' '*S-1-5-11' '*S-1-5-32-545' '*S-1-3-0'")
         && read('nz-startup.ps1').includes('Grant-IisModifyAccess $targetAttachmentDir $true')
+        && read('nz-startup.ps1').includes('NZ_LOCAL_ENABLE_MUTATING_TESTS')
         && !read('nz-startup.ps1').includes('Grant-IisModifyAccess $targetUploadDir')],
   ];
 

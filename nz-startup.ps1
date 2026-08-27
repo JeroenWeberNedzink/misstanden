@@ -375,10 +375,11 @@ function Invoke-BackendPipelineTests($rootDir) {
     Set-ApiTestAuthToken $rootDir
 
     $testArgs = @('scripts/api-backend-test.mjs', '--start-server')
-    if (-not ($SkipMutatingTests -or (Is-Truthy $env:NZ_LOCAL_SKIP_MUTATING_TESTS))) {
+    $mutatingTestsEnabled = Is-Truthy $env:NZ_LOCAL_ENABLE_MUTATING_TESTS
+    if ($mutatingTestsEnabled -and -not ($SkipMutatingTests -or (Is-Truthy $env:NZ_LOCAL_SKIP_MUTATING_TESTS))) {
         $testArgs += '--mutate'
     } else {
-        Warn "Skipping mutating backend/API tests"
+        Warn "Skipping mutating backend/API tests (set NZ_LOCAL_ENABLE_MUTATING_TESTS=true to opt in)"
     }
 
     if (-not ($SkipPerformance -or (Is-Truthy $env:NZ_LOCAL_SKIP_PERFORMANCE))) {
